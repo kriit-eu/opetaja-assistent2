@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect x="3.645" y="23.633" width="110.374" height="100.658" rx="2" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#FFFFFF" style=""/>
+  <rect x="3.645" y="23.633" width="58.865" height="100.658" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#F5F5F5" style=""/>
+  <rect x="3.645" y="23.633" width="110.374" height="14.381" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#F8F9C4" style=""/>
+  <rect x="62.51" y="23.633" width="3.68" height="100.658" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="80.906" y="23.633" width="3.68" height="100.658" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="99.301" y="23.633" width="3.68" height="100.658" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="3.645" y="38.013" width="110.374" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="3.645" y="52.394" width="110.374" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="3.645" y="66.772" width="110.374" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="3.645" y="81.152" width="110.374" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="3.645" y="95.533" width="110.374" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect x="3.645" y="109.911" width="110.374" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <text style="white-space: pre; font-size: 2.5px;" x="3.204" y="10.226" stroke-width="1" stroke="none"
+        font-weight="normal" font-size="2.5" font-family="Arial" fill-rule="evenodd" fill="#1E88E5"
+        transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">Marko R.
+  </text>
+  <text style="white-space: pre; font-size: 2.5px;" x="3.163" y="14.266" stroke-width="1" stroke="none"
+        font-weight="normal" font-size="2.5" font-family="Arial" fill-rule="evenodd" fill="#1E88E5"
+        transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">Donald T.
+  </text>
+  <text style="white-space: pre; font-size: 2.5px;" x="3.161" y="18.196" stroke-width="1" stroke="none"
+        font-weight="normal" font-size="2.5" font-family="Arial" fill-rule="evenodd" fill="#1E88E5"
+        transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">Andreas K.
+  </text>
+  <text style="white-space: pre; font-size: 2.5px;" x="3.195" y="22.225" stroke-width="1" stroke="none"
+        font-weight="normal" font-size="2.5" font-family="Arial" fill-rule="evenodd" fill="#1E88E5"
+        transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">Mihail R.
+  </text>
+  <text style="white-space: pre; font-size: 2.5px;" x="3.163" y="26.271" stroke-width="1" stroke="none"
+        font-weight="normal" font-size="2.5" font-family="Arial" fill-rule="evenodd" fill="#1E88E5"
+        transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">Timo M.
+  </text>
+  <text style="fill-rule: evenodd; font-family: Arial; font-size: 3px; font-weight: 700; white-space: pre;" x="20.163"
+        y="9.885" dx="-1.004" dy="0.576" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">A
+  </text>
+  <text style="fill-rule: evenodd; font-family: Arial; font-size: 3px; font-weight: 700; white-space: pre;" x="20.163"
+        y="17.885" dx="-1.172" dy="0.618" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">A
+  </text>
+  <text style="fill-rule: evenodd; font-family: Arial; font-size: 3px; font-weight: 700; white-space: pre;" x="25.163"
+        y="21.885" dx="-1.081" dy="0.626" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">A
+  </text>
+  <text style="fill-rule: evenodd; font-family: Arial; font-size: 3px; font-weight: 700; white-space: pre;" x="25.163"
+        y="25.885" dx="-1.058" dy="0.574" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">A
+  </text>
+  <text
+    style="fill: rgb(255, 0, 0); fill-rule: evenodd; font-family: Arial; font-size: 2.5px; font-weight: 700; white-space: pre;"
+    x="19.163" y="13.885" dx="-0.971" dy="0.376" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">MA
+  </text>
+  <text
+    style="fill: rgb(255, 0, 0); fill-rule: evenodd; font-family: Arial; font-size: 2.5px; font-weight: 700; white-space: pre;"
+    x="19.163" y="21.885" dx="-0.978" dy="0.416" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">MA
+  </text>
+  <text
+    style="fill: rgb(255, 0, 0); fill-rule: evenodd; font-family: Arial; font-size: 2.5px; font-weight: 700; white-space: pre;"
+    x="24.163" y="13.885" dx="-0.996" dy="0.37" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">MA
+  </text>
+  <text
+    style="fill: rgb(255, 0, 0); fill-rule: evenodd; font-family: Arial; font-size: 2.5px; font-weight: 700; white-space: pre;"
+    x="24.163" y="17.885" dx="-0.914" dy="0.513" transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">MA
+  </text>
+  <rect x="3.696" y="23.756" width="58.906" height="14.758"
+        style="stroke: rgb(0, 0, 0); fill: rgb(255, 255, 255); stroke-opacity: 0;"/>
+  <rect x="103.239" y="23.708" width="10.996" height="14.021"
+        style="stroke: rgb(0, 0, 0); stroke-opacity: 0; fill: rgb(225, 245, 254);"/>
+  <path
+    d="M 79.385 41.388 C 83.592 42.356 86.908 45.368 87.974 49.196 C 88.074 49.566 88.601 49.566 88.706 49.196 C 89.778 45.368 93.094 42.356 97.306 41.388 C 97.707 41.294 97.707 40.82 97.306 40.723 C 93.083 39.761 89.767 36.748 88.706 32.918 C 88.607 32.548 88.085 32.548 87.974 32.918 C 86.908 36.748 83.592 39.761 79.385 40.731 C 78.976 40.82 78.976 41.294 79.385 41.388 Z"
+    stroke="none" stroke-width="1" fill-rule="evenodd" style="fill: rgb(255, 182, 54);"/>
+  <text style="white-space: pre; font-size: 2.5px;" x="3.309" y="30.246" stroke-width="1" stroke="none"
+        font-weight="normal" font-size="2.5" font-family="Arial" fill-rule="evenodd" fill="#1E88E5"
+        transform="matrix(3.679134, 0, 0, 3.594947, -0.633709, 13.260423)">Lembit O.
+  </text>
+  <rect x="113.995" y="23.55" width="3.68" height="100.658" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <rect y="124.205" width="114.094" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd" fill="#E0E0E0"
+        style="" x="3.581"/>
+  <rect width="3.68" height="107.349" stroke="none" stroke-width="1" fill-rule="evenodd" fill="#E0E0E0" style=""
+        x="-0.002" y="20.145"/>
+  <rect x="3.645" y="20.162" width="114.032" height="3.594" stroke="none" stroke-width="1" fill-rule="evenodd"
+        fill="#E0E0E0" style=""/>
+  <path
+    d="M 87.866 26.128 C 97.086 28.988 104.356 37.871 106.684 49.164 C 106.908 50.257 108.049 50.257 108.27 49.164 C 110.614 37.871 117.868 28.977 127.088 26.128 C 127.968 25.844 127.968 24.442 127.088 24.177 C 117.868 21.311 110.598 12.431 108.27 1.138 C 108.046 0.053 106.902 0.053 106.684 1.138 C 104.34 12.431 97.086 21.325 87.866 24.177 C 86.984 24.442 86.984 25.844 87.866 26.128 Z"
+    stroke="none" stroke-width="1" fill-rule="evenodd" style="fill: rgb(255, 182, 54);"/>
+  <path
+    d="M 77.487 12.118 C 82.157 13.361 85.818 17.229 86.994 22.158 C 87.113 22.636 87.697 22.636 87.805 22.158 C 88.992 17.229 92.658 13.361 97.323 12.118 C 97.777 11.992 97.777 11.375 97.323 11.26 C 92.658 10.005 88.992 6.143 87.805 1.213 C 87.697 0.734 87.113 0.734 86.994 1.213 C 85.818 6.143 82.157 10.005 77.487 11.26 C 77.035 11.375 77.035 11.992 77.487 12.118 Z"
+    stroke="none" stroke-width="1" fill-rule="evenodd" fill="#FFB636" style=""/>
+</svg>

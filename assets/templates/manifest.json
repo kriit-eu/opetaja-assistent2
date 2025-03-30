@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Opetaja Assistent 2",
+  "version": "0.1.0",
+  "description": "A minimal assistant for Tahvel.",
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.tahvel.edu.ee/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.tahvel.edu.ee/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
+}
