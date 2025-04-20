@@ -3,8 +3,9 @@
  */
 import Logger from '../services/Logger.js'
 
-// TODO: Import features when implemented
 // Journal List Features
+import { journalListSync } from '../features/journalList/JournalListSync.js'
+// TODO: Import other features when implemented
 // import { journalListIndicators } from '../features/journalList/JournalListIndicators.js'
 // import { gradeComparison } from '../features/journalList/GradeComparison.js'
 
@@ -23,7 +24,7 @@ export async function loadFeatures () {
 
   // Define feature groups for better organization
   const featureGroups = {
-    journalList: [],  // TODO: Add features when implemented
+    journalList: [journalListSync],  // Add more features when implemented
     singleJournal: [], // TODO: Add features when implemented
   }
 
@@ -35,15 +36,15 @@ export async function loadFeatures () {
     Logger.debug(`Loaded feature: ${feature.name}`)
   }
 
-  Logger.info('No features currently implemented. Features will be added in future updates.')
+  Logger.info(`Loaded ${allFeatures.length} feature(s)`)
   return allFeatures
 }
 
 // Export all features in an array for backward compatibility
 export const features = [
-  // TODO: Add features when implemented
   // Journal List Features
+  journalListSync,
 
   // Single Journal Features
-
+  // TODO: Add more features when implemented
 ]

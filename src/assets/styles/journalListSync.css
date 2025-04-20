@@ -1,0 +1,124 @@
+/**
+ * Styles for Journal List Sync feature
+ */
+
+.ta-sync-banner {
+  background-color: #e6f3ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 4px;
+  margin: 10px;
+  padding: 15px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ta-sync-loading {
+  background-color: #f8f9fa;
+  color: #6c757d;
+  text-align: center;
+  padding: 20px;
+}
+
+.ta-sync-error {
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+
+.ta-sync-title {
+  color: #0056b3;
+  font-size: 1.5rem;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.ta-sync-divider {
+  border: 0;
+  border-top: 1px solid #b3d9ff;
+  margin: 10px 0;
+}
+
+.ta-sync-differences-container {
+  margin-top: 15px;
+}
+
+.ta-sync-subject-section {
+  margin-bottom: 20px;
+}
+
+.ta-sync-subject-title {
+  color: #0056b3;
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+}
+
+.ta-sync-assignment-section {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  padding: 10px;
+}
+
+.ta-sync-assignment-title {
+  color: #495057;
+  font-size: 1rem;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.ta-sync-results-container {
+  margin-left: 10px;
+}
+
+.ta-sync-result-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.ta-sync-result-row:last-child {
+  border-bottom: none;
+}
+
+.ta-sync-student-name {
+  font-weight: 500;
+}
+
+.ta-sync-grade-difference {
+  display: flex;
+  align-items: center;
+}
+
+.ta-sync-current-grade {
+  color: #6c757d;
+}
+
+.ta-sync-arrow {
+  color: #6c757d;
+  margin: 0 5px;
+}
+
+.ta-sync-new-grade {
+  color: #007bff;
+  font-weight: bold;
+}
+
+.ta-sync-button {
+  background-color: #007bff;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-top: 10px;
+  padding: 8px 16px;
+  transition: background-color 0.2s;
+}
+
+.ta-sync-button:hover {
+  background-color: #0069d9;
+}

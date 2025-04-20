@@ -9,6 +9,94 @@ const apiService = {
   baseUrl: 'https://tahvel.edu.ee/hois_back',
 
   /**
+   * Kriit API configuration
+   */
+  kriit: {
+    baseUrl: 'https://kriit.vikk.ee/api',
+    authToken: '', // Will be set by user or loaded from storage
+
+    /**
+     * Set the Kriit API auth token
+     * @param {string} token - The auth token
+     */
+    setAuthToken (token) {
+      this.authToken = token
+    },
+
+    /**
+     * Get differences between Tahvel and Kriit
+     * @param {Array} journalData - Array of journal data
+     * @returns {Promise<Array>} - Array of differences
+     */
+    async getDifferences (journalData) {
+      try {
+        const url = `${this.baseUrl}/subjects/getDifferences`
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${this.authToken}`
+          },
+          body: JSON.stringify(journalData)
+        })
+
+        if (!response.ok) {
+          throw new Error(`Kriit API Error: ${response.status} ${response.statusText}`)
+        }
+
+        const responseData = await response.json()
+
+        if (responseData.status !== 200) {
+          throw new Error(`Kriit API Error: ${responseData.status} - ${responseData.message || 'Unknown error'}`)
+        }
+
+        return responseData.data || []
+      } catch (error) {
+        console.error('Kriit API Error:', error)
+        throw error
+      }
+    },
+
+    /**
+     * Sync changes from Kriit to Tahvel
+     * @param {Array} differences - Array of differences to sync
+     * @returns {Promise<Object>} - Sync result
+     */
+    async syncChanges (differences) {
+      try {
+        const url = `${this.baseUrl}/subjects/syncChanges`
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${this.authToken}`
+          },
+          body: JSON.stringify(differences)
+        })
+
+        if (!response.ok) {
+          throw new Error(`Kriit API Error: ${response.status} ${response.statusText}`)
+        }
+
+        const responseData = await response.json()
+
+        if (responseData.status !== 200) {
+          throw new Error(`Kriit API Error: ${responseData.status} - ${responseData.message || 'Unknown error'}`)
+        }
+
+        return responseData.data || {}
+      } catch (error) {
+        console.error('Kriit API Error:', error)
+        throw error
+      }
+    }
+  },
+
+  /**
    * Set the base URL for API requests
    * @param {string} url - The base URL for the API
    */
