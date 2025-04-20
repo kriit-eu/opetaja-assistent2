@@ -9,16 +9,18 @@ repetitive tasks, providing better data visualization, and integrating with exte
 provides a nice overview of all ungraded assignments across all journals on a single web page). This helps reduce manual
 effort and ensures data consistency across systems.
 
-### Key Features:
+### Planned Features (TODO):
 
-- **Colored Indicators**: Displays visual indicators (e.g., colored triangles) next to journal names to highlight issues
+- **Colored Indicators**: Will display visual indicators (e.g., colored triangles) next to journal names to highlight issues
   like missing grades or lessons.
-- **Grade Comparison**: Compares grades in the Tahvel system with an external system and highlights discrepancies.
-- **Missing Lessons Overview**: Identifies lessons that are in the timetable but missing from the journal.
-- **Assignment Syncing**: Automatically syncs assignments with an external system called **Kriit**.
-- **Automatic Final Grading**: Calculates and applies final grades based on assignment data.
-- **Journal Enhancements**: Improves the journal interface by replacing date headers with assignment titles for better
+- **Grade Comparison**: Will compare grades in the Tahvel system with an external system and highlight discrepancies.
+- **Missing Lessons Overview**: Will identify lessons that are in the timetable but missing from the journal.
+- **Assignment Syncing**: Will automatically sync assignments with an external system called **Kriit**.
+- **Automatic Final Grading**: Will calculate and apply final grades based on assignment data.
+- **Journal Enhancements**: Will improve the journal interface by replacing date headers with assignment titles for better
   clarity.
+
+*Note: These features are currently under development and will be implemented in future updates.*
 
 ### Architecture:
 
@@ -38,15 +40,11 @@ src/
 │   ├── Extension.js                 # Main extension controller
 │   ├── BaseFeature.js               # Base class for all features
 │   └── FeaturesRegistry.js          # Central registry of all features
-├── features/                     # Feature modules
+├── features/                     # Feature modules (TODO: to be implemented)
 │   ├── journalList/                 # Features for journal list page
-│   │   ├── GradeComparison.js          # Grade comparison functionality
-│   │   └── JournalListIndicators.js    # Visual indicators for journals
+│   │   └── README.md                   # Documentation for planned features
 │   └── singleJournal/               # Features for single journal page
-│       ├── AssignmentSync.js           # Syncing with Kriit
-│       ├── FinalGrading.js             # Automatic grade calculation
-│       ├── JournalEnhancements.js      # UI improvements
-│       └── MissingLessons.js           # Missing lesson detection
+│       └── README.md                   # Documentation for planned features
 └── services/                     # Shared services
     ├── ApiService.js                # API communication
     ├── DomService.js                # DOM manipulation utilities
@@ -103,7 +101,6 @@ This project uses several tools to maintain consistent code style:
 
 - **EditorConfig**: Ensures consistent editor settings across different IDEs
 - **ESLint**: Enforces code quality and style rules
-- **Prettier**: Automatically formats code
 
 Code is automatically formatted and linted when you run `bun start`. You can also run these commands manually:
 
@@ -114,7 +111,7 @@ bun run lint
 # Fix linting issues automatically
 bun run lint:fix
 
-# Format code with Prettier
+# Format code with ESLint
 bun run format
 ```
 

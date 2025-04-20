@@ -17,8 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Feature-based module system with services layer
 - Core extension infrastructure in `src/core/`
 - Features organized by page context in `src/features/`
-    - Journal list feature in `src/features/journalList/`
-    - Single journal view feature in `src/features/singleJournal/`
+    - Journal list features in `src/features/journalList/` (TODO: to be implemented)
+    - Single journal view features in `src/features/singleJournal/` (TODO: to be implemented)
 - Shared services in `src/services/`
 - Assets directory structure:
     - Build scripts in `assets/scripts/`

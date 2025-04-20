@@ -3,15 +3,16 @@
  */
 import Logger from '../services/Logger.js'
 
+// TODO: Import features when implemented
 // Journal List Features
-import { journalListIndicators } from '../features/journalList/JournalListIndicators.js'
-import { gradeComparison } from '../features/journalList/GradeComparison.js'
+// import { journalListIndicators } from '../features/journalList/JournalListIndicators.js'
+// import { gradeComparison } from '../features/journalList/GradeComparison.js'
 
 // Single Journal Features
-import { missingLessons } from '../features/singleJournal/MissingLessons.js'
-import { assignmentSync } from '../features/singleJournal/AssignmentSync.js'
-import { finalGrading } from '../features/singleJournal/FinalGrading.js'
-import { journalEnhancements } from '../features/singleJournal/JournalEnhancements.js'
+// import { missingLessons } from '../features/singleJournal/MissingLessons.js'
+// import { assignmentSync } from '../features/singleJournal/AssignmentSync.js'
+// import { finalGrading } from '../features/singleJournal/FinalGrading.js'
+// import { journalEnhancements } from '../features/singleJournal/JournalEnhancements.js'
 
 /**
  * Provides a structured approach to loading features
@@ -22,8 +23,8 @@ export async function loadFeatures () {
 
   // Define feature groups for better organization
   const featureGroups = {
-    journalList: [journalListIndicators, gradeComparison],
-    singleJournal: [missingLessons, assignmentSync, finalGrading, journalEnhancements],
+    journalList: [],  // TODO: Add features when implemented
+    singleJournal: [], // TODO: Add features when implemented
   }
 
   // Flatten all features into a single array
@@ -34,19 +35,15 @@ export async function loadFeatures () {
     Logger.debug(`Loaded feature: ${feature.name}`)
   }
 
-  Logger.success(`Successfully loaded ${allFeatures.length} features`)
+  Logger.info(`No features currently implemented. Features will be added in future updates.`)
   return allFeatures
 }
 
 // Export all features in an array for backward compatibility
 export const features = [
+  // TODO: Add features when implemented
   // Journal List Features
-  journalListIndicators,
-  gradeComparison,
 
   // Single Journal Features
-  missingLessons,
-  assignmentSync,
-  finalGrading,
-  journalEnhancements,
+
 ]
