@@ -1,4 +1,4 @@
-{
+ {
   "name": "opetaja-assistent2",
   "version": "0.1.0",
   "description": "Extension for enhancing Tahvel educational platform functionality",
@@ -20,9 +20,9 @@
     "start": "bun install && bun run lint:fix && bun run dev",
     "dev": "bun run build:dev && bun run watch",
     "build": "bun run build:prod",
-    "build:dev": "bun assets/scripts/build.js",
-    "build:prod": "bun assets/scripts/build.js --prod",
-    "watch": "bun assets/scripts/watch.js",
+    "build:dev": "bun src/assets/scripts/build.js",
+    "build:prod": "bun src/assets/scripts/build.js --prod",
+    "watch": "bun src/assets/scripts/watch.js",
     "lint": "./node_modules/.bin/eslint src/**/*.js",
     "lint:fix": "./node_modules/.bin/eslint src/**/*.js --fix",
     "format": "./node_modules/.bin/eslint src/**/*.js --fix"

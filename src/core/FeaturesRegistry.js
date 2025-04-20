@@ -35,7 +35,7 @@ export async function loadFeatures () {
     Logger.debug(`Loaded feature: ${feature.name}`)
   }
 
-  Logger.info(`No features currently implemented. Features will be added in future updates.`)
+  Logger.info('No features currently implemented. Features will be added in future updates.')
   return allFeatures
 }
 

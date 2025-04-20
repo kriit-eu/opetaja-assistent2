@@ -21,10 +21,10 @@ const CONFIG = {
   // Directories
   srcDir: 'src',
   distDir: 'dist',
-  templatesDir: 'assets/templates',
+  templatesDir: 'src/assets/templates',
 
   // Source SVG file for all icon sizes
-  iconSource: 'assets/templates/icon.svg',
+  iconSource: 'src/assets/templates/icon.svg',
 
   // Icons to generate
   icons: [

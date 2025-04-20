@@ -20,10 +20,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     - Journal list features in `src/features/journalList/` (TODO: to be implemented)
     - Single journal view features in `src/features/singleJournal/` (TODO: to be implemented)
 - Shared services in `src/services/`
-- Assets directory structure:
-    - Build scripts in `assets/scripts/`
-    - Extension icons in `assets/icons/`
-    - Templates in `assets/templates/`:
+- Assets directory structure (under `src/assets/`):
+    - Build scripts in `src/assets/scripts/`
+    - Extension icons in `src/assets/icons/`
+    - Templates in `src/assets/templates/`:
         - `manifest.json`: Browser extension manifest template that's copied to the dist directory during build
         - `icon.svg`: Source SVG icon that's converted to PNG icons (48x48, 128x128) during build using Sharp
 - Distribution files in `dist/` (generated during build)

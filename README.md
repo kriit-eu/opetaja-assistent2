@@ -36,6 +36,10 @@ This extension uses a Feature-Based Module System with Services Layer architectu
 src/
 ├── background.js                 # Service worker for extension reloading
 ├── content.js                    # Main entry point
+├── assets/                       # Static assets and build scripts
+│   ├── icons/                       # SVG icons for the extension
+│   ├── scripts/                     # Build and watch scripts
+│   └── templates/                   # Templates for manifest and icons
 ├── core/                         # Core extension infrastructure
 │   ├── Extension.js                 # Main extension controller
 │   ├── BaseFeature.js               # Base class for all features
