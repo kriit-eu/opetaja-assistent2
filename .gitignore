@@ -1,6 +1,11 @@
 # dependencies (bun install)
 node_modules
 
+# Dev files and links
+
+kriit
+src/features/journalList/output.txt
+
 # output
 out
 dist
@@ -30,8 +35,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # IntelliJ based IDEs
 .idea
 
+# Editor settings
+.windsurf/
+
 # Finder (MacOS) folder config
 .DS_Store
 node_modules/
 dist/
 .bun/
+.aider*

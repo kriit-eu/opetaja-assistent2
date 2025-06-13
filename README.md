@@ -9,24 +9,41 @@ repetitive tasks, providing better data visualization, and integrating with exte
 provides a nice overview of all ungraded assignments across all journals on a single web page). This helps reduce manual
 effort and ensures data consistency across systems.
 
-### Planned Features (TODO):
+### Features:
 
-- **Colored Indicators**: Will display visual indicators (e.g., colored triangles) next to journal names to highlight issues
-  like missing grades or lessons.
-- **Grade Comparison**: Will compare grades in the Tahvel system with an external system and highlight discrepancies.
-- **Missing Lessons Overview**: Will identify lessons that are in the timetable but missing from the journal.
-- **Assignment Syncing**: Will automatically sync assignments with an external system called **Kriit**.
-- **Automatic Final Grading**: Will calculate and apply final grades based on assignment data.
-- **Journal Enhancements**: Will improve the journal interface by replacing date headers with assignment titles for better
-  clarity.
+#### Implemented:
+- **Journal List Sync**: Comprehensive synchronization between Tahvel and Kriit systems
+  - Compares grades between Tahvel and Kriit and highlights discrepancies
+  - Syncs assignments, students, and their personal codes
+  - Displays interactive banners showing differences that need to be synced
+  - Handles student status validation (active/inactive)
+  - Provides detailed sync progress and error reporting
+- **Popup Interface**: Extension popup with settings and cache management
+  - Debug mode toggle for enhanced logging
+  - Kriit integration settings (API URL and key configuration)
+  - Cache statistics and management tools
+  - Real-time cache size monitoring and cleanup
+- **Visual Indicators**: Extension activity indicator in the Tahvel interface
+- **Caching System**: Intelligent caching to prevent redundant API calls
+- **Error Handling**: Comprehensive error logging and user feedback
 
-*Note: These features are currently under development and will be implemented in future updates.*
+#### Planned (TODO):
+- **Single Journal Features**: Features for individual journal pages
+  - Missing Lessons Overview: Identify lessons in timetable but missing from journal
+  - Assignment Sync for Single Journal: Sync assignments with external systems
+  - Final Grading: Automatically calculate and apply final grades
+  - Journal Enhancements: Improve journal interface with better visualization
+- **Enhanced Journal List Indicators**: Additional visual indicators for various issues
+
+*Note: Additional features are under active development.*
 
 ### Architecture:
 
-- **Core Modules**: Handle the main extension logic, such as feature activation and navigation handling.
-- **Features**: Implement specific functionalities (e.g., grade comparison, missing lessons).
-- **Services**: Provide shared utilities like DOM manipulation, API communication, and navigation detection.
+- **Core Modules**: Handle the main extension logic, feature activation, and navigation handling.
+- **Features**: Implement specific functionalities organized by page context (journal list, single journal).
+- **Services**: Provide shared utilities like DOM manipulation, API communication, caching, and UI components.
+- **Popup Interface**: Provides user settings, debug controls, and cache management.
+- **Testing Suite**: Comprehensive tests for core functionality and edge cases.
 
 ## Project Structure
 
@@ -39,21 +56,25 @@ src/
 ├── assets/                       # Static assets and build scripts
 │   ├── icons/                       # SVG icons for the extension
 │   ├── scripts/                     # Build and watch scripts
+│   ├── styles/                      # CSS for feature components
 │   └── templates/                   # Templates for manifest and icons
 ├── core/                         # Core extension infrastructure
 │   ├── Extension.js                 # Main extension controller
 │   ├── BaseFeature.js               # Base class for all features
 │   └── FeaturesRegistry.js          # Central registry of all features
-├── features/                     # Feature modules (TODO: to be implemented)
+├── features/                     # Feature modules
 │   ├── journalList/                 # Features for journal list page
+│   │   ├── JournalListSync.js          # Journal list sync implementation
 │   │   └── README.md                   # Documentation for planned features
 │   └── singleJournal/               # Features for single journal page
 │       └── README.md                   # Documentation for planned features
 └── services/                     # Shared services
     ├── ApiService.js                # API communication
+    ├── CacheService.js              # Data caching utilities
     ├── DomService.js                # DOM manipulation utilities
     ├── Logger.js                    # Logging and debugging utilities
-    └── NavigationService.js         # URL/navigation handling
+    ├── NavigationService.js         # URL/navigation handling
+    └── StyleService.js              # CSS injection utilities
 ```
 
 ## Development
@@ -137,5 +158,5 @@ This will:
     - Chrome: `chrome://extensions/`
     - Edge: `edge://extensions/`
     - Other Chromium browsers: Check your browser's extension management page
-2. Enable "Developer mode"
-3. Click "Load unpacked" and select the `dist` directory
+6. Enable "Developer mode"
+7. Click "Load unpacked" and select the `dist` directory

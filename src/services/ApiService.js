@@ -1,100 +1,28 @@
 /**
- * API Service - Handles communication with external systems
+ * API Service - Generic service for API communication
  */
 
-const apiService = {
+import Logger from './Logger.js'
+import { cacheService } from './CacheService.js'
+
+/**
+ * ApiService class for making API requests
+ */
+class ApiService {
   /**
-   * Base URL for API requests (can be configured)
+   * Create a new ApiService instance
+   * @param {Object} config - Configuration object
+   * @param {string} config.name - Name of the API service (for logging)
+   * @param {string} config.baseUrl - Base URL for API requests
+   * @param {Object} config.defaultHeaders - Default headers to include in all requests
+   * @param {string} config.authToken - Authentication token for API requests
    */
-  baseUrl: 'https://tahvel.edu.ee/hois_back',
-
-  /**
-   * Kriit API configuration
-   */
-  kriit: {
-    baseUrl: 'https://kriit.vikk.ee/api',
-    authToken: '', // Will be set by user or loaded from storage
-
-    /**
-     * Set the Kriit API auth token
-     * @param {string} token - The auth token
-     */
-    setAuthToken (token) {
-      this.authToken = token
-    },
-
-    /**
-     * Get differences between Tahvel and Kriit
-     * @param {Array} journalData - Array of journal data
-     * @returns {Promise<Array>} - Array of differences
-     */
-    async getDifferences (journalData) {
-      try {
-        const url = `${this.baseUrl}/subjects/getDifferences`
-
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${this.authToken}`
-          },
-          body: JSON.stringify(journalData)
-        })
-
-        if (!response.ok) {
-          throw new Error(`Kriit API Error: ${response.status} ${response.statusText}`)
-        }
-
-        const responseData = await response.json()
-
-        if (responseData.status !== 200) {
-          throw new Error(`Kriit API Error: ${responseData.status} - ${responseData.message || 'Unknown error'}`)
-        }
-
-        return responseData.data || []
-      } catch (error) {
-        console.error('Kriit API Error:', error)
-        throw error
-      }
-    },
-
-    /**
-     * Sync changes from Kriit to Tahvel
-     * @param {Array} differences - Array of differences to sync
-     * @returns {Promise<Object>} - Sync result
-     */
-    async syncChanges (differences) {
-      try {
-        const url = `${this.baseUrl}/subjects/syncChanges`
-
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${this.authToken}`
-          },
-          body: JSON.stringify(differences)
-        })
-
-        if (!response.ok) {
-          throw new Error(`Kriit API Error: ${response.status} ${response.statusText}`)
-        }
-
-        const responseData = await response.json()
-
-        if (responseData.status !== 200) {
-          throw new Error(`Kriit API Error: ${responseData.status} - ${responseData.message || 'Unknown error'}`)
-        }
-
-        return responseData.data || {}
-      } catch (error) {
-        console.error('Kriit API Error:', error)
-        throw error
-      }
-    }
-  },
+  constructor (config = {}) {
+    this.name = config.name || 'api'
+    this.baseUrl = config.baseUrl || ''
+    this.defaultHeaders = config.defaultHeaders || {}
+    this.authToken = config.authToken || ''
+  }
 
   /**
    * Set the base URL for API requests
@@ -102,40 +30,259 @@ const apiService = {
    */
   setBaseUrl (url) {
     this.baseUrl = url
-  },
+  }
+
+  /**
+   * Set the authentication token
+   * @param {string} token - The authentication token
+   */
+  setAuthToken (token) {
+    this.authToken = token
+  }
+
+  /**
+   * Get the authentication headers
+   * @returns {Object} Authentication headers
+   */
+  getAuthHeaders () {
+    if (!this.authToken) return {}
+    return { 'Authorization': `Bearer ${this.authToken}` }
+  }
+
+  /**
+   * Make a request to any API with custom configuration
+   * @param {Object} config - Request configuration
+   * @param {string} config.baseUrl - Base URL for the API
+   * @param {string} config.endpoint - API endpoint
+   * @param {string} config.method - HTTP method (GET, POST, etc.)
+   * @param {Object} config.data - Request body data
+   * @param {Object} config.headers - Request headers
+   * @param {Object} config.params - Query parameters
+   * @param {boolean} config.cache - Whether to cache the request
+   * @param {number} config.cacheExpiration - Cache expiration time in milliseconds
+   * @returns {Promise<any>} Response data
+   */
+  async request (config) {
+    const {
+      baseUrl = this.baseUrl,
+      endpoint,
+      method = 'GET',
+      data = null,
+      headers = {},
+      params = {},
+      cache = false,
+      cacheExpiration = cacheService.EXPIRATION.MEDIUM,
+    } = config
+
+    try {
+      // Resolve the full URL
+      let fullUrl
+      if (endpoint.startsWith('http')) {
+        fullUrl = endpoint
+      } else {
+        fullUrl = `${baseUrl}${endpoint}`
+      }
+
+      // Add query parameters if this is a GET request
+      const url = new URL(fullUrl)
+      if (Object.keys(params).length > 0) {
+        Object.entries(params).forEach(([key, value]) => {
+          url.searchParams.append(key, String(value))
+        })
+      }
+
+      const urlString = url.toString()
+
+      // Set up request options
+      const requestOptions = {
+        method,
+        headers: {
+          'Content-Type': 'application/json;charset=UTF-8',
+          'Accept': 'application/json, text/plain, */*',
+          ...this.defaultHeaders,
+          ...this.getAuthHeaders(),
+          ...headers,
+        },
+      }
+
+      // For Tahvel API, include credentials and add additional headers
+      if (this.name === 'tahvel') {
+        // Include cookies for authentication (only for Tahvel)
+        requestOptions.credentials = 'include'
+
+        // For PUT/POST requests, add additional headers
+        if (method === 'PUT' || method === 'POST') {
+          // Add Origin and Referer headers based on current domain
+          const currentOrigin = window.location.origin
+          requestOptions.headers['Origin'] = currentOrigin
+          requestOptions.headers['Referer'] = currentOrigin + '/'
+
+          // Add additional headers that Angular includes
+          requestOptions.headers['X-Requested-With'] = 'XMLHttpRequest'
+
+          // Try to get client IP for X-Forwarded-For
+          // This is the best we can do—we can’t reliably get the client’s IP
+          // But we can include the header to match Angular's request
+          requestOptions.headers['X-Forwarded-For'] = '127.0.0.1'
+        }
+      }
+
+      // Add body for non-GET requests
+      if (method !== 'GET' && data !== null) {
+        requestOptions.body = JSON.stringify(data)
+      }
+
+      // Log request details for debugging
+      Logger.debug(`[${this.name}] ${method} ${urlString}`)
+
+      // Log credentials mode for debugging CORS issues
+      if (this.name === 'kriit') {
+        Logger.debug(`[${this.name}] Request credentials mode: ${requestOptions.credentials || 'not set'}`)
+      }
+
+      // For Kriit API requests to localhost, use background script to bypass mixed content restrictions
+      if (this.name === 'kriit' && urlString.includes('localhost')) {
+        Logger.debug(`[${this.name}] Using background script for localhost request: ${method} ${urlString}`)
+
+        return new Promise((resolve, reject) => {
+          // noinspection JSCheckFunctionSignatures
+          chrome.runtime.sendMessage({
+            action: 'kriitApiRequest',
+            method,
+            url: urlString,
+            headers: requestOptions.headers,
+            body: data,
+          }, response => {
+            if (chrome.runtime.lastError) {
+              Logger.error(`[${this.name}] Background script error:`, chrome.runtime.lastError)
+              reject(new Error(`Background script error: ${chrome.runtime.lastError.message}`))
+              return
+            }
+
+            if (response.status === 'success') {
+              resolve(response.data)
+            } else {
+              reject(new Error(response.message))
+            }
+          })
+        })
+      }
+
+      // Handle caching for GET requests
+      if (method === 'GET' && cache) {
+        const cacheKey = `${method}_${urlString}`
+
+        return cacheService.getOrFetch(
+          cacheKey,
+          async () => {
+            const response = await fetch(urlString, requestOptions)
+
+            if (!response.ok) {
+              throw new Error(`API Error: ${response.status} ${response.statusText}`)
+            }
+
+            return await response.json()
+          },
+          cacheExpiration,
+        )
+      }
+
+      // Make a direct request without caching
+      Logger.debug(`[${this.name}] Executing fetch for ${method} ${urlString}`)
+      const fetchStartTime = Date.now()
+
+      const response = await fetch(urlString, requestOptions)
+      const fetchEndTime = Date.now()
+      Logger.debug(`[${this.name}] Fetch completed in ${fetchEndTime - fetchStartTime}ms for ${method} ${urlString}`)
+
+      if (!response.ok) {
+        // Try to get error text if available
+        const errorText = await response.text().catch(() => 'No response text')
+        Logger.error(`[${this.name}] API Error Response:`, errorText)
+
+        // Try to parse error text as JSON
+        let errorDetails = ''
+        try {
+          const errorJson = JSON.parse(errorText)
+
+          // Check for Tahvel-specific error format
+          // noinspection JSUnresolvedVariable
+          if (errorJson?._errors && Array.isArray(errorJson._errors)) {
+            errorDetails = errorJson._errors.map(err => err.code || err.message || JSON.stringify(err)).join(', ')
+            Logger.error(`[${this.name}] Parsed error details:`, errorDetails)
+          } else if (errorJson.error || errorJson.message) {
+            errorDetails = errorJson.error || errorJson.message
+          }
+        } catch (e) {
+          // Not JSON, use as is
+          if (errorText && errorText !== 'No response text') {
+            errorDetails = errorText
+          }
+        }
+
+        // noinspection ExceptionCaughtLocallyJS
+        throw new Error(`API Error: ${response.status} ${errorDetails ? `(${errorDetails})` : response.statusText}`)
+      }
+
+      // First, get the response as text
+      const responseText = await response.text()
+      Logger.debug(`[${this.name}] Response text length: ${responseText.length}`)
+      Logger.debug(`[${this.name}] Response text: "${responseText}"`)
+
+      // For PUT requests, empty response is often valid (indicates success)
+      if (method === 'PUT' && responseText === '') {
+        Logger.debug(`[${this.name}] PUT request returned empty response - treating as success`)
+        return { success: true, status: response.status }
+      }
+
+      // Try to parse as JSON, fall back to text if that fails
+      try {
+        const jsonResponse = JSON.parse(responseText)
+        Logger.debug(`[${this.name}] Successfully parsed JSON response`)
+        return jsonResponse
+      } catch (error) {
+        Logger.debug(`[${this.name}] Response is not JSON, returning as text`)
+        return responseText || { success: true, status: response.status }
+      }
+    } catch (error) {
+      Logger.error(`[${this.name}] ${method} Error:`, error)
+      throw error
+    }
+  }
 
   /**
    * Make a GET request to the specified endpoint
    * @param {string} endpoint - API endpoint
    * @param {Object} params - Query parameters
+   * @param {Object} options - Additional options
+   * @param {boolean} options.cache - Whether to cache the request (default: true)
+   * @param {number} options.cacheExpiration - Cache expiration time in milliseconds
    * @returns {Promise<any>} Response data
    */
-  async get (endpoint, params = {}) {
-    try {
-      const url = new URL(this.resolveUrl(endpoint))
+  async get (endpoint, params = {}, options = {}) {
+    // Default options
+    const {
+      cache = true,
+      cacheExpiration = cacheService.EXPIRATION.MEDIUM,
+      forceRefresh = false,
+    } = options
 
-      // Add query parameters
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, value)
-      })
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`)
-      }
-
-      return await response.json()
-    } catch (error) {
-      console.error('API GET Error:', error)
-      throw error
+    // Log caching decision for debugging
+    if (endpoint.includes('journalEntriesByDate')) {
+      Logger.debug(`[${this.name}] Cache decision for ${endpoint}: cache=${cache}, forceRefresh=${forceRefresh}`)
     }
-  },
+
+    return this.request({
+      baseUrl: this.baseUrl,
+      endpoint,
+      method: 'GET',
+      params,
+      data: null,
+      headers: {},
+      cache: cache && !forceRefresh,
+      cacheExpiration,
+    })
+  }
 
   /**
    * Make a POST request to the specified endpoint
@@ -144,57 +291,77 @@ const apiService = {
    * @returns {Promise<any>} Response data
    */
   async post (endpoint, data = {}) {
-    try {
-      const url = this.resolveUrl(endpoint)
+    return this.request({
+      baseUrl: this.baseUrl,
+      endpoint,
+      method: 'POST',
+      data,
+      headers: {},      // Add missing required parameters
+      params: {},       // Add missing required parameters
+      cache: false,     // POST requests typically shouldn't be cached
+      cacheExpiration: cacheService.EXPIRATION.MEDIUM,
+    })
+  }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      })
+  /**
+   * Make a PUT request to the specified endpoint
+   * @param {string} endpoint - API endpoint
+   * @param {Object} data - Request body data
+   * @param {Object} options - Additional options
+   * @returns {Promise<any>} Response data
+   */
+  async put (endpoint, data = {}, options = {}) {
+    // For Tahvel API, we need to include CSRF token
+    const headers = {}
 
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`)
+    if (this.name === 'tahvel' && endpoint.includes('journalEntry')) {
+      // Get XSRF token from cookies
+      const cookies = document.cookie.split(';')
+      let xsrfToken = ''
+
+      for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=')
+        if (name === 'XSRF-TOKEN') {
+          xsrfToken = value
+          break
+        }
       }
 
-      return await response.json()
+      if (xsrfToken) {
+        Logger.debug(`[${this.name}] Using XSRF token: ${xsrfToken}`)
+        headers['X-XSRF-TOKEN'] = xsrfToken
+      } else {
+        Logger.warning(`[${this.name}] No XSRF token found in cookies for PUT request`)
+      }
+
+      // Add other headers that might be needed
+      headers['X-Requested-With'] = 'XMLHttpRequest'
+    }
+
+    Logger.debug(`[${this.name}] PUT request to ${endpoint} starting`)
+
+    try {
+      const result = await this.request({
+        baseUrl: this.baseUrl,
+        endpoint,
+        method: 'PUT',
+        data,
+        headers,
+        params: {},                                   // required parameter
+        cache: false,                                 // PUT requests shouldn't be cached
+        cacheExpiration: cacheService.EXPIRATION.MEDIUM,
+        ...options,
+      })
+
+      Logger.debug(`[${this.name}] PUT request to ${endpoint} completed successfully`)
+      return result
     } catch (error) {
-      console.error('API POST Error:', error)
+      Logger.error(`[${this.name}] PUT request to ${endpoint} failed: ${error.message}`)
       throw error
     }
-  },
+  }
 
-  /**
-   * Resolve a URL, handling both relative and absolute URLs
-   * @param {string} endpoint - API endpoint
-   * @returns {string} Full URL
-   */
-  resolveUrl (endpoint) {
-    if (endpoint.startsWith('http')) {
-      return endpoint
-    }
-    return `${this.baseUrl}${endpoint}`
-  },
-
-  /**
-   * Compare grades with external system
-   * @param {Array} journalData - Array of journal data with grades
-   * @returns {Promise<Array>} - Array of discrepancies
-   */
-  async compareGrades (journalData) {
-    return this.post('/api/compare-grades', { journals: journalData })
-  },
-
-  /**
-   * Sync assignment with Kriit system
-   * @param {Object} assignmentData - Assignment data
-   * @returns {Promise<Object>} - Sync result
-   */
-  async syncAssignmentWithKriit (assignmentData) {
-    return this.post('/api/kriit/sync-assignment', assignmentData)
-  },
 }
 
-export { apiService }
+// Export only the class, no default instance
+export { ApiService }

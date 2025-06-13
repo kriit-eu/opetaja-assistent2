@@ -21,7 +21,7 @@ const styleService = {
     style.id = id
     style.textContent = css
     document.head.appendChild(style)
-    
+
     return style
   },
 
@@ -48,14 +48,14 @@ const styleService = {
       if (!response.ok) {
         throw new Error(`Failed to load CSS: ${response.status} ${response.statusText}`)
       }
-      
+
       const css = await response.text()
       return this.injectCSS(css, id)
     } catch (error) {
       console.error('Error loading CSS:', error)
       throw error
     }
-  }
+  },
 }
 
 export { styleService }

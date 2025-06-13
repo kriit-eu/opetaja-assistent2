@@ -1,0 +1,18 @@
+# Caching policy for this request: can be cached for 24h
+# OPPURSTAATUS_K => K = KATKESTANUD
+$ curl 'https://tahvel.edu.ee/hois_back/students/178415'
+
+{
+    "person": {
+        "email": "tonu@gmail.com",
+        "firstname": "Tõnu",
+        "lastname": "Kompu",
+        "fullname": "Tõnu Kompu",
+        "idcode": "38201110023"
+    },
+    "schoolEmail": "tonu.kompu@vikk.ee",
+    "id": 178415,
+    "status": "OPPURSTAATUS_K",
+    "studyStart": "2024-08-29T00:00:00Z",
+    "studyEnd": "2025-05-05T00:00:00Z"
+}

@@ -2,6 +2,8 @@
  * DOM Service - Utilities for DOM manipulation
  */
 
+import Logger from './Logger.js'
+
 const domService = {
   /**
    * Wait for an element to appear in the DOM
@@ -29,6 +31,78 @@ const domService = {
         }
       }, interval)
     })
+  },
+
+  /**
+   * Wait for elements to appear in the DOM using MutationObserver
+   * @param {string|string[]} selectors - CSS selector(s) to observe for
+   * @param {function} callback - Function to call when elements are found
+   * @param {number} timeout - Maximum time to wait in ms (default: 20000)
+   * @returns {Object} Observer control object with disconnect method
+   */
+  observeForElements (selectors, callback, timeout = 20000) {
+    // Convert single selector to array
+    const selectorArray = Array.isArray(selectors) ? selectors : [selectors]
+
+    // Check if elements already exist
+    for (const selector of selectorArray) {
+      const elements = document.querySelectorAll(selector)
+      if (elements && elements.length > 0) {
+        Logger.debug(`Found ${elements.length} elements immediately with selector: ${selector}`)
+        callback(elements, selector)
+        // Return a dummy observer with a no-op disconnect method
+        return {
+          disconnect: () => {
+            Logger.debug('Dummy observer disconnected (elements found immediately)')
+          },
+        }
+      }
+    }
+
+    Logger.debug('No elements found immediately, setting up MutationObserver')
+
+    // Set up observer to watch for DOM changes
+    const observer = new MutationObserver(() => {
+      // Check each selector after DOM changes
+      for (const selector of selectorArray) {
+        const elements = document.querySelectorAll(selector)
+        if (elements && elements.length > 0) {
+          Logger.debug(`Observer found ${elements.length} elements with selector: ${selector}`)
+          // Clear the timeout to prevent the error callback from being called
+          clearTimeout(timeoutId)
+          // Call the callback with the found elements
+          callback(elements, selector)
+          // Disconnect the observer
+          observer.disconnect()
+          return
+        }
+      }
+    })
+
+    // Start observing the document
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: false,
+      characterData: false,
+    })
+
+    // Set a timeout to stop the observer after the specified time
+    const timeoutId = setTimeout(() => {
+      if (observer) {
+        Logger.debug(`Stopping observer after ${timeout}ms timeout`)
+        observer.disconnect()
+        callback(null, null, new Error('Timeout waiting for elements'))
+      }
+    }, timeout)
+
+    // Return an object with disconnect method
+    return {
+      disconnect: () => {
+        clearTimeout(timeoutId)
+        observer.disconnect()
+      },
+    }
   },
 
   /**

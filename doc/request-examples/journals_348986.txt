@@ -1,0 +1,90 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/journals/348986'
+
+ {
+   "id": 348986,
+   "studyYearId": 676,
+   "studyYear": "OPPEAASTA_2024_25",
+   "studyYearStartDate": "2024-07-29T00:00:00Z",
+   "studyYearEndDate": "2025-08-31T00:00:00Z",
+   "nameEt": "Sissejuhatus programmeerimisse",
+   "studentGroups": [
+     "TAK24"
+   ],
+   "journalTeachers": [
+     {
+       "id": 18737,
+       "nameEt": "Peeter Koppel",
+       "firstname": "Peeter",
+       "lastname": "Koppel",
+       "idCode": null,
+       "uniqueCode": null,
+       "personUuid": null,
+       "fullname": "Peeter Koppel",
+     }
+   ],
+   "curriculumModules": [
+     {
+       "id": 154527,
+       "nameEt": "Programmeerimise alused - Põhiõpingud (TAK24)",
+       "curriculumModuleId": 15332,
+       "assessment": null,
+       "gradeCode": null,
+       "teachers": null,
+       "moduleCode": "KUTSEMOODUL_P",
+     }
+   ],
+   "curriculumVersions": [
+     {
+       "id": 8648,
+       "curriculumId": 855,
+       "nameEt": "TAK24 Noorem tarkvaraarendaja",
+       "modules": [
+         {
+           "id": 154527,
+           "nameEt": "Programmeerimise alused - Põhiõpingud",
+           "curriculumModuleId": 15332,
+           "assessment": null,
+           "gradeCode": null,
+           "teachers": null,
+           "moduleCode": "KUTSEMOODUL_P",
+         }
+       ],
+       "themes": [
+         {
+           "id": 405599,
+           "nameEt": "Sissejuhatus programmeerimisse",
+         }
+       ],
+       "fictive": null
+     }
+   ],
+   "lessonHours": {
+     "totalPlannedHours": 52,
+     "totalUsedHours": 52,
+     "capacityHours": [
+       {
+         "capacity": "MAHT_a",
+         "plannedHours": 14,
+         "usedHours": 14
+       },
+       {
+         "capacity": "MAHT_i",
+         "plannedHours": 38,
+         "usedHours": 38
+       }
+     ]
+   },
+   "status": "PAEVIK_STAATUS_T",
+   "endDate": null,
+   "hasJournalStudents": true,
+   "includesOutcomes": true,
+   "assessment": "KUTSEHINDAMISVIIS_E",
+   "journalThemes": [
+     {
+       "id": 594929,
+       "nameEt": "Sissejuhatus programmeerimisse - Programmeerimise alused (TAK24)",
+     }
+   ]
+ }
+

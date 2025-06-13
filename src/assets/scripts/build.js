@@ -1,5 +1,5 @@
 /**
- * Unified build script for Opetaja Assistent 2
+ * Unified build script for Õpetaja Assistent 2
  *
  * This script handles the complete build process:
  * 1. Converting SVG icons to PNG
@@ -35,7 +35,8 @@ const CONFIG = {
   // Files to bundle with Bun
   bundleFiles: [
     'content.js',
-    'background.js'
+    'background.js',
+    'popup.js'
   ],
 
   // Build mode
@@ -144,9 +145,30 @@ async function copyStaticAssets () {
   // Copy manifest.json
   const manifestPath = path.join(CONFIG.templatesDir, 'manifest.json')
   fs.copyFileSync(manifestPath, path.join(CONFIG.distDir, 'manifest.json'))
-
   console.log('  Copied manifest.json')
 
+  // Copy popup.html
+  const popupPath = path.join(CONFIG.templatesDir, 'popup.html')
+  fs.copyFileSync(popupPath, path.join(CONFIG.distDir, 'popup.html'))
+  console.log('  Copied popup.html')
+
+  // Copy icon.svg
+  const iconSvgPath = path.join(CONFIG.templatesDir, 'icon.svg')
+  fs.copyFileSync(iconSvgPath, path.join(CONFIG.distDir, 'icon.svg'))
+  console.log('  Copied icon.svg')
+
+  // Copy CSS files
+  const stylesSourceDir = path.join(CONFIG.srcDir, 'assets', 'styles')
+  const stylesDestDir = path.join(CONFIG.distDir, 'styles')
+
+  // Create the destination directory structure
+  fs.mkdirSync(stylesDestDir, { recursive: true })
+
+  // Copy JournalSyncBannerService.css
+  const cssSourcePath = path.join(stylesSourceDir, 'JournalSyncBannerService.css')
+  const cssDestPath = path.join(stylesDestDir, 'JournalSyncBannerService.css')
+  fs.copyFileSync(cssSourcePath, cssDestPath)
+  console.log('  Copied JournalSyncBannerService.css')
 }
 
 // Run the build process

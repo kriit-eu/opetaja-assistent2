@@ -1,0 +1,26 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/user'
+
+{
+  "name": "38010050000",
+  "user": 139041,
+  "person": 32924,
+  "student": null,
+  "teacher": 18737,
+  "teacherUuid": "95f992e3-01b9-4f5e-a5b6-d9ed2a159f6e",
+  "studentGroupId": null,
+  "roleCode": "ROLL_O",
+  "school": {
+    "id": 9
+  },
+  "fullname": "Peeter Koppel",
+  "users": [
+    {
+      "id": 139041,
+      "schoolCode": "VIKK",
+      "role": "ROLL_O",
+      "nameEt": "Õpetaja",
+      "nameEn": "teacher"
+    }
+  ]
+}

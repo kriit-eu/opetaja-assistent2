@@ -1,0 +1,18 @@
+# Caching policy for this request: can be cached for 24h
+# OPPURSTAATUS_A => A = AKADEEMILISEL PUHKUSEL (ei ole kohustust osaleda tundides ega esitada töid)
+$ curl 'https://tahvel.edu.ee/hois_back/students/178378'
+
+{
+    "person": {
+        "email": "asd@asd.ee",
+        "firstname": "Malle",
+        "lastname": "Tamm",
+        "fullname": "Malle Tamm",
+        "idcode": "48703072752"
+    },
+    "schoolEmail": "malle.tamm@vikk.ee",
+    "id": 178378,
+    "status": "OPPURSTAATUS_A",
+    "studyStart": "2024-08-29T00:00:00Z",
+    "studyEnd": null
+}

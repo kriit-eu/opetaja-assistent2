@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Opetaja Assistent 2",
+  "name": "Õpetaja Assistent 2",
   "version": "0.1.0",
   "description": "A minimal assistant for Tahvel.",
   "icons": {
@@ -9,10 +9,14 @@
   },
   "permissions": [
     "scripting",
-    "storage"
+    "storage",
+    "unlimitedStorage",
+    "tabs",
+    "activeTab"
   ],
   "host_permissions": [
-    "*://*.tahvel.edu.ee/*"
+    "*://*.tahvel.edu.ee/*",
+    "*://*.tahvel.eenet.ee/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -21,11 +25,25 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.tahvel.edu.ee/*"
+        "*://*.tahvel.edu.ee/*",
+        "*://*.tahvel.eenet.ee/*"
       ],
       "js": [
         "content.js"
       ]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.js", "styles/JournalSyncBannerService.css"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

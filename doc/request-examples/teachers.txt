@@ -1,0 +1,47 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/teachers?isActive=true&lang=ET&name=PEeter%20Koppel&page=0&size=50'
+
+{
+  "content": [
+    {
+      "id": 18737,
+      "school": {
+        "id": 9,
+        "nameEt": "Viljandi Kutseõppekeskus"
+      },
+      "name": "Peeter Koppel",
+      "idcode": "38010050000",
+      "email": "peeter.koppel@vikk.ee",
+      "isActive": true,
+      "teacherOccupation": {
+        "id": 187,
+        "nameEt": "Kutseõpetaja"
+      }
+    }
+  ],
+  "pageable": {
+    "sort": {
+      "sorted": false,
+      "empty": true,
+      "unsorted": true
+    },
+    "pageNumber": 0,
+    "pageSize": 50,
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
+  },
+  "totalElements": 1,
+  "totalPages": 1,
+  "last": true,
+  "size": 50,
+  "number": 0,
+  "sort": {
+    "sorted": false,
+    "empty": true,
+    "unsorted": true
+  },
+  "numberOfElements": 1,
+  "first": true,
+  "empty": false
+}

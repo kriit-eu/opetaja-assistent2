@@ -3,18 +3,6 @@
  */
 import Logger from '../services/Logger.js'
 
-// Journal List Features
-import { journalListSync } from '../features/journalList/JournalListSync.js'
-// TODO: Import other features when implemented
-// import { journalListIndicators } from '../features/journalList/JournalListIndicators.js'
-// import { gradeComparison } from '../features/journalList/GradeComparison.js'
-
-// Single Journal Features
-// import { missingLessons } from '../features/singleJournal/MissingLessons.js'
-// import { assignmentSync } from '../features/singleJournal/AssignmentSync.js'
-// import { finalGrading } from '../features/singleJournal/FinalGrading.js'
-// import { journalEnhancements } from '../features/singleJournal/JournalEnhancements.js'
-
 /**
  * Provides a structured approach to loading features
  * @returns {Promise<Array>} Array of all features
@@ -22,10 +10,43 @@ import { journalListSync } from '../features/journalList/JournalListSync.js'
 export async function loadFeatures () {
   Logger.debug('Loading features...')
 
-  // Define feature groups for better organization
-  const featureGroups = {
-    journalList: [journalListSync],  // Add more features when implemented
+  // Check if Kriit is enabled
+  const kriitEnabled = await new Promise(resolve => {
+    chrome.storage.sync.get(['OA_kriitEnabled'], result => {
+      resolve(result['OA_kriitEnabled'] === true)
+    })
+  })
+
+  Logger.debug(`Kriit support is ${kriitEnabled ? 'enabled' : 'disabled'}`)
+
+  // Define all available features - load them conditionally
+  const allAvailableFeatures = {
+    journalList: [],
     singleJournal: [], // TODO: Add features when implemented
+  }
+
+  // Only import and instantiate features that should be loaded
+  if (kriitEnabled) {
+    // Import Kriit-dependent features only when Kriit is enabled
+    try {
+      const { journalListSync } = await import('../features/journalList/JournalListSync.js')
+      allAvailableFeatures.journalList.push(journalListSync)
+      Logger.debug('Feature "journalListSync" created')
+    } catch (error) {
+      Logger.error('Error loading journalListSync feature:', error)
+    }
+
+    // TODO: Import other Kriit-dependent features when implemented
+  } else {
+    Logger.debug('Skipping feature journalListSync because it requires Kriit and Kriit is disabled')
+  }
+
+  // TODO: Import non-Kriit features here (they should always be loaded)
+
+  // Create a copy of the features structure for returning
+  const featureGroups = {
+    journalList: [...allAvailableFeatures.journalList],
+    singleJournal: [...allAvailableFeatures.singleJournal],
   }
 
   // Flatten all features into a single array
@@ -39,12 +60,3 @@ export async function loadFeatures () {
   Logger.info(`Loaded ${allFeatures.length} feature(s)`)
   return allFeatures
 }
-
-// Export all features in an array for backward compatibility
-export const features = [
-  // Journal List Features
-  journalListSync,
-
-  // Single Journal Features
-  // TODO: Add more features when implemented
-]

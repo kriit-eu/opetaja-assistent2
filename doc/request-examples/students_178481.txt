@@ -1,0 +1,20 @@
+# Caching policy for this request: can be cached for 24h
+# OPPURSTAATUS_O => O = ÕPIB
+# OPPURSTAATUS_K => K = KATKESTANUD
+#
+$ curl 'https://tahvel.edu.ee/hois_back/students/178481'
+
+{
+    "person": {
+        "email": "kalle@gmail.com",
+        "firstname": "Kalle",
+        "lastname": "Tamm",
+        "fullname": "Kalle Tamm",
+        "idcode": "38401213712"
+    },
+    "schoolEmail": "kalle.tamm@vikk.ee",
+    "id": 178481,
+    "status": "OPPURSTAATUS_O",
+    "studyStart": "2024-08-29T00:00:00Z",
+    "studyEnd": null
+}

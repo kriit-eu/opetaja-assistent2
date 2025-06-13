@@ -1,0 +1,54 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/journals?lang=ET&onlyMyJournals=true&page=0&size=50&sort=2,+5,+3,asc&studyYear=676'
+
+{
+  "content": [
+    {
+      "id": 348986,
+      "studentGroups": "TAK24",
+      "nameEt": "Sissejuhatus programmeerimisse",
+      "teachers": "Peeter Koppel",
+      "modules": {
+        "id": null,
+        "nameEt": "Programmeerimise alused - Põhiõpingud (TAK24)",
+      },
+      "moduleObjects": [
+        {
+          "id": 15332,
+          "nameEt": "Programmeerimise alused - Põhiõpingud (TAK24)",
+        }
+      ],
+      "plannedHours": 52,
+      "usedHours": 52,
+      "status": "PAEVIK_STAATUS_T",
+      "curriculums": "TAK2020",
+      "studentCount": 25,
+    }
+  ],
+  "pageable": {
+    "sort": {
+      "sorted": true,
+      "empty": false,
+      "unsorted": false
+    },
+    "pageNumber": 0,
+    "pageSize": 50,
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
+  },
+  "totalElements": 1,
+  "totalPages": 1,
+  "last": true,
+  "size": 50,
+  "number": 0,
+  "sort": {
+    "sorted": true,
+    "empty": false,
+    "unsorted": false
+  },
+  "numberOfElements": 1,
+  "first": true,
+  "empty": false
+}
+
