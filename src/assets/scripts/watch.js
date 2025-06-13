@@ -1,5 +1,5 @@
 /**
- * Simple watch script for Opetaja Assistent 2
+ * Simple watch script for Õpetaja Assistent 2
  *
  * This script watches for changes and rebuilds the extension but the user must
  * refresh the extension in Chrome using the Extension Reloader extension

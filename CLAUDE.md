@@ -16,13 +16,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Browser extension using Manifest V3
 - Feature-based module system with services layer
 - Core extension infrastructure in `src/core/`
-- Features organized by page context in `src/features/`
-    - Journal list features in `src/features/journalList/` (TODO: to be implemented)
+- Features organized by page context in `src/features/`:
+    - Journal list features in `src/features/journalList/`:
+        - `JournalListSync.js`: Implementation for syncing with Kriit (completed)
+        - Additional features planned in README.md
     - Single journal view features in `src/features/singleJournal/` (TODO: to be implemented)
-- Shared services in `src/services/`
+- Shared services in `src/services/`:
+    - `ApiService.js`: API communication
+    - `CacheService.js`: Data caching utilities
+    - `DomService.js`: DOM manipulation
+    - `Logger.js`: Logging functionality
+    - `NavigationService.js`: URL/navigation handling
+    - `StyleService.js`: CSS injection utilities
 - Assets directory structure (under `src/assets/`):
     - Build scripts in `src/assets/scripts/`
     - Extension icons in `src/assets/icons/`
+    - CSS styles in `src/assets/styles/`
     - Templates in `src/assets/templates/`:
         - `manifest.json`: Browser extension manifest template that's copied to the dist directory during build
         - `icon.svg`: Source SVG icon that's converted to PNG icons (48x48, 128x128) during build using Sharp

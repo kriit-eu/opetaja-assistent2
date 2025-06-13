@@ -1,0 +1,356 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/journals/348986/journalEntriesByDate?allStudents=true'
+
+[
+  {
+    "entryDate": "2024-09-16T00:00:00Z",
+    "nameEt": "Tund",
+    "entryType": "SISSEKANNE_T",
+    "journalStudent": null,
+    "startLessonNr": 6,
+    "lessons": 4,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3151336,
+    "journalStudentResults": {
+      "4620679": [
+        {
+          "journalEntryStudentId": 19251513,
+          "journalStudentId": 4620679,
+          "grade": null
+        }
+      ],
+      "4620675": [
+        {
+          "journalEntryStudentId": 19251512,
+          "journalStudentId": 4620675,
+          "grade": null
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-09-16T00:00:00Z",
+    "nameEt": "Valige vihikust “Teemad” Draiv... (ÕV4)",
+    "entryType": "SISSEKANNE_I",
+    "journalStudent": null,
+    "startLessonNr": null,
+    "lessons": 12,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3151769,
+    "journalStudentResults": {
+      "4620683": [
+        {
+          "journalEntryStudentId": 19437826,
+          "journalStudentId": 4620683,
+          "grade": {
+            "code": "KUTSEHINDAMINE_A"
+          }
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-09-26T00:00:00Z",
+    "nameEt": "Tund",
+    "entryType": "SISSEKANNE_T",
+    "journalStudent": null,
+    "startLessonNr": 5,
+    "lessons": 1,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3170968,
+    "journalStudentResults": {
+      "4620682": [
+        {
+          "journalEntryStudentId": 19377939,
+          "journalStudentId": 4620682,
+          "grade": null
+        }
+      ],
+      "4832725": [
+        {
+          "journalEntryStudentId": 19377937,
+          "journalStudentId": 4832725,
+          "grade": null
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-10-10T00:00:00Z",
+    "nameEt": "Tund",
+    "entryType": "SISSEKANNE_T",
+    "journalStudent": null,
+    "startLessonNr": 5,
+    "lessons": 1,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3196941,
+    "journalStudentResults": {
+      "4620679": [
+        {
+          "journalEntryStudentId": 19549537,
+          "journalStudentId": 4620679,
+          "grade": null
+        }
+      ],
+      "4620683": [
+        {
+          "journalEntryStudentId": 19549539,
+          "journalStudentId": 4620683,
+          "grade": null
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-10-14T00:00:00Z",
+    "nameEt": null,
+    "entryType": "SISSEKANNE_T",
+    "journalStudent": null,
+    "startLessonNr": 6,
+    "lessons": 6,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3205744,
+    "journalStudentResults": {
+      "4620677": [
+        {
+          "journalEntryStudentId": 19612038,
+          "journalStudentId": 4620677,
+          "grade": null
+        }
+      ],
+      "4620672": [
+        {
+          "journalEntryStudentId": 19612037,
+          "journalStudentId": 4620672,
+          "grade": null
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-10-16T00:00:00Z",
+    "nameEt": "Kui oled Hobiprojekti kasutaja... (ÕV4, ÕV5)",
+    "entryType": "SISSEKANNE_I",
+    "journalStudent": null,
+    "startLessonNr": null,
+    "lessons": 10,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3208538,
+    "journalStudentResults": {
+      "4620678": [
+        {
+          "journalEntryStudentId": 19729991,
+          "journalStudentId": 4620678,
+          "grade": {
+            "code": "KUTSEHINDAMINE_A"
+          }
+        }
+      ],
+      "4620683": [
+        {
+          "journalEntryStudentId": 19729993,
+          "journalStudentId": 4620683,
+          "grade": {
+            "code": "KUTSEHINDAMINE_A"
+          }
+        }
+      ],
+      "4620680": [
+        {
+          "journalEntryStudentId": 19632556,
+          "journalStudentId": 4620680,
+          "grade": {
+            "code": "KUTSEHINDAMINE_A"
+          }
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-10-30T00:00:00Z",
+    "nameEt": "Kui oled Hobiprojektis realise... (ÕV4, ÕV5)",
+    "entryType": "SISSEKANNE_I",
+    "journalStudent": null,
+    "startLessonNr": 1,
+    "lessons": 8,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3233484,
+    "journalStudentResults": {
+      "4620683": [
+        {
+          "journalEntryStudentId": 19861018,
+          "journalStudentId": 4620683,
+          "grade": null,
+          "journalEntryStudentHistories": [
+            {
+              "grade": {
+                "code": "KUTSEHINDAMINE_A"
+              }
+            }
+          ]
+        }
+      ],
+      "4620680": [
+        {
+          "journalEntryStudentId": 19829646,
+          "journalStudentId": 4620680,
+          "grade": {
+            "code": "KUTSEHINDAMINE_A"
+          }
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-10-31T00:00:00Z",
+    "nameEt": "Tund",
+    "entryType": "SISSEKANNE_T",
+    "journalStudent": null,
+    "startLessonNr": 4,
+    "lessons": 1,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3234483,
+    "journalStudentResults": {},
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-11-01T00:00:00Z",
+    "nameEt": "Kolmanda kasutajaloo implement... (ÕV4, ÕV5)",
+    "entryType": "SISSEKANNE_I",
+    "journalStudent": null,
+    "startLessonNr": null,
+    "lessons": 8,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3237870,
+    "journalStudentResults": {
+      "4620683": [
+        {
+          "journalEntryStudentId": 19929981,
+          "journalStudentId": 4620683,
+          "grade": {
+            "code": "KUTSEHINDAMINE_MA"
+          }
+        }
+      ],
+      "4620680": [
+        {
+          "journalEntryStudentId": 19929979,
+          "journalStudentId": 4620680,
+          "grade": {
+            "code": "KUTSEHINDAMINE_A"
+          }
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": "2024-11-07T00:00:00Z",
+    "nameEt": "Creating User Stories for Pers...",
+    "entryType": "SISSEKANNE_T",
+    "journalStudent": null,
+    "startLessonNr": 4,
+    "lessons": 1,
+    "curriculumModuleOutcomes": null,
+    "curriculumModule": null,
+    "curriculum": null,
+    "id": 3247408,
+    "journalStudentResults": {
+      "4620683": [
+        {
+          "journalEntryStudentId": 19924457,
+          "journalStudentId": 4620683,
+          "grade": null
+        }
+      ],
+      "4620680": [
+        {
+          "journalEntryStudentId": 19924454,
+          "journalStudentId": 4620680,
+          "grade": null
+        }
+      ]
+    },
+    "studentOutcomeResults": null
+  },
+  {
+    "entryDate": null,
+    "nameEt": "04. loob lihtsamaid rakendusi kasutades arendusvahendeid",
+    "entryType": "SISSEKANNE_O",
+    "journalStudent": null,
+    "startLessonNr": null,
+    "lessons": null,
+    "curriculumModuleOutcomes": 55745,
+    "curriculumModule": 15332,
+    "curriculum": 855,
+    "id": null,
+    "journalStudentResults": null,
+    "studentOutcomeResults": {
+      "178481": {
+        "version": 0,
+        "id": 1110081,
+        "studentId": 178481,
+        "grade": {
+          "code": "KUTSEHINDAMINE_MA"
+        }
+      }
+    }
+  },
+  {
+    "entryDate": null,
+    "nameEt": "05. järgib programmeerimisel vastava programmeerimiskeele parimaid praktikaid",
+    "entryType": "SISSEKANNE_O",
+    "journalStudent": null,
+    "startLessonNr": null,
+    "lessons": null,
+    "curriculumModuleOutcomes": 55740,
+    "curriculumModule": 15332,
+    "curriculum": 855,
+    "id": null,
+    "journalStudentResults": null,
+    "studentOutcomeResults": {
+      "178481": {
+        "version": 0,
+        "id": 1110101,
+        "studentId": 178481,
+        "grade": {
+          "code": "KUTSEHINDAMINE_MA"
+        }
+      },
+      "178420": {
+        "version": 1,
+        "id": 1110097,
+        "studentId": 178420,
+        "grade": {
+          "code": "KUTSEHINDAMINE_A"
+        }
+      }
+    }
+  }
+]
+

@@ -1,0 +1,99 @@
+# The following request is sent to Kriit to get the differences between the assignments in the journal and the assignments in Kriit. The response is then used to replace the mismatched grades table in journals.
+# The server expects the body to be a JSON array of objects, where each object represents a subject and its assignments and its grades.
+# The server returns a JSON array of objects, mimicing the request body, where each object represents differences between the Tahvel and Kriit in that subject/journal (teacher name, subject name, assignment name, student name, and grade).
+# The associated id fields are always returned if there is a mismatch in order to allow for easy mapping between the two systems.
+POST http://localhost/kriit/api/subjects/getDifferences
+Content-Type: application/json
+Authorization: Bearer demo
+Accept: application/json
+
+[
+  {
+    "subjectName": "Agiilse tarkvaraarenduse projekt",
+    "subjectExternalId": 348988,
+    "groupName": "TAK24",
+    "teacherPersonalCode": "38010050000",
+    "teacherName": "Peeter Koppel",
+    "assignments": []
+  },
+  {
+    "subjectName": "Andmebaaside alused",
+    "subjectExternalId": 348991,
+    "groupName": "TAK24",
+    "teacherPersonalCode": "38010050000",
+    "teacherName": "Peeter Koppel",
+    "assignments": [
+      {
+        "assignmentExternalId": 3319949,
+        "assignmentName": "",
+        "assignmentInstructions": "",
+        "assignmentDueAt": null,
+        "results": [
+          {
+            "grade": "A",
+            "studentPersonalCode": "39709126012",
+            "studentName": "Eero Vallistu",
+            "studentIsActive": true
+          },
+          {
+            "grade": "",
+            "studentPersonalCode": "39204292780",
+            "studentName": "Sigmar Treumann",
+            "studentIsActive": true
+          }
+        ]
+      },
+      {
+        "assignmentExternalId": 3366897,
+        "assignmentName": "",
+        "assignmentInstructions": "",
+        "assignmentDueAt": null,
+        "results": [
+          {
+            "grade": "A",
+            "studentPersonalCode": "39709126012",
+            "studentName": "Eero Vallistu",
+            "studentIsActive": true
+          },
+          {
+            "grade": "",
+            "studentPersonalCode": "39204292780",
+            "studentName": "Sigmar Treumann",
+            "studentIsActive": true
+          }
+        ]
+      }
+    ]
+  }
+
+]
+
+
+HTTP/1.1 200 OK
+Date: Sun, 16 Mar 2025 21:19:16 GMT
+X-Powered-By: PHP/8.2.4
+Content-Type: application/json
+
+{
+    "status": 200,
+    "data": [
+        {
+            "subjectExternalId": 348991,
+            "assignments": [
+                {
+                    "assignmentExternalId": 3319949,
+                    "results": [
+                        {
+                            "grade": "B",
+                            "studentPersonalCode": "39709126012",
+                        },
+                        {
+                            "grade": "A",
+                            "studentPersonalCode": "39204292780",
+                        }
+                    ]
+                },
+            ]
+        }
+    ]
+}

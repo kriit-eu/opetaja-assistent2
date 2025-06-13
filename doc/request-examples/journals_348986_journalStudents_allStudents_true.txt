@@ -1,0 +1,18 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/journals/348986/journalStudents?allStudents=true'
+
+[
+  {
+    "id": 4620683,
+    "studentId": 178481,
+    "firstname": "Kalle",
+    "lastname": "Tamm",
+    "fullname": "Kalle Tamm",
+    "lastfirstname": "TammKalle",
+    "studentGroup": "TAK24",
+    "curriculumId": 855,
+    "curriculum": "TAK24 Noorem tarkvaraarendaja",
+    "status": "OPPURSTAATUS_O"
+  }
+]
+

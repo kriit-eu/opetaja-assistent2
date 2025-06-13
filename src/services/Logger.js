@@ -3,6 +3,9 @@
  * with better source line information in developer tools
  */
 
+// Store the page load timestamp
+const PAGE_LOAD_TIME = Date.now()
+
 // Define log levels with their emoji prefixes (using only yellow emojis)
 export const LogLevel = {
   INFO: '✨',
@@ -13,7 +16,48 @@ export const LogLevel = {
   FEATURE: '✨',
 }
 
-// Function removed to avoid unused variable warning
+// Debug mode configuration
+const DEBUG_MODE_KEY = 'OA_debug_mode'
+let debugModeCache = false
+
+// Initialize debug mode from storage
+chrome.storage.sync.get([DEBUG_MODE_KEY], function (result) {
+  debugModeCache = result[DEBUG_MODE_KEY] === true
+})
+
+/**
+ * Check if debug mode is enabled
+ * @returns {boolean} True if debug mode is enabled
+ */
+export function isDebugMode () {
+  return debugModeCache
+}
+
+/**
+ * Enable debug mode
+ */
+export function enableDebugMode () {
+  debugModeCache = true
+  chrome.storage.sync.set({ [DEBUG_MODE_KEY]: true })
+  console.log('[Logger] Debug mode enabled - all log messages will be shown')
+}
+
+/**
+ * Disable debug mode
+ */
+export function disableDebugMode () {
+  debugModeCache = false
+  chrome.storage.sync.set({ [DEBUG_MODE_KEY]: false })
+  console.log('[Logger] Debug mode disabled - only important log messages will be shown')
+}
+
+/**
+ * Get the number of seconds elapsed since page load
+ * @returns {number} Seconds elapsed (integer)
+ */
+function getSecondsElapsed () {
+  return Math.floor((Date.now() - PAGE_LOAD_TIME) / 1000)
+}
 
 /**
  * Log a message to the console with better caller information
@@ -22,8 +66,11 @@ export const LogLevel = {
  * @param {any[]} args - Additional arguments to log
  */
 export function log (message, emoji = LogLevel.INFO, ...args) {
-  // Format the basic message
-  const formattedMessage = `${emoji} ${message}`
+  // Get seconds elapsed since page load
+  const secondsElapsed = getSecondsElapsed()
+
+  // Format the basic message with elapsed time
+  const formattedMessage = `[${secondsElapsed}s] ${emoji} ${message}`
 
   // For browsers that support it, use console.groupCollapsed for cleaner output
   if (typeof console.groupCollapsed === 'function') {
@@ -72,14 +119,14 @@ export function warning (message, ...args) {
 /**
  * Log an error message
  * @param {string} message - The message to log
- * @param {any[]} args - Additional arguments to log
+ * @param {...any} args - Additional arguments to log
  */
 export function error (message, ...args) {
   log(message, LogLevel.ERROR, ...args)
 }
 
 /**
- * Log a debug message (only in development mode)
+ * Log a debug message (only shown if in development mode or debug mode is enabled)
  * @param {string} message - The message to log
  * @param {any[]} args - Additional arguments to log
  */
@@ -92,7 +139,8 @@ export function debug (message, ...args) {
     isDev = !chrome.runtime.getManifest().update_url
   }
 
-  if (isDev) {
+  // Log if in development mode OR if debug mode is explicitly enabled
+  if (isDev || isDebugMode()) {
     log(message, LogLevel.DEBUG, ...args)
   }
 }
@@ -117,4 +165,7 @@ export default {
   debug,
   feature,
   LogLevel,
+  isDebugMode,
+  enableDebugMode,
+  disableDebugMode,
 }

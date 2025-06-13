@@ -1,0 +1,53 @@
+# Caching policy for this request: can be cached for 24h
+$ curl 'https://tahvel.edu.ee/hois_back/journals/348986/journalEntry'
+
+{
+  "content": [
+    {
+      "id": 3247408,
+      "entryType": "SISSEKANNE_T",
+      "entryDate": "2024-11-07T00:00:00Z",
+      "lessons": 1,
+      "nameEt": "Creating User Stories for Pers...",
+      "content": "Creating User Stories for Personal Project",
+      "homework": null,
+      "homeworkDuedate": null
+    },
+    {
+      "id": 3237870,
+      "entryType": "SISSEKANNE_I",
+      "entryDate": "2024-11-01T00:00:00Z",
+      "lessons": 8,
+      "nameEt": "Kolmanda kasutajaloo implement... (ÕV4, ÕV5)",
+      "content": "Kolmanda kasutajaloo implementeerimine (eelmise kahe kasutajaloo kriteeriumeid järgides)",
+      "homework": "Kodutöö saab esitada siin: https://kriit.vikk.ee/assignments/12",
+      "homeworkDuedate": "2024-11-03T00:00:00Z"
+    }
+  ],
+  "pageable": {
+    "sort": {
+      "sorted": false,
+      "empty": true,
+      "unsorted": true
+    },
+    "pageNumber": 0,
+    "pageSize": 20,
+    "offset": 0,
+    "paged": true,
+    "unpaged": false
+  },
+  "totalElements": 2,
+  "totalPages": 1,
+  "last": true,
+  "size": 20,
+  "number": 0,
+  "sort": {
+    "sorted": false,
+    "empty": true,
+    "unsorted": true
+  },
+  "numberOfElements": 2,
+  "first": true,
+  "empty": false
+}
+
