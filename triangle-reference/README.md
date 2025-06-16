@@ -38,10 +38,12 @@ The notification triangles are visual indicators that appear next to journal ent
 ## Key Methods
 
 ### Triangle Creation
+
 - `TahvelJournalList.addWarningTriangles()` - Main method that creates all triangles
 - `TahvelDom.createExclamationMark()` - Creates the visual triangle elements
 
 ### Data Analysis
+
 - `AssistentCache.findJournalDiscrepancies()` - Finds differences between journal and timetable
 - `AssistentCache.findCurriculumModuleOutcomeDiscrepancies()` - Finds missing grades
 - `AssistentCache.findJournalLessonsDifferencesFact()` - Determines triangle conditions
@@ -63,7 +65,7 @@ The notification triangles are visual indicators that appear next to journal ent
 The triangles are shown based on these conditions in the journal data:
 
 - `journal.allLessonsAreMissingFromJournal` → Yellow triangle
-- `journal.lessonDiscrepancies` → Grey triangle  
+- `journal.lessonDiscrepancies` → Grey triangle
 - `journal.missingGrades.length > 0 && journal.lastLessonIsInThePast()` → Red triangle
 - `journal.isSynchronizedWithKriit === false` → Blue triangle
 
@@ -72,3 +74,9 @@ The triangles are shown based on these conditions in the journal data:
 - The TypeScript files may show compilation errors due to missing ES2015+ features in the target configuration
 - This is a reference implementation - adapt the code to fit your specific project requirements
 - The stub files are simplified versions and should be replaced with proper implementations
+
+## Tahvel API Calls
+
+GET /journals/{journalId} - Basic journal info
+GET /journals/{journalId}/journalEntriesByDate - Journal entries by date
+GET /journals/{journalId}/journalStudents - Journal students

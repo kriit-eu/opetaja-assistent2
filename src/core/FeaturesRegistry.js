@@ -23,6 +23,7 @@ export async function loadFeatures () {
   const allAvailableFeatures = {
     journalList: [],
     singleJournal: [], // TODO: Add features when implemented
+    triangles: [],
   }
 
   // Only import and instantiate features that should be loaded
@@ -42,11 +43,21 @@ export async function loadFeatures () {
   }
 
   // TODO: Import non-Kriit features here (they should always be loaded)
+  
+  // Load triangles debug feature (always enabled for debugging)
+  try {
+    const { trianglesDebugFeature } = await import('../features/triangles/TrianglesDebugFeature.js')
+    allAvailableFeatures.triangles.push(trianglesDebugFeature)
+    Logger.debug('Feature "TrianglesDebugFeature" created')
+  } catch (error) {
+    Logger.error('Error loading TrianglesDebugFeature:', error)
+  }
 
   // Create a copy of the features structure for returning
   const featureGroups = {
     journalList: [...allAvailableFeatures.journalList],
     singleJournal: [...allAvailableFeatures.singleJournal],
+    triangles: [...allAvailableFeatures.triangles],
   }
 
   // Flatten all features into a single array
