@@ -193,12 +193,10 @@ class ApiService {
 
       const response = await fetch(urlString, requestOptions)
       const fetchEndTime = Date.now()
-      Logger.debug(`[${this.name}] Fetch completed in ${fetchEndTime - fetchStartTime}ms for ${method} ${urlString}`)
 
       if (!response.ok) {
         // Try to get error text if available
         const errorText = await response.text().catch(() => 'No response text')
-        Logger.error(`[${this.name}] API Error Response:`, errorText)
 
         // Try to parse error text as JSON
         let errorDetails = ''
@@ -226,8 +224,6 @@ class ApiService {
 
       // First, get the response as text
       const responseText = await response.text()
-      Logger.debug(`[${this.name}] Response text length: ${responseText.length}`)
-      Logger.debug(`[${this.name}] Response text: "${responseText}"`)
 
       // For PUT requests, empty response is often valid (indicates success)
       if (method === 'PUT' && responseText === '') {

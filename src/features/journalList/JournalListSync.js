@@ -455,7 +455,6 @@ class JournalListSyncFeature extends BaseFeature {
             // Store the mapping for later lookups
             this.journalStudentIdToStudentId[journalStudent.id] = journalStudent.studentId
 
-            Logger.debug(`Student ${journalStudent.studentId} found in API cache - reusing`)
             return {
               studentId: journalStudent.studentId,
               data: cachedStudent

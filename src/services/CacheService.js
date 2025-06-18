@@ -38,7 +38,6 @@ const cacheService = {
       const now = Date.now()
 
       if (now - cachedItem.timestamp < expiration) {
-        Logger.debug(`Using memory cache for ${key}`)
         return cachedItem.data
       }
       // Memory cache expired, remove it
