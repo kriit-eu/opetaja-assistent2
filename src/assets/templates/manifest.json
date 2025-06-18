@@ -42,7 +42,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["popup.js", "styles/JournalSyncBannerService.css"],
+      "resources": ["popup.js", "styles/JournalSyncBannerService.css", "src/features/lessonDiscrepancies/TahvelLessonTimes.json"],
       "matches": ["<all_urls>"]
     }
   ]

@@ -23,7 +23,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
      */
     async activate() {
         Logger.info(`[${this.name}] Activating warning triangles feature`)
-        
+
         // Wait for page to be ready
         setTimeout(() => {
             this.processJournalList()
@@ -51,7 +51,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
             for (const link of journalLinks) {
                 const journalId = this.extractJournalId(link)
                 Logger.debug(`[${this.name}] Processing link with href: ${link.href}, extracted ID: ${journalId}`)
-                
+
                 if (journalId && !this.processedJournals.has(journalId)) {
                     await this.processJournal(journalId, link)
                     this.processedJournals.add(journalId)
@@ -79,13 +79,13 @@ export default class WarningTrianglesFeature extends BaseFeature {
             Logger.debug(`[${this.name}] Trying selector: ${selector}`)
             const links = document.querySelectorAll(selector)
             Logger.debug(`[${this.name}] Selector ${selector} found ${links.length} links`)
-            
+
             if (links.length > 0) {
                 Logger.info(`[${this.name}] Using selector: ${selector} (found ${links.length} links)`)
                 return Array.from(links)
             }
         }
-        
+
         Logger.warning(`[${this.name}] No journal links found with any selector`)
         return []
     }
@@ -108,10 +108,10 @@ export default class WarningTrianglesFeature extends BaseFeature {
 
             // Collect journal data (same as old extension)
             const journalData = await this.collectJournalData(journalId)
-            
+
             // Analyze the data for issues
             const issues = this.analyzeJournalIssues(journalData)
-            
+
             // Add warning triangles if there are issues
             if (issues.length > 0) {
                 this.addWarningTriangles(linkElement, issues)
@@ -141,8 +141,8 @@ export default class WarningTrianglesFeature extends BaseFeature {
 
             // Get journal entries
             data.journalEntries = await this.api.tahvel.get(
-                `/journals/${journalId}/journalEntriesByDate`, 
-                { allStudents: false }, 
+                `/journals/${journalId}/journalEntriesByDate`,
+                { allStudents: false },
                 { cache: true }
             )
             Logger.debug(`[${this.name}] Fetched ${data.journalEntries?.length || 0} journal entries for ${journalId}`)
@@ -153,8 +153,8 @@ export default class WarningTrianglesFeature extends BaseFeature {
 
             // Get students
             data.students = await this.api.tahvel.get(
-                `/journals/${journalId}/journalStudents`, 
-                { allStudents: false }, 
+                `/journals/${journalId}/journalStudents`,
+                { allStudents: false },
                 { cache: true }
             )
             Logger.debug(`[${this.name}] Fetched ${data.students?.length || 0} students for ${journalId}`)
@@ -190,18 +190,18 @@ export default class WarningTrianglesFeature extends BaseFeature {
 
             // Use the old extension's API endpoint format
             const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${fromDate}&lang=ET&teachers=${teacherId}&thru=${thruDate}`
-            
+
             Logger.debug(`[${this.name}] Fetching timetable data from: ${endpoint}`)
-            
+
             const data = await this.api.tahvel.get(endpoint, {}, { cache: true })
-            
+
             if (!data || !data.timetableEvents || !Array.isArray(data.timetableEvents)) {
                 Logger.debug(`[${this.name}] No timetable events found`)
                 return []
             }
 
             Logger.info(`[${this.name}] Fetched ${data.timetableEvents.length} timetable entries for journal ${journalId}`)
-            
+
             // Filter events with journalId and transform to our format
             return data.timetableEvents
                 .filter(event => event.journalId !== null)
@@ -228,7 +228,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
     calculateLessonNumber(event) {
         // Simple calculation based on time - can be improved
         if (!event.timeStart) return 1
-        
+
         const hour = parseInt(event.timeStart.split(':')[0])
         if (hour < 9) return 1
         if (hour < 10) return 2
@@ -302,7 +302,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
 
         if (discrepancies.length > 0) {
             issues.push({
-                type: 'discrepancies', 
+                type: 'discrepancies',
                 count: discrepancies.length,
                 message: 'Erinevused päeviku sissekannete ja tunniplaani vahel',
                 color: 'grey',
@@ -363,7 +363,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
         triangle.textContent = issue.icon
         triangle.title = issue.message
         triangle.setAttribute('data-issue-type', issue.type)
-        
+
         return triangle
     }
 
