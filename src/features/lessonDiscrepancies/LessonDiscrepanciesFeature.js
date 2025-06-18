@@ -886,17 +886,582 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     /**
      * Handle adding missing journal entries
      */
-    handleAddMissingEntry(date, lessonNumbers) {
+    async handleAddMissingEntry(date, lessonNumbers) {
         Logger.info(`[${this.name}] Adding missing entry for date: ${date}, lessons: ${lessonNumbers.join(', ')}`)
 
-        // Create a more user-friendly alert with instructions
+        try {
+            // Try to automatically open the add entry form and fill it out
+            await this.openAndFillAddEntryForm(date, lessonNumbers)
+        } catch (error) {
+            Logger.error(`[${this.name}] Error opening add entry form:`, error)
+
+            // Fallback to instructions if automation fails
+            const formattedDate = this.formatDisplayDate(date)
+            const lessonsText = lessonNumbers.length === 1 ? `tund ${lessonNumbers[0]}` : `tunnid ${lessonNumbers.join(', ')}`
+            alert(`Lisa sissekanne kuupäevale ${formattedDate} (${lessonsText})\n\nJuhised:\n1. Ava päeviku sissekannete leht\n2. Lisa uus sissekanne\n3. Määra õige kuupäev: ${formattedDate}\n4. Määra algustund: ${Math.min(...lessonNumbers)}\n5. Määra tundide arv: ${lessonNumbers.length}`)
+        }
+    }
+
+    /**
+     * Open and fill the add entry form automatically
+     */
+    async openAndFillAddEntryForm(date, lessonNumbers) {
+        Logger.debug(`[${this.name}] Attempting to open and fill add entry form`)
+
+        // First, try to find and click the "Lisa sissekanne" button
+        const addButton = await this.findAndClickAddButton()
+        if (!addButton) {
+            throw new Error('Could not find "Lisa sissekanne" button')
+        }
+
+        // Wait for the form to open
+        await this.waitForFormToOpen()
+
+        // Fill out the form fields
+        await this.fillEntryForm(date, lessonNumbers)
+
+        Logger.info(`[${this.name}] Successfully opened and filled add entry form`)
+    }
+
+    /**
+     * Find and click the "Lisa sissekanne" button
+     */
+    async findAndClickAddButton() {
+        // Common selectors for the add entry button
+        // Exclude our own discrepancies table buttons
+        const selectors = [
+            'button[ng-click*="addEntry"]',
+            'button[ng-click*="lisa"]:not([id^="add-missing-"])',
+            'md-button[ng-click*="addEntry"]',
+            'md-button[ng-click*="lisa"]:not([id^="add-missing-"])',
+            'button[ng-click*="addJournalEntry"]',
+            'md-button[ng-click*="addJournalEntry"]',
+            '[aria-label*="Lisa sissekanne"]',
+            '[aria-label*="Add entry"]',
+            '.add-entry-button',
+            '.lisa-sissekanne',
+            '.add-journal-entry'
+        ]
+
+        for (const selector of selectors) {
+            const button = document.querySelector(selector)
+
+            if (button && this.isElementVisible(button) && !this.isOurDiscrepanciesButton(button)) {
+                Logger.debug(`[${this.name}] Found add button using selector: ${selector}`)
+
+                // Scroll into view and click
+                button.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                await this.delay(300)
+
+                button.click()
+                await this.delay(500) // Wait for click to register
+
+                return button
+            }
+        }
+
+        // If no button found with selectors, try to find by text content
+        // but exclude our own buttons
+        const allButtons = document.querySelectorAll('button, md-button, [role="button"]')
+        const addButton = Array.from(allButtons).find(btn => {
+            // Skip if it's one of our discrepancies buttons
+            if (this.isOurDiscrepanciesButton(btn)) {
+                return false
+            }
+
+            const text = btn.textContent.trim().toLowerCase()
+            return (text.includes('lisa') && text.includes('sissekanne')) ||
+                (text === 'lisa sissekanne') ||
+                (text.includes('add') && text.includes('entry'))
+        })
+
+        if (addButton) {
+            Logger.debug(`[${this.name}] Found add button by text content`)
+            addButton.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            await this.delay(300)
+            addButton.click()
+            await this.delay(500)
+            return addButton
+        }
+
+        return null
+    }
+
+    /**
+     * Check if a button is one of our discrepancies table buttons
+     */
+    isOurDiscrepanciesButton(button) {
+        if (!button) return false
+
+        // Check if it has our button ID pattern
+        if (button.id && button.id.startsWith('add-missing-')) {
+            return true
+        }
+
+        // Check if it's inside our discrepancies table
+        const discrepanciesTable = button.closest('[data-discrepancies-table]')
+        if (discrepanciesTable) {
+            return true
+        }
+
+        // Check if it has our specific data attributes
+        if (button.hasAttribute('data-date') && button.hasAttribute('data-lessons')) {
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * Wait for the add entry form to open
+     */
+    async waitForFormToOpen(maxAttempts = 20, intervalMs = 250) {
+        Logger.debug(`[${this.name}] Waiting for add entry form to open`)
+
+        return new Promise((resolve, reject) => {
+            let attempts = 0
+
+            const checkForm = () => {
+                attempts++
+
+                // Look for form indicators
+                const formSelectors = [
+                    'md-dialog',
+                    '.modal',
+                    '.dialog',
+                    'form[name*="entry"]',
+                    'form[name*="sissekanne"]',
+                    '[ng-form*="entry"]',
+                    'md-card[ng-if*="showAddForm"]',
+                    '.add-entry-form',
+                    '.entry-form'
+                ]
+
+                let formFound = false
+                for (const selector of formSelectors) {
+                    const form = document.querySelector(selector)
+                    if (form && this.isElementVisible(form)) {
+                        Logger.debug(`[${this.name}] Form opened, found using selector: ${selector}`)
+                        formFound = true
+                        break
+                    }
+                }
+
+                if (formFound || attempts >= maxAttempts) {
+                    if (formFound) {
+                        resolve()
+                    } else {
+                        reject(new Error(`Form did not open after ${maxAttempts} attempts`))
+                    }
+                    return
+                }
+
+                Logger.debug(`[${this.name}] Waiting for form to open, attempt ${attempts}/${maxAttempts}`)
+                setTimeout(checkForm, intervalMs)
+            }
+
+            checkForm()
+        })
+    }
+
+    /**
+     * Fill out the entry form with the provided data
+     */
+    async fillEntryForm(date, lessonNumbers) {
+        Logger.debug(`[${this.name}] Filling entry form with date: ${date}, lessons: ${lessonNumbers}`)
+
         const formattedDate = this.formatDisplayDate(date)
-        const lessonsText = lessonNumbers.length === 1 ? `tund ${lessonNumbers[0]}` : `tunnid ${lessonNumbers.join(', ')}`
+        const minLesson = Math.min(...lessonNumbers)
+        const lessonCount = lessonNumbers.length
 
-        alert(`Lisa sissekanne kuupäevale ${formattedDate} (${lessonsText})\n\nJuhised:\n1. Ava päeviku sissekannete leht\n2. Lisa uus sissekanne\n3. Määra õige kuupäev: ${formattedDate}\n4. Määra algustund: ${Math.min(...lessonNumbers)}\n5. Määra tundide arv: ${lessonNumbers.length}`)
+        // Fill entry type (Sissekande liik) - set to "Tund"
+        await this.fillEntryTypeField()
 
-        // Optional: You could also try to navigate to the journal entry page
-        // or pre-fill a form if the application supports it
+        // Fill date field
+        await this.fillDateField(formattedDate)
+
+        // Fill start lesson number
+        await this.fillStartLessonField(minLesson)
+
+        // Fill lesson count
+        await this.fillLessonCountField(lessonCount)
+
+        // Check "Auditoorne õpe" checkbox
+        await this.checkAuditoriumLearningCheckbox()
+
+        Logger.info(`[${this.name}] Form filled successfully - Entry type: Tund, Date: ${formattedDate}, Start lesson: ${minLesson}, Count: ${lessonCount}, Auditoorne õpe: checked`)
+    }
+
+    /**
+     * Fill the entry type field (Sissekande liik) - set to "Tund"
+     */
+    async fillEntryTypeField() {
+        const entryTypeSelectors = [
+            'md-select[ng-model="journalEntry.entryType"]',
+            'md-select[ng-model*="entryType"]',
+            'select[ng-model="journalEntry.entryType"]',
+            'select[ng-model*="entryType"]',
+            'md-select[aria-label*="Sissekande liik"]',
+            'md-select[aria-label*="Entry type"]'
+        ]
+
+        for (const selector of entryTypeSelectors) {
+            const field = document.querySelector(selector)
+            if (field && this.isElementVisible(field)) {
+                Logger.debug(`[${this.name}] Found entry type field using selector: ${selector}`)
+
+                if (field.tagName.toLowerCase() === 'md-select') {
+                    // Try different values that might represent "Tund" (Lesson)
+                    const possibleValues = [
+                        'SISSEKANNE_T',  // This is likely the actual value based on the ng-required condition
+                        'Tund',
+                        'TUND',
+                        'Lesson',
+                        'LESSON'
+                    ]
+
+                    for (const value of possibleValues) {
+                        const success = await this.selectMdSelectOption(field, value)
+                        if (success) {
+                            Logger.debug(`[${this.name}] Successfully selected entry type: ${value}`)
+                            return
+                        }
+                    }
+
+                    Logger.warning(`[${this.name}] Could not select any entry type value`)
+                } else {
+                    await this.selectOption(field, 'SISSEKANNE_T')
+                }
+                return
+            }
+        }
+
+        Logger.warning(`[${this.name}] Could not find entry type field`)
+    }
+
+    /**
+     * Fill the date field in the form
+     */
+    async fillDateField(dateString) {
+        const dateSelectors = [
+            'input[ng-model*="date"]',
+            'input[ng-model*="Date"]',
+            'input[name*="date"]',
+            'input[name*="Date"]',
+            'input[type="date"]',
+            'md-datepicker input',
+            '.date-input input',
+            'input[placeholder*="kuupäev"]',
+            'input[placeholder*="date"]'
+        ]
+
+        for (const selector of dateSelectors) {
+            const field = document.querySelector(selector)
+            if (field && this.isElementVisible(field)) {
+                Logger.debug(`[${this.name}] Found date field using selector: ${selector}`)
+
+                // Clear and set the date
+                field.focus()
+                await this.delay(100)
+                field.value = ''
+                await this.delay(100)
+
+                // Try different date formats
+                const formats = [
+                    dateString, // DD.MM.YYYY
+                    dateString.split('.').reverse().join('-'), // YYYY-MM-DD
+                    dateString.split('.').join('/') // DD/MM/YYYY
+                ]
+
+                for (const format of formats) {
+                    field.value = format
+                    field.dispatchEvent(new Event('input', { bubbles: true }))
+                    field.dispatchEvent(new Event('change', { bubbles: true }))
+                    await this.delay(200)
+
+                    // Check if the value stuck
+                    if (field.value === format) {
+                        Logger.debug(`[${this.name}] Date field filled successfully with format: ${format}`)
+                        return
+                    }
+                }
+
+                // If no format worked, try typing it
+                await this.typeInField(field, dateString)
+                return
+            }
+        }
+
+        Logger.warning(`[${this.name}] Could not find date field`)
+    }
+
+    /**
+     * Fill the start lesson number field
+     */
+    async fillStartLessonField(lessonNumber) {
+        const lessonSelectors = [
+            'md-select[ng-model="journalEntry.startLessonNr"]',
+            'md-select[aria-label="Algustund"]',
+            'md-select[ng-model*="startLessonNr"]',
+            'md-select[ng-model*="startLesson"]',
+            'md-select[ng-model*="algustund"]',
+            'input[ng-model*="startLesson"]',
+            'input[ng-model*="algustund"]',
+            'input[name*="startLesson"]',
+            'input[name*="algustund"]',
+            'select[ng-model*="startLesson"]',
+            'select[ng-model*="algustund"]',
+            'input[placeholder*="algustund"]',
+            'input[placeholder*="start"]'
+        ]
+
+        for (const selector of lessonSelectors) {
+            const field = document.querySelector(selector)
+            if (field && this.isElementVisible(field)) {
+                Logger.debug(`[${this.name}] Found start lesson field using selector: ${selector}`)
+
+                if (field.tagName.toLowerCase() === 'md-select') {
+                    await this.selectMdSelectOption(field, lessonNumber.toString())
+                } else if (field.tagName.toLowerCase() === 'select') {
+                    await this.selectOption(field, lessonNumber.toString())
+                } else {
+                    await this.fillInputField(field, lessonNumber.toString())
+                }
+                return
+            }
+        }
+
+        Logger.warning(`[${this.name}] Could not find start lesson field`)
+    }
+
+    /**
+     * Fill the lesson count field
+     */
+    async fillLessonCountField(lessonCount) {
+        const countSelectors = [
+            'md-select[ng-model*="lessons"]',
+            'md-select[ng-model*="count"]',
+            'md-select[ng-model*="tundide"]',
+            'md-select[ng-model*="arv"]',
+            'input[ng-model*="lessons"]',
+            'input[ng-model*="count"]',
+            'input[ng-model*="tundide"]',
+            'input[ng-model*="arv"]',
+            'input[name*="lessons"]',
+            'input[name*="count"]',
+            'input[name*="tundide"]',
+            'input[name*="arv"]',
+            'select[ng-model*="lessons"]',
+            'select[ng-model*="count"]',
+            'input[placeholder*="tundide arv"]',
+            'input[placeholder*="count"]'
+        ]
+
+        for (const selector of countSelectors) {
+            const field = document.querySelector(selector)
+            if (field && this.isElementVisible(field)) {
+                Logger.debug(`[${this.name}] Found lesson count field using selector: ${selector}`)
+
+                if (field.tagName.toLowerCase() === 'md-select') {
+                    await this.selectMdSelectOption(field, lessonCount.toString())
+                } else if (field.tagName.toLowerCase() === 'select') {
+                    await this.selectOption(field, lessonCount.toString())
+                } else {
+                    await this.fillInputField(field, lessonCount.toString())
+                }
+                return
+            }
+        }
+
+        Logger.warning(`[${this.name}] Could not find lesson count field`)
+    }
+
+    /**
+     * Fill an input field with a value
+     */
+    async fillInputField(field, value) {
+        field.focus()
+        await this.delay(100)
+
+        field.value = ''
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        await this.delay(100)
+
+        field.value = value
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+        field.dispatchEvent(new Event('blur', { bubbles: true }))
+
+        await this.delay(200)
+        Logger.debug(`[${this.name}] Field filled with value: ${value}`)
+    }
+
+    /**
+     * Select an option in a select or md-select field
+     */
+    async selectOption(field, value) {
+        // Handle regular select
+        field.value = value
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+        await this.delay(200)
+        Logger.debug(`[${this.name}] Selected value: ${value}`)
+    }
+
+    /**
+     * Select an option in an Angular Material md-select field
+     */
+    async selectMdSelectOption(field, value) {
+        try {
+            Logger.debug(`[${this.name}] Attempting to select option "${value}" in md-select`)
+
+            // Focus on the field first
+            field.focus()
+            await this.delay(200)
+
+            // Click to open the dropdown
+            field.click()
+            await this.delay(500) // Wait for dropdown to open
+
+            // Look for the dropdown options in various possible containers
+            const optionContainers = [
+                'md-select-menu',
+                '.md-select-menu-container',
+                'md-content[role="listbox"]',
+                '[aria-owns*="select_listbox"]',
+                '.md-virtual-repeat-container'
+            ]
+
+            let options = []
+            for (const containerSelector of optionContainers) {
+                const container = document.querySelector(containerSelector)
+                if (container && this.isElementVisible(container)) {
+                    options = container.querySelectorAll('md-option, .md-option, [role="option"]')
+                    if (options.length > 0) {
+                        Logger.debug(`[${this.name}] Found ${options.length} options in container: ${containerSelector}`)
+                        break
+                    }
+                }
+            }
+
+            // If no container found, try to find options globally
+            if (options.length === 0) {
+                options = document.querySelectorAll('md-option, .md-option, [role="option"]')
+                Logger.debug(`[${this.name}] Found ${options.length} options globally`)
+            }
+
+            // Find the option that matches our value
+            let targetOption = null
+            for (const option of options) {
+                if (!this.isElementVisible(option)) continue
+
+                const optionText = option.textContent.trim()
+                const optionValue = option.getAttribute('value') || option.getAttribute('ng-value')
+
+                Logger.debug(`[${this.name}] Checking option: text="${optionText}", value="${optionValue}"`)
+
+                // Try multiple matching strategies
+                if (optionText === value ||
+                    optionValue === value ||
+                    optionText === value.toString() ||
+                    optionValue === value.toString() ||
+                    parseInt(optionText) === parseInt(value)) {
+                    targetOption = option
+                    break
+                }
+            } if (targetOption) {
+                Logger.debug(`[${this.name}] Found matching option, clicking it`)
+
+                // Scroll the option into view within its container
+                targetOption.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                await this.delay(200)
+
+                // Click the option
+                targetOption.click()
+                await this.delay(300)
+
+                // Verify the selection worked by checking if the dropdown closed
+                // and if the field's model was updated
+                const isDropdownOpen = document.querySelector('md-select-menu, .md-select-menu-container')
+                if (!isDropdownOpen || !this.isElementVisible(isDropdownOpen)) {
+                    Logger.debug(`[${this.name}] Successfully selected option: ${value}`)
+                } else {
+                    Logger.warning(`[${this.name}] Dropdown still open, selection may have failed`)
+                }
+
+                // Try to trigger change events
+                field.dispatchEvent(new Event('change', { bubbles: true }))
+                field.dispatchEvent(new Event('blur', { bubbles: true }))
+
+                return true
+            } else {
+                Logger.warning(`[${this.name}] Could not find option with value: ${value}`)
+                Logger.debug(`[${this.name}] Available options:`, Array.from(options).map(opt => ({
+                    text: opt.textContent.trim(),
+                    value: opt.getAttribute('value') || opt.getAttribute('ng-value')
+                })))
+
+                // Close the dropdown by clicking elsewhere
+                document.body.click()
+                await this.delay(200)
+
+                return false
+            }
+
+        } catch (error) {
+            Logger.error(`[${this.name}] Error selecting md-select option:`, error)
+
+            // Try to close any open dropdown
+            try {
+                document.body.click()
+                await this.delay(200)
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+
+            return false
+        }
+    }
+
+    /**
+     * Type text into a field character by character
+     */
+    async typeInField(field, text) {
+        field.focus()
+        await this.delay(100)
+
+        field.value = ''
+        for (const char of text) {
+            field.value += char
+            field.dispatchEvent(new Event('input', { bubbles: true }))
+            await this.delay(50)
+        }
+
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+        field.dispatchEvent(new Event('blur', { bubbles: true }))
+        await this.delay(200)
+    }
+
+    /**
+     * Check if an element is visible
+     */
+    isElementVisible(element) {
+        if (!element) return false
+
+        const rect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+
+        return rect.width > 0 &&
+            rect.height > 0 &&
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            style.opacity !== '0'
+    }
+
+    /**
+     * Simple delay utility
+     */
+    async delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms))
     }
 
     /**
@@ -906,11 +1471,41 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Find all "Lisa" buttons and add event listeners
         const buttons = document.querySelectorAll('button[id^="add-missing-"]')
         buttons.forEach(button => {
-            button.addEventListener('click', (event) => {
-                const date = event.target.getAttribute('data-date')
-                const lessonsStr = event.target.getAttribute('data-lessons')
+            button.addEventListener('click', async (event) => {
+                // Prevent event bubbling
+                event.preventDefault()
+                event.stopPropagation()
+
+                const clickedButton = event.target
+                const date = clickedButton.getAttribute('data-date')
+                const lessonsStr = clickedButton.getAttribute('data-lessons')
                 const lessonNumbers = lessonsStr.split(',').map(n => parseInt(n.trim()))
-                this.handleAddMissingEntry(date, lessonNumbers)
+
+                // Only disable and process the clicked button
+                if (clickedButton.disabled) {
+                    Logger.debug(`[${this.name}] Button already processing, ignoring click`)
+                    return
+                }
+
+                // Disable only this button to prevent multiple clicks
+                clickedButton.disabled = true
+                const originalText = clickedButton.textContent
+                clickedButton.textContent = 'Töötlen...'
+                clickedButton.style.background = '#6c757d' // Gray color when disabled
+
+                try {
+                    Logger.debug(`[${this.name}] Processing button for date: ${date}`)
+                    await this.handleAddMissingEntry(date, lessonNumbers)
+                } catch (error) {
+                    Logger.error(`[${this.name}] Error processing button:`, error)
+                } finally {
+                    // Re-enable only this button after processing
+                    setTimeout(() => {
+                        clickedButton.disabled = false
+                        clickedButton.textContent = originalText
+                        clickedButton.style.background = '#28a745' // Restore original color
+                    }, 2000)
+                }
             })
         })
 
@@ -1087,6 +1682,151 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if (existingTable) {
             existingTable.remove()
             Logger.debug(`[${this.name}] Removed existing table during reset`)
+        }
+    }
+
+    /**
+     * Check the "Auditoorne õpe" (Auditorium learning) checkbox
+     */
+    async checkAuditoriumLearningCheckbox() {
+        const checkboxSelectors = [
+            'md-checkbox[ng-model*="selectedCapacityTypes"][aria-label*="Auditoorne"]',
+            'md-checkbox[aria-label="Auditoorne õpe"]',
+            'input[type="checkbox"][ng-model*="selectedCapacityTypes"]',
+            'md-checkbox input[type="checkbox"]',
+            '.md-checkbox-container input[type="checkbox"]'
+        ]
+
+        // First try to find the specific "Auditoorne õpe" checkbox
+        for (const selector of checkboxSelectors) {
+            const elements = document.querySelectorAll(selector)
+
+            for (const element of elements) {
+                if (!this.isElementVisible(element)) continue
+
+                // Check if this is the "Auditoorne õpe" checkbox
+                const isAuditoriumCheckbox = this.isAuditoriumLearningCheckbox(element)
+
+                if (isAuditoriumCheckbox) {
+                    Logger.debug(`[${this.name}] Found Auditoorne õpe checkbox using selector: ${selector}`)
+                    await this.checkCheckbox(element)
+                    return
+                }
+            }
+        }
+
+        // If specific selectors didn't work, try to find by looking for text content
+        const allCheckboxes = document.querySelectorAll('md-checkbox, input[type="checkbox"]')
+        for (const checkbox of allCheckboxes) {
+            if (!this.isElementVisible(checkbox)) continue
+
+            if (this.isAuditoriumLearningCheckbox(checkbox)) {
+                Logger.debug(`[${this.name}] Found Auditoorne õpe checkbox by text search`)
+                await this.checkCheckbox(checkbox)
+                return
+            }
+        }
+
+        Logger.warning(`[${this.name}] Could not find Auditoorne õpe checkbox`)
+    }
+
+    /**
+     * Check if an element is the "Auditoorne õpe" checkbox
+     */
+    isAuditoriumLearningCheckbox(element) {
+        if (!element) return false
+
+        // Check aria-label
+        const ariaLabel = element.getAttribute('aria-label')
+        if (ariaLabel && ariaLabel.toLowerCase().includes('auditoorne')) {
+            return true
+        }
+
+        // Check parent md-checkbox for aria-label
+        const parentMdCheckbox = element.closest('md-checkbox')
+        if (parentMdCheckbox) {
+            const parentAriaLabel = parentMdCheckbox.getAttribute('aria-label')
+            if (parentAriaLabel && parentAriaLabel.toLowerCase().includes('auditoorne')) {
+                return true
+            }
+        }
+
+        // Check nearby text content (labels, spans)
+        const parent = element.parentElement
+        if (parent) {
+            const parentText = parent.textContent.toLowerCase()
+            if (parentText.includes('auditoorne') && parentText.includes('õpe')) {
+                return true
+            }
+        }
+
+        // Check siblings and nearby elements
+        const container = element.closest('.md-container, .md-checkbox-container, .checkbox-container')
+        if (container) {
+            const containerText = container.textContent.toLowerCase()
+            if (containerText.includes('auditoorne') && containerText.includes('õpe')) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Check a checkbox element (handles both regular checkboxes and md-checkbox)
+     */
+    async checkCheckbox(element) {
+        try {
+            let checkboxInput = element
+
+            // If it's an md-checkbox, find the actual input element
+            if (element.tagName.toLowerCase() === 'md-checkbox') {
+                checkboxInput = element.querySelector('input[type="checkbox"]')
+                if (!checkboxInput) {
+                    // Sometimes the input is a sibling or in a different structure
+                    checkboxInput = element
+                }
+            }
+
+            // Check if already checked
+            if (checkboxInput.checked) {
+                Logger.debug(`[${this.name}] Auditoorne õpe checkbox is already checked`)
+                return
+            }
+
+            // Focus and click to check
+            if (element.tagName.toLowerCase() === 'md-checkbox') {
+                // For md-checkbox, click the md-checkbox element itself
+                element.focus()
+                await this.delay(100)
+                element.click()
+                await this.delay(200)
+            } else {
+                // For regular checkbox, click the input
+                checkboxInput.focus()
+                await this.delay(100)
+                checkboxInput.click()
+                await this.delay(200)
+            }
+
+            // Verify it's checked
+            if (checkboxInput.checked) {
+                Logger.debug(`[${this.name}] Successfully checked Auditoorne õpe checkbox`)
+
+                // Trigger change events
+                checkboxInput.dispatchEvent(new Event('change', { bubbles: true }))
+                checkboxInput.dispatchEvent(new Event('input', { bubbles: true }))
+
+                // For Angular, also trigger on the md-checkbox if applicable
+                if (element.tagName.toLowerCase() === 'md-checkbox') {
+                    element.dispatchEvent(new Event('change', { bubbles: true }))
+                }
+            } else {
+                Logger.warning(`[${this.name}] Failed to check Auditoorne õpe checkbox`)
+            }
+
+        } catch (error) {
+            Logger.error(`[${this.name}] Error checking Auditoorne õpe checkbox:`, error)
         }
     }
 }
