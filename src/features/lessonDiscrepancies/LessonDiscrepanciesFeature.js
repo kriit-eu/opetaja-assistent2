@@ -433,8 +433,40 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 if (correctMatches.length === 0) {
                     // Entry doesn't match any timetable lessons - this entry is completely wrong
-                    // We'll ignore it and treat timetable lessons as missing
-                    continue
+                    // Instead of ignoring it, we should correct it to match the timetable
+                    Logger.debug(`[${this.name}] Entry ${entry.id} has no correct matches - completely wrong entry`)
+                    
+                    // Group all timetable lessons to find consecutive groups
+                    const allTimetableGroups = this.groupConsecutiveLessons(timetableLessonNumbers)
+                    
+                    // Assign this wrong entry to the first group (or best fitting group)
+                    if (allTimetableGroups.length > 0) {
+                        const targetGroup = allTimetableGroups[0] // Use first group
+                        const correctStartLesson = targetGroup[0]
+                        const correctLessonCount = targetGroup.length
+                        
+                        const entryKey = `${date}_${entry.id}`
+                        conflictingEntriesByDate.set(entryKey, {
+                            date: date,
+                            entry: entry,
+                            currentStartLesson: entryStartLesson,
+                            currentLessonCount: entryLessonCount,
+                            correctStartLesson: correctStartLesson,
+                            correctLessonCount: correctLessonCount,
+                            correctLessons: targetGroup,
+                            type: targetGroup.length === 1 ? 'single_lesson_fix' : 'multi_lesson_fix'
+                        })
+                        
+                        // Remove all lessons from this group from remaining lessons
+                        for (const lesson of targetGroup) {
+                            const index = remainingTimetableLessons.indexOf(lesson)
+                            if (index > -1) {
+                                remainingTimetableLessons.splice(index, 1)
+                            }
+                        }
+                        
+                        continue // Skip the rest of processing for this entry
+                    }
                 } if (incorrectLessons.length > 0 || correctMatches.length !== entryLessonCount) {
                     // Entry has incorrect lessons or doesn't match the expected pattern
                     // This is a conflicting entry that needs modification
