@@ -257,9 +257,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 }
                 journalEntriesByDate.get(entryDate).push(entry)
 
-                // Handle multiple lessons in one entry (e.g., double lessons)
+                // Handle multiple lessons in one entry
+                // NOTE: We assume consecutive lessons for now, but this might not always be accurate
+                // if the same subject has non-consecutive lessons on the same day
                 const startLessonNr = entry.startLessonNr || 1
                 const lessonCount = entry.lessons || 1
+
+                // For entries with multiple lessons, we need to be more careful
+                // as they might represent non-consecutive lessons
+                if (lessonCount > 1) {
+                    Logger.debug(`[${this.name}] Multi-lesson entry found:`, {
+                        date: entryDate,
+                        startLessonNr: startLessonNr,
+                        lessonCount: lessonCount,
+                        entryId: entry.id
+                    })
+                }
 
                 for (let i = 0; i < lessonCount; i++) {
                     const lessonNumber = startLessonNr + i
@@ -271,9 +284,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
 
         Logger.debug(`[${this.name}] Found ${journalEntryLessons.size} unique journal entry lessons`)
-        Logger.debug(`[${this.name}] Analyzing ${timetableData.length} timetable entries`)
+        Logger.debug(`[${this.name}] Analyzing ${timetableData.length} timetable entries`)        // Check each timetable entry for missing journal entries or incorrect lesson numbers
+        // First, collect all issues by date and entry
+        const issuesByDateAndEntry = new Map() // "date_entryId" -> { entry, issues: [timetable entries] }
 
-        // Check each timetable entry for missing journal entries or incorrect lesson numbers
         for (const timetableEntry of timetableData) {
             const timetableDate = this.formatDate(timetableEntry.date)
             const timetableDateTime = new Date(timetableEntry.date)
@@ -292,60 +306,50 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 if (!journalEntryLessons.has(correctLessonKey)) {
                     // Check if there are any journal entries on this date with wrong lesson numbers
                     const entriesOnDate = journalEntriesByDate.get(timetableDate) || []
-                    let foundWithWrongNumber = false
+                    let foundRelatedEntry = false
 
                     for (const entry of entriesOnDate) {
                         const entryStartLesson = entry.startLessonNr || 1
                         const entryLessonCount = entry.lessons || 1
+                        const entryKey = `${timetableDate}_${entry.id}`
 
-                        // Check if this entry covers any lesson numbers
+                        // Check if this entry might be related to this timetable slot
+                        // by checking if it's a wrong lesson number case
                         for (let i = 0; i < entryLessonCount; i++) {
                             const entryLessonNumber = entryStartLesson + i
 
-                            // If there's an entry for a different lesson number on the same date,
-                            // check if it might be for this timetable slot
                             if (entryLessonNumber !== correctLessonNumber) {
-                                // Get the expected time for the journal entry's lesson number
                                 const entryExpectedTime = await this.getLessonTimeForNumber(entryLessonNumber, schoolId)
 
-                                Logger.debug(`[${this.name}] Checking potential wrong lesson number:`, {
-                                    date: timetableDate,
-                                    timetableTime: timetableEntry.timeStart,
-                                    correctLessonNumber: correctLessonNumber,
-                                    entryLessonNumber: entryLessonNumber,
-                                    entryExpectedTime: entryExpectedTime,
-                                    timesMatch: this.timesAreClose(entryExpectedTime, timetableEntry.timeStart)
-                                })
-
-                                // If the journal entry's lesson number corresponds to a different time,
-                                // but we have a timetable entry at this time, it's likely a wrong number
+                                // If this entry is for a different time, it might be a wrong lesson number
                                 if (entryExpectedTime && !this.timesAreClose(entryExpectedTime, timetableEntry.timeStart)) {
-                                    // This suggests the journal entry has the wrong lesson number
-                                    // The timetable says this time should be lesson X, but journal says it's lesson Y
-                                    foundWithWrongNumber = true
+                                    // This timetable entry is missing because of wrong lesson number in this entry
+                                    if (!issuesByDateAndEntry.has(entryKey)) {
+                                        issuesByDateAndEntry.set(entryKey, {
+                                            date: timetableDate,
+                                            entry: entry,
+                                            issues: []
+                                        })
+                                    }
 
-                                    Logger.debug(`[${this.name}] Found wrong lesson number: timetable=${correctLessonNumber}, journal=${entryLessonNumber}`)
-
-                                    discrepancies.push({
-                                        date: timetableDate,
+                                    issuesByDateAndEntry.get(entryKey).issues.push({
+                                        correctLessonNumber: correctLessonNumber,
                                         timeStart: timetableEntry.timeStart,
                                         timeEnd: timetableEntry.timeEnd,
                                         name: timetableEntry.nameEt || journalData.info.nameEt,
-                                        rooms: timetableEntry.rooms || [],
-                                        lessonNumber: correctLessonNumber,
-                                        actualLessonNumber: entryLessonNumber,
-                                        entryId: entry.id,
-                                        type: 'wrong_lesson_number'
+                                        rooms: timetableEntry.rooms || []
                                     })
+
+                                    foundRelatedEntry = true
                                     break
                                 }
                             }
                         }
-                        if (foundWithWrongNumber) break
+                        if (foundRelatedEntry) break
                     }
 
-                    // If no wrong lesson number found, it's just missing
-                    if (!foundWithWrongNumber) {
+                    // If no related entry found, it's just a missing journal entry
+                    if (!foundRelatedEntry) {
                         Logger.debug(`[${this.name}] Missing journal entry for: ${correctLessonKey}`)
 
                         discrepancies.push({
@@ -359,6 +363,47 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                         })
                     }
                 }
+            }
+        }
+
+        // Process grouped issues to create appropriate discrepancies
+        for (const [entryKey, data] of issuesByDateAndEntry) {
+            const { date, entry, issues } = data
+
+            if (issues.length === 1) {
+                // Single issue - show as wrong lesson number
+                const issue = issues[0]
+                const currentStart = entry.startLessonNr || 1
+
+                discrepancies.push({
+                    date: date,
+                    timeStart: issue.timeStart,
+                    timeEnd: issue.timeEnd,
+                    name: issue.name,
+                    rooms: issue.rooms,
+                    lessonNumber: issue.correctLessonNumber,
+                    actualLessonNumber: currentStart,
+                    entryId: entry.id,
+                    type: 'wrong_lesson_number'
+                })
+            } else if (issues.length > 1) {
+                // Multiple issues - suggest multi-lesson fix
+                const lessonNumbers = issues.map(i => i.correctLessonNumber).sort((a, b) => a - b)
+                const minLesson = Math.min(...lessonNumbers)
+                const currentRange = `Algustund: ${entry.startLessonNr || 1}, Tundide arv: ${entry.lessons || 1}`
+
+                discrepancies.push({
+                    date: date,
+                    timeStart: `${issues[0].timeStart} (${issues.length} tunnid)`,
+                    timeEnd: issues[issues.length - 1].timeEnd,
+                    name: issues[0].name,
+                    rooms: issues[0].rooms,
+                    lessonNumber: `Algustund: ${minLesson}, Tundide arv: ${issues.length}`,
+                    actualLessonNumber: currentRange,
+                    entryId: entry.id,
+                    neededLessons: lessonNumbers,
+                    type: 'multi_lesson_fix_needed'
+                })
             }
         }
 
@@ -414,9 +459,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      * Create the HTML table element for discrepancies
      */
     createDiscrepanciesTableElement(discrepancies) {
-        // Separate missing entries from wrong lesson numbers
+        // Separate different types of discrepancies
         const missingEntries = discrepancies.filter(d => d.type === 'missing_journal_entry')
         const wrongNumbers = discrepancies.filter(d => d.type === 'wrong_lesson_number')
+        const multiLessonFixes = discrepancies.filter(d => d.type === 'multi_lesson_fix_needed')
 
         // Sort discrepancies by date (earliest first), then by lesson number
         const sortedMissing = missingEntries.sort((a, b) => {
@@ -435,6 +481,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 return dateA - dateB
             }
             return a.lessonNumber - b.lessonNumber
+        })
+
+        const sortedMultiFixes = multiLessonFixes.sort((a, b) => {
+            const dateA = new Date(a.date)
+            const dateB = new Date(b.date)
+            if (dateA.getTime() !== dateB.getTime()) {
+                return dateA - dateB
+            }
+            return a.neededLessons[0] - b.neededLessons[0]
         })
 
         const container = document.createElement('div')
@@ -484,11 +539,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 </div>`
         }
 
-        // Wrong lesson numbers section
-        if (sortedWrong.length > 0) {
+        // Wrong lesson numbers and multi-lesson fixes combined section
+        if (sortedWrong.length > 0 || sortedMultiFixes.length > 0) {
+            const allFixes = [...sortedWrong, ...sortedMultiFixes].sort((a, b) => {
+                const dateA = new Date(a.date)
+                const dateB = new Date(b.date)
+                if (dateA.getTime() !== dateB.getTime()) {
+                    return dateA - dateB
+                }
+                const lessonA = a.type === 'multi_lesson_fix_needed' ? a.neededLessons[0] : a.lessonNumber
+                const lessonB = b.type === 'multi_lesson_fix_needed' ? b.neededLessons[0] : b.lessonNumber
+                return lessonA - lessonB
+            })
+
             content += `
                 <div>
-                    <h4 style="margin: 0 0 10px 0; color: #856404;">Vale tunniaeg märgitud (${sortedWrong.length})</h4>
+                    <h4 style="margin: 0 0 10px 0; color: #856404;">Vale tunniaeg märgitud (${allFixes.length})</h4>
                     <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
                         Tunnid, millel on sissekanne olemas, kuid vale tunninumbriga märgitud:
                     </p>
@@ -496,24 +562,50 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                         <thead>
                             <tr style="background: #fff2e6;">
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kuupäev</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Praegu märgitud</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">→</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Peaks olema</th>
+                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Erinevus</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kellaaeg</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Aine</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${sortedWrong.map(discrepancy => `
-                                <tr>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; background: #f8d7da; font-weight: bold;">${discrepancy.actualLessonNumber}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; font-size: 16px;">→</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; background: #d4edda; font-weight: bold;">${discrepancy.lessonNumber}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.name}</td>
-                                </tr>
-                            `).join('')}
+                            ${allFixes.map(discrepancy => {
+                if (discrepancy.type === 'multi_lesson_fix_needed') {
+                    // Multi-lesson fix
+                    return `
+                                        <tr>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">
+                                                <div style="margin-bottom: 5px; padding: 5px; background: #f8d7da; border-radius: 3px; font-weight: bold;">
+                                                    ❌ ${discrepancy.actualLessonNumber}
+                                                </div>
+                                                <div style="padding: 5px; background: #d4edda; border-radius: 3px; font-weight: bold;">
+                                                    ✅ ${discrepancy.lessonNumber}
+                                                </div>
+                                                <div style="margin-top: 5px; padding: 3px; background: #e6f3ff; border-radius: 3px; font-size: 12px;">
+                                                    Tunnid: ${discrepancy.neededLessons.join(', ')}
+                                                </div>
+                                            </td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.name}</td>
+                                        </tr>`
+                } else {
+                    // Single lesson fix
+                    return `
+                                        <tr>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">
+                                                <div style="margin-bottom: 5px; padding: 5px; background: #f8d7da; border-radius: 3px; font-weight: bold;">
+                                                    ❌ Algustund: ${discrepancy.actualLessonNumber}
+                                                </div>
+                                                <div style="padding: 5px; background: #d4edda; border-radius: 3px; font-weight: bold;">
+                                                    ✅ Algustund: ${discrepancy.lessonNumber}
+                                                </div>
+                                            </td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.name}</td>
+                                        </tr>`
+                }
+            }).join('')}
                         </tbody>
                     </table>
                 </div>`
