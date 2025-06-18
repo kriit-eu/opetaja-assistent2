@@ -15,6 +15,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         super('lessonDiscrepancies', /\/journal\/\d+\/edit/, [])
         this.name = 'LessonDiscrepanciesFeature'
         this.tableCreated = false
+        this.currentJournalId = null
     }
 
     /**
@@ -24,19 +25,65 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Logger.debug(`[${this.name}] Activating feature`)
         Logger.debug(`[${this.name}] Activating lesson discrepancies feature`)
 
+        // Reset any previous state first
+        this.reset()
+
         // Wait for page to be ready and create the discrepancies table
-        setTimeout(async () => {
-            await this.createLessonDiscrepanciesTable()
-        }, 2000)
+        await this.waitForPageReady()
+        await this.createLessonDiscrepanciesTable()
     }
 
     /**
      * Extract journal ID from current URL
      */
     extractJournalId() {
-        const url = window.location.pathname + window.location.hash
-        const urlMatch = url.match(/\/journal\/(\d+)/)
-        return urlMatch ? parseInt(urlMatch[1]) : null
+        // Check both pathname and hash for journal ID
+        const fullUrl = window.location.pathname + window.location.hash
+        const hashUrl = window.location.hash
+        const pathUrl = window.location.pathname
+
+        Logger.debug(`[${this.name}] Extracting journal ID from URL:`, {
+            fullUrl,
+            hashUrl,
+            pathUrl
+        })
+
+        // Try different URL patterns
+        const patterns = [
+            /\/journal\/(\d+)/,           // Standard pattern
+            /journal\/(\d+)/,             // Without leading slash
+            /#.*\/journal\/(\d+)/,        // In hash
+            /journalId[=:](\d+)/i,        // Query parameter style
+        ]
+
+        for (const pattern of patterns) {
+            // Check full URL first
+            const fullMatch = fullUrl.match(pattern)
+            if (fullMatch) {
+                const journalId = parseInt(fullMatch[1])
+                Logger.debug(`[${this.name}] Journal ID found via pattern ${pattern}: ${journalId}`)
+                return journalId
+            }
+
+            // Check hash separately
+            const hashMatch = hashUrl.match(pattern)
+            if (hashMatch) {
+                const journalId = parseInt(hashMatch[1])
+                Logger.debug(`[${this.name}] Journal ID found in hash via pattern ${pattern}: ${journalId}`)
+                return journalId
+            }
+
+            // Check pathname separately
+            const pathMatch = pathUrl.match(pattern)
+            if (pathMatch) {
+                const journalId = parseInt(pathMatch[1])
+                Logger.debug(`[${this.name}] Journal ID found in path via pattern ${pattern}: ${journalId}`)
+                return journalId
+            }
+        }
+
+        Logger.debug(`[${this.name}] No journal ID found in URL`)
+        return null
     }
 
     /**
@@ -44,15 +91,25 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      */
     async createLessonDiscrepanciesTable() {
         try {
-            if (this.tableCreated) {
-                Logger.debug(`[${this.name}] Table already created, skipping`)
+            const journalId = this.extractJournalId()
+            if (!journalId) {
+                Logger.warning(`[${this.name}] No journal ID found in URL after waiting`)
                 return
             }
 
-            const journalId = this.extractJournalId()
-            if (!journalId) {
-                Logger.debug(`[${this.name}] No journal ID found in URL`)
-                return
+            // Check if we already created a table for this journal ID
+            if (this.tableCreated && this.currentJournalId === journalId) {
+                Logger.debug(`[${this.name}] Table already created for journal ${journalId}, checking if still visible`)
+
+                // Check if table is still visible on the page
+                const existingTable = document.querySelector('[data-discrepancies-table]')
+                if (existingTable) {
+                    Logger.debug(`[${this.name}] Table still visible, skipping`)
+                    return
+                } else {
+                    Logger.debug(`[${this.name}] Table not found on page, recreating`)
+                    this.tableCreated = false
+                }
             }
 
             Logger.info(`[${this.name}] Creating lesson discrepancies table for journal ${journalId}`)
@@ -69,10 +126,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
 
             // Create and insert the discrepancies table
-            this.insertDiscrepanciesTable(discrepancies)
-            this.tableCreated = true
+            const tableInserted = this.insertDiscrepanciesTable(discrepancies)
 
-            Logger.info(`[${this.name}] Lesson discrepancies table created with ${discrepancies.length} discrepancies`)
+            if (tableInserted) {
+                this.tableCreated = true
+                this.currentJournalId = journalId
+                Logger.info(`[${this.name}] Lesson discrepancies table successfully created and inserted with ${discrepancies.length} discrepancies`)
+            } else {
+                Logger.warning(`[${this.name}] Failed to insert discrepancies table`)
+            }
 
         } catch (error) {
             Logger.error(`[${this.name}] Error creating lesson discrepancies table:`, error)
@@ -441,26 +503,54 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      * Insert the discrepancies table into the page
      */
     insertDiscrepanciesTable(discrepancies) {
-        // Find insertion point
-        const insertionPoint = this.findInsertionPoint()
-        if (!insertionPoint) {
-            Logger.warning(`[${this.name}] Could not find insertion point`)
-            return
+        try {
+            // Remove any existing table first
+            const existingTable = document.querySelector('[data-discrepancies-table]')
+            if (existingTable) {
+                Logger.debug(`[${this.name}] Removing existing table`)
+                existingTable.remove()
+            }
+
+            // Find insertion point
+            const insertionPoint = this.findInsertionPoint()
+            if (!insertionPoint) {
+                Logger.warning(`[${this.name}] Could not find insertion point`)
+                return false
+            }
+
+            Logger.debug(`[${this.name}] Found insertion point:`, insertionPoint.tagName, insertionPoint.className)
+
+            // Create table
+            const table = this.createDiscrepanciesTableElement(discrepancies)
+
+            // Add identifier to the table for easy detection
+            table.setAttribute('data-discrepancies-table', 'true')
+
+            // Insert into page at the top
+            insertionPoint.insertBefore(table, insertionPoint.firstChild)
+
+            // Verify the table was actually inserted
+            const insertedTable = document.querySelector('[data-discrepancies-table]')
+            if (!insertedTable) {
+                Logger.error(`[${this.name}] Table was not successfully inserted into DOM`)
+                return false
+            }
+
+            Logger.debug(`[${this.name}] Table successfully inserted into DOM`)
+
+            // Add event listeners for "Lisa" buttons
+            this.addMissingEntryButtonListeners()
+
+            // Add event listeners for "Muuda" buttons
+            this.addEditEntryButtonListeners()
+
+            Logger.debug(`[${this.name}] Discrepancies table inserted into page`)
+            return true
+
+        } catch (error) {
+            Logger.error(`[${this.name}] Error inserting discrepancies table:`, error)
+            return false
         }
-
-        // Create table
-        const table = this.createDiscrepanciesTableElement(discrepancies)
-
-        // Insert into page
-        insertionPoint.insertBefore(table, insertionPoint.firstChild)
-
-        // Add event listeners for "Lisa" buttons
-        this.addMissingEntryButtonListeners()
-
-        // Add event listeners for "Muuda" buttons
-        this.addEditEntryButtonListeners()
-
-        Logger.debug(`[${this.name}] Discrepancies table inserted into page`)
     }
 
     /**
@@ -472,18 +562,32 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             'md-content .layout-padding',
             '.layout-padding',
             'md-content',
-            '#main-content'
+            '#main-content',
+            '.main-content',
+            'main',
+            'body'
         ]
 
         for (const selector of selectors) {
             const element = document.querySelector(selector)
             if (element) {
-                Logger.debug(`[${this.name}] Found insertion point: ${selector}`)
-                return element
+                // Additional check to make sure the element is visible and has reasonable dimensions
+                const rect = element.getBoundingClientRect()
+                if (rect.width > 100 && rect.height > 100) {
+                    Logger.debug(`[${this.name}] Found suitable insertion point: ${selector}`, {
+                        tagName: element.tagName,
+                        className: element.className,
+                        id: element.id,
+                        dimensions: { width: rect.width, height: rect.height }
+                    })
+                    return element
+                } else {
+                    Logger.debug(`[${this.name}] Found element but too small: ${selector}`, rect)
+                }
             }
         }
 
-        Logger.warning(`[${this.name}] No suitable insertion point found`)
+        Logger.warning(`[${this.name}] No suitable insertion point found, falling back to body`)
         return document.body
     }
 
@@ -854,6 +958,135 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             const correctLesson = correct.replace('Algustund: ', '')
 
             alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune algustund: ${currentLesson}\nUus algustund: ${correctLesson}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund väärtuselt ${currentLesson} väärtusele ${correctLesson}`)
+        }
+    }
+
+    /**
+     * Wait for page to be ready and journal ID to be available
+     */
+    async waitForPageReady() {
+        Logger.debug(`[${this.name}] Waiting for page to be ready...`)
+
+        // First, wait for DOM to be ready
+        await this.waitForDOMReady()
+
+        // Then wait for journal ID to be available in URL
+        await this.waitForJournalId()
+
+        // Finally, wait for any Angular/AngularJS content to be loaded
+        await this.waitForContentReady()
+
+        Logger.debug(`[${this.name}] Page is ready!`)
+    }
+
+    /**
+     * Wait for DOM to be ready
+     */
+    async waitForDOMReady() {
+        return new Promise((resolve) => {
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                resolve()
+            } else {
+                document.addEventListener('DOMContentLoaded', resolve, { once: true })
+                window.addEventListener('load', resolve, { once: true })
+            }
+        })
+    }
+
+    /**
+     * Wait for journal ID to be available in URL with polling
+     */
+    async waitForJournalId(maxAttempts = 50, intervalMs = 200) {
+        Logger.debug(`[${this.name}] Polling for journal ID in URL...`)
+
+        return new Promise((resolve, reject) => {
+            let attempts = 0
+
+            const checkJournalId = () => {
+                attempts++
+                const journalId = this.extractJournalId()
+
+                if (journalId) {
+                    Logger.debug(`[${this.name}] Journal ID found: ${journalId} (attempt ${attempts})`)
+                    resolve(journalId)
+                    return
+                }
+
+                if (attempts >= maxAttempts) {
+                    Logger.warning(`[${this.name}] Failed to find journal ID after ${maxAttempts} attempts`)
+                    reject(new Error(`Journal ID not found after ${maxAttempts} attempts`))
+                    return
+                }
+
+                Logger.debug(`[${this.name}] Journal ID not found, attempt ${attempts}/${maxAttempts}`)
+                setTimeout(checkJournalId, intervalMs)
+            }
+
+            checkJournalId()
+        })
+    }
+
+    /**
+     * Wait for Angular content to be loaded by checking for key elements
+     */
+    async waitForContentReady(maxAttempts = 25, intervalMs = 400) {
+        Logger.debug(`[${this.name}] Waiting for content to be ready...`)
+
+        return new Promise((resolve) => {
+            let attempts = 0
+
+            const checkContent = () => {
+                attempts++
+
+                // Check for common Angular Material elements that indicate content is loaded
+                const indicators = [
+                    'md-content',
+                    '.layout-padding',
+                    '[ng-controller]',
+                    '.md-toolbar',
+                    'md-card'
+                ]
+
+                const hasContent = indicators.some(selector => {
+                    const element = document.querySelector(selector)
+                    if (element) {
+                        const rect = element.getBoundingClientRect()
+                        return rect.width > 50 && rect.height > 50 // Make sure it's actually rendered
+                    }
+                    return false
+                })
+
+                if (hasContent || attempts >= maxAttempts) {
+                    if (hasContent) {
+                        Logger.debug(`[${this.name}] Content ready detected (attempt ${attempts})`)
+                    } else {
+                        Logger.debug(`[${this.name}] Content wait timeout reached (attempt ${attempts})`)
+                    }
+                    resolve()
+                    return
+                }
+
+                Logger.debug(`[${this.name}] Waiting for content, attempt ${attempts}/${maxAttempts}`)
+                setTimeout(checkContent, intervalMs)
+            }
+
+            checkContent()
+        })
+    }
+
+    /**
+     * Reset the feature state (useful for navigation)
+     */
+    reset() {
+        Logger.debug(`[${this.name}] Resetting feature state`)
+        this.tableCreated = false
+        this.currentJournalId = null
+
+        // Remove any existing table
+        const existingTable = document.querySelector('[data-discrepancies-table]')
+        if (existingTable) {
+            existingTable.remove()
+            Logger.debug(`[${this.name}] Removed existing table during reset`)
         }
     }
 }
