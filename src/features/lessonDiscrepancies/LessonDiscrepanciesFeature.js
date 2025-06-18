@@ -1519,15 +1519,44 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Find all "Muuda" buttons and add event listeners
         const buttons = document.querySelectorAll('button[id^="edit-"]')
         buttons.forEach(button => {
-            button.addEventListener('click', (event) => {
-                const date = event.target.getAttribute('data-date')
-                const entryId = event.target.getAttribute('data-entry-id')
-                const current = event.target.getAttribute('data-current')
-                const correct = event.target.getAttribute('data-correct')
-                const type = event.target.getAttribute('data-type')
-                const lessons = event.target.getAttribute('data-lessons')
+            button.addEventListener('click', async (event) => {
+                // Prevent event bubbling
+                event.preventDefault()
+                event.stopPropagation()
 
-                this.handleEditEntry(date, entryId, current, correct, type, lessons)
+                const clickedButton = event.target
+                const date = clickedButton.getAttribute('data-date')
+                const entryId = clickedButton.getAttribute('data-entry-id')
+                const current = clickedButton.getAttribute('data-current')
+                const correct = clickedButton.getAttribute('data-correct')
+                const type = clickedButton.getAttribute('data-type')
+                const lessons = clickedButton.getAttribute('data-lessons')
+
+                // Only disable and process the clicked button
+                if (clickedButton.disabled) {
+                    Logger.debug(`[${this.name}] Button already processing, ignoring click`)
+                    return
+                }
+
+                // Disable only this button to prevent multiple clicks
+                clickedButton.disabled = true
+                const originalText = clickedButton.textContent
+                clickedButton.textContent = 'Töötlen...'
+                clickedButton.style.background = '#6c757d' // Gray color when disabled
+
+                try {
+                    Logger.debug(`[${this.name}] Processing edit button for entry ID: ${entryId}`)
+                    await this.handleEditEntry(date, entryId, current, correct, type, lessons)
+                } catch (error) {
+                    Logger.error(`[${this.name}] Error processing edit button:`, error)
+                } finally {
+                    // Re-enable only this button after processing
+                    setTimeout(() => {
+                        clickedButton.disabled = false
+                        clickedButton.textContent = originalText
+                        clickedButton.style.background = '#ffc107' // Restore original yellow color
+                    }, 2000)
+                }
             })
         })
 
@@ -1537,23 +1566,389 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     /**
      * Handle editing journal entries
      */
-    handleEditEntry(date, entryId, current, correct, type, lessons) {
+    async handleEditEntry(date, entryId, current, correct, type, lessons) {
         Logger.info(`[${this.name}] Editing entry for date: ${date}, entry ID: ${entryId}, type: ${type}`)
 
-        const formattedDate = this.formatDisplayDate(date)
+        try {
+            // Try to automatically find and edit the journal entry
+            await this.openAndEditJournalEntry(date, entryId, current, correct, type, lessons)
+        } catch (error) {
+            Logger.error(`[${this.name}] Error opening edit entry form:`, error)
+
+            // Fallback to instructions if automation fails
+            const formattedDate = this.formatDisplayDate(date)
+
+            if (type === 'multi_lesson_fix') {
+                const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
+                const minLesson = Math.min(...lessonNumbers)
+                const lessonCount = lessonNumbers.length
+
+                alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${lessonCount}\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
+            } else {
+                const currentLesson = current.replace('Algustund: ', '')
+                const correctLesson = correct.replace('Algustund: ', '')
+
+                alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune algustund: ${currentLesson}\nUus algustund: ${correctLesson}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund väärtuselt ${currentLesson} väärtusele ${correctLesson}`)
+            }
+        }
+    }
+
+    /**
+     * Open and edit a specific journal entry automatically
+     */
+    async openAndEditJournalEntry(date, entryId, current, correct, type, lessons) {
+        Logger.debug(`[${this.name}] Attempting to open and edit journal entry ID: ${entryId}`)
+
+        // First, try to find and click the specific journal entry
+        const entryElement = await this.findJournalEntryElement(entryId, date)
+        if (!entryElement) {
+            throw new Error(`Could not find journal entry element for ID: ${entryId}`)
+        }
+
+        // Click on the entry to open edit form
+        await this.clickJournalEntry(entryElement)
+
+        // Wait for the edit form to open
+        await this.waitForEditFormToOpen()
+
+        // Fill out the corrected values
+        await this.fillEditForm(current, correct, type, lessons)
+
+        Logger.info(`[${this.name}] Successfully opened and filled edit form for entry ${entryId}`)
+    }
+
+    /**
+     * Find the journal entry element on the page
+     */
+    async findJournalEntryElement(entryId, date) {
+        Logger.debug(`[${this.name}] Looking for journal entry with ID: ${entryId}`)
+
+        // Look for journal entry elements using various strategies
+        const strategies = [
+            // Strategy 1: Look for journal-entry-button with ng-click containing the entry ID
+            () => {
+                const buttons = document.querySelectorAll('.journal-entry-button[ng-click*="editJournalEntry"]')
+                return Array.from(buttons).find(btn => {
+                    const ngClick = btn.getAttribute('ng-click')
+                    return ngClick && ngClick.includes(entryId)
+                })
+            },
+
+            // Strategy 2: Look for any element with ng-click containing editJournalEntry and the entry ID
+            () => {
+                const elements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
+                return Array.from(elements).find(el => {
+                    const ngClick = el.getAttribute('ng-click')
+                    return ngClick && ngClick.includes(entryId)
+                })
+            },
+
+            // Strategy 3: Look for table rows or containers that might contain the journal entry
+            () => {
+                const formattedDate = this.formatDisplayDate(date)
+                const dateSpans = document.querySelectorAll('span[ng-if*="journalEntry.entryType.code"]')
+
+                for (const span of dateSpans) {
+                    if (span.textContent.trim().includes(formattedDate.substring(0, 5))) { // Match DD.MM part
+                        // Look for clickable parent or nearby elements
+                        let current = span.parentElement
+                        while (current && current !== document.body) {
+                            // Check if this element or its children have edit functionality
+                            const editElement = current.querySelector('[ng-click*="editJournalEntry"]') ||
+                                current.querySelector('.journal-entry-button') ||
+                                (current.hasAttribute('ng-click') && current.getAttribute('ng-click').includes('edit') ? current : null)
+
+                            if (editElement) {
+                                // Verify this is for the correct entry ID
+                                const ngClick = editElement.getAttribute('ng-click')
+                                if (ngClick && ngClick.includes(entryId)) {
+                                    return editElement
+                                }
+                            }
+                            current = current.parentElement
+                        }
+                    }
+                }
+                return null
+            },
+
+            // Strategy 4: Look for spans or buttons with ng-click containing the entry ID (but exclude our own buttons)
+            () => {
+                const elements = document.querySelectorAll('span[ng-click], button[ng-click]')
+                return Array.from(elements).find(el => {
+                    // Skip our own discrepancies buttons
+                    if (this.isOurDiscrepanciesButton(el)) {
+                        return false
+                    }
+
+                    const ngClick = el.getAttribute('ng-click')
+                    return ngClick && (ngClick.includes(entryId) || ngClick.includes(`editJournalEntry(${entryId})`))
+                })
+            },
+
+            // Strategy 5: Look for table rows containing the date and entry information
+            () => {
+                const formattedDate = this.formatDisplayDate(date)
+                const rows = document.querySelectorAll('tr, .row, .entry')
+
+                return Array.from(rows).find(row => {
+                    // Skip our own discrepancies table
+                    if (row.closest('[data-discrepancies-table]')) {
+                        return false
+                    }
+
+                    const rowText = row.textContent
+                    const hasDate = rowText.includes(formattedDate) || rowText.includes(formattedDate.substring(0, 5))
+
+                    if (hasDate) {
+                        // Look for edit functionality in this row
+                        const editElement = row.querySelector('[ng-click*="editJournalEntry"]') ||
+                            row.querySelector('[ng-click*="edit"]') ||
+                            row.querySelector('.journal-entry-button')
+
+                        if (editElement) {
+                            const ngClick = editElement.getAttribute('ng-click')
+                            // Check if it contains our entry ID or if we can match by date
+                            if (ngClick && (ngClick.includes(entryId) || ngClick.includes('editJournalEntry'))) {
+                                return editElement
+                            }
+                        }
+                    }
+                    return false
+                })
+            }
+        ]
+
+        for (let i = 0; i < strategies.length; i++) {
+            try {
+                const element = strategies[i]()
+                if (element && this.isElementVisible(element) && !this.isOurDiscrepanciesButton(element)) {
+                    Logger.debug(`[${this.name}] Found journal entry element using strategy ${i + 1}:`, {
+                        tagName: element.tagName,
+                        className: element.className,
+                        ngClick: element.getAttribute('ng-click'),
+                        id: element.id
+                    })
+                    return element
+                }
+            } catch (error) {
+                Logger.debug(`[${this.name}] Strategy ${i + 1} failed:`, error.message)
+                continue
+            }
+        }
+
+        // If we still haven't found it, let's log all available journal-related elements for debugging
+        Logger.warning(`[${this.name}] Could not find journal entry ${entryId}. Available journal-related elements:`)
+
+        // Log spans with journal entry dates
+        const dateSpans = document.querySelectorAll('span[ng-if*="journalEntry"]')
+        Logger.debug(`[${this.name}] Found ${dateSpans.length} journal entry date spans`)
+
+        // Log clickable elements with editJournalEntry
+        const editElements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
+        Logger.debug(`[${this.name}] Found ${editElements.length} elements with editJournalEntry`)
+        Array.from(editElements).slice(0, 5).forEach((el, idx) => {
+            Logger.debug(`[${this.name}] EditJournalEntry ${idx + 1}:`, {
+                tagName: el.tagName,
+                className: el.className,
+                ngClick: el.getAttribute('ng-click'),
+                textContent: el.textContent.trim().substring(0, 30)
+            })
+        })
+
+        return null
+    }
+
+    /**
+     * Click on a journal entry to open its edit form
+     */
+    async clickJournalEntry(entryElement) {
+        Logger.debug(`[${this.name}] Attempting to click journal entry element:`, {
+            tagName: entryElement.tagName,
+            className: entryElement.className,
+            ngClick: entryElement.getAttribute('ng-click')
+        })
+
+        // Try different ways to trigger the edit action
+        const clickTargets = [
+            // If this is already the journal-entry-button, use it directly
+            entryElement.classList.contains('journal-entry-button') ? entryElement : null,
+
+            // Look for journal-entry-button within the entry
+            entryElement.querySelector('.journal-entry-button[ng-click*="editJournalEntry"]'),
+            entryElement.querySelector('span[ng-click*="editJournalEntry"]'),
+            entryElement.querySelector('button[ng-click*="editJournalEntry"]'),
+
+            // Look for any edit-related elements within the entry
+            entryElement.querySelector('[ng-click*="editJournalEntry"]'),
+            entryElement.querySelector('[ng-click*="edit"]'),
+            entryElement.querySelector('button[ng-click*="edit"]'),
+            entryElement.querySelector('a[ng-click*="edit"]'),
+
+            // Look for any clickable element within the entry
+            entryElement.querySelector('button[ng-click]'),
+            entryElement.querySelector('span[ng-click]'),
+            entryElement.querySelector('a[ng-click]'),
+            entryElement.querySelector('[ng-click]'),
+
+            // If the entry itself is clickable
+            entryElement.hasAttribute('ng-click') ? entryElement : null,
+
+            // Last resort: the entry element itself
+            entryElement
+        ]
+
+        for (const target of clickTargets) {
+            if (target && this.isElementVisible(target)) {
+                Logger.debug(`[${this.name}] Trying to click target:`, {
+                    tagName: target.tagName,
+                    className: target.className,
+                    ngClick: target.getAttribute('ng-click')
+                })
+
+                // Scroll into view
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                await this.delay(500)
+
+                // Try clicking
+                target.click()
+                await this.delay(800) // Wait longer for the form to potentially open
+
+                // Check if edit form opened
+                if (await this.checkIfEditFormOpened()) {
+                    Logger.debug(`[${this.name}] Successfully opened edit form`)
+                    return
+                }
+
+                // If single click didn't work, try double click for this target
+                Logger.debug(`[${this.name}] Single click didn't work, trying double click`)
+                target.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+                await this.delay(800)
+
+                if (await this.checkIfEditFormOpened()) {
+                    Logger.debug(`[${this.name}] Successfully opened edit form with double click`)
+                    return
+                }
+
+                // Try triggering Angular click event manually
+                if (target.getAttribute('ng-click')) {
+                    Logger.debug(`[${this.name}] Trying to trigger Angular click manually`)
+                    try {
+                        // Try to get Angular scope and execute the ng-click function
+                        const angularElement = angular ? angular.element(target) : null
+                        if (angularElement && angularElement.scope) {
+                            const scope = angularElement.scope()
+                            const ngClick = target.getAttribute('ng-click')
+                            if (scope && ngClick) {
+                                // Try to evaluate the ng-click expression
+                                scope.$eval(ngClick)
+                                scope.$apply()
+                                await this.delay(800)
+
+                                if (await this.checkIfEditFormOpened()) {
+                                    Logger.debug(`[${this.name}] Successfully opened edit form with Angular eval`)
+                                    return
+                                }
+                            }
+                        }
+                    } catch (angularError) {
+                        Logger.debug(`[${this.name}] Angular click failed:`, angularError.message)
+                    }
+                }
+            }
+        }
+
+        throw new Error('Could not open edit form for journal entry')
+    }
+
+    /**
+     * Check if edit form has opened
+     */
+    async checkIfEditFormOpened() {
+        const editFormSelectors = [
+            'md-dialog',
+            '.modal',
+            '.dialog',
+            'form[name*="edit"]',
+            'form[name*="entry"]',
+            '[ng-form*="edit"]',
+            '[ng-form*="entry"]',
+            '.edit-form',
+            '.entry-edit-form'
+        ]
+
+        for (const selector of editFormSelectors) {
+            const form = document.querySelector(selector)
+            if (form && this.isElementVisible(form)) {
+                // Additional check: make sure it contains entry-related fields
+                const hasEntryFields = form.querySelector('[ng-model*="startLessonNr"], [ng-model*="lessons"], [ng-model*="entryType"]')
+                if (hasEntryFields) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Wait for the edit form to open
+     */
+    async waitForEditFormToOpen(maxAttempts = 20, intervalMs = 250) {
+        Logger.debug(`[${this.name}] Waiting for edit form to open`)
+
+        return new Promise((resolve, reject) => {
+            let attempts = 0
+
+            const checkForm = () => {
+                attempts++
+
+                if (this.checkIfEditFormOpened()) {
+                    Logger.debug(`[${this.name}] Edit form opened`)
+                    resolve()
+                    return
+                }
+
+                if (attempts >= maxAttempts) {
+                    reject(new Error(`Edit form did not open after ${maxAttempts} attempts`))
+                    return
+                }
+
+                Logger.debug(`[${this.name}] Waiting for edit form to open, attempt ${attempts}/${maxAttempts}`)
+                setTimeout(checkForm, intervalMs)
+            }
+
+            checkForm()
+        })
+    }
+
+    /**
+     * Fill the edit form with corrected values
+     */
+    async fillEditForm(current, correct, type, lessons) {
+        Logger.debug(`[${this.name}] Filling edit form - type: ${type}`)
 
         if (type === 'multi_lesson_fix') {
             const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
             const minLesson = Math.min(...lessonNumbers)
             const lessonCount = lessonNumbers.length
 
-            alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${lessonCount}\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
-        } else {
-            const currentLesson = current.replace('Algustund: ', '')
-            const correctLesson = correct.replace('Algustund: ', '')
+            Logger.debug(`[${this.name}] Multi-lesson fix: start=${minLesson}, count=${lessonCount}`)
 
-            alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune algustund: ${currentLesson}\nUus algustund: ${correctLesson}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund väärtuselt ${currentLesson} väärtusele ${correctLesson}`)
+            // Update start lesson and lesson count
+            await this.fillStartLessonField(minLesson)
+            await this.fillLessonCountField(lessonCount)
+
+        } else if (type === 'single_lesson_fix') {
+            const correctLesson = parseInt(correct.replace('Algustund: ', ''))
+
+            Logger.debug(`[${this.name}] Single lesson fix: new start lesson=${correctLesson}`)
+
+            // Update just the start lesson number
+            await this.fillStartLessonField(correctLesson)
         }
+
+        Logger.info(`[${this.name}] Edit form filled successfully`)
     }
 
     /**
