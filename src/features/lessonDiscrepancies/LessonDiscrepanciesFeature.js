@@ -252,7 +252,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 return lessonTimesData['9']
             }
 
-            return {}
+            return []
         } catch (error) {
             Logger.warning(`[${this.name}] Error loading lesson times:`, error.message)
             return {}
@@ -260,50 +260,29 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Determine if a timetable entry is for remote learning
-     * @param {Object} timetableEntry - The timetable entry object
-     * @returns {boolean} True if remote (no room assigned), false if in-person
-     */
-    isRemoteLesson(timetableEntry) {
-        // Remote lessons have no room assigned or empty rooms array
-        return !timetableEntry.rooms ||
-            timetableEntry.rooms.length === 0 ||
-            (Array.isArray(timetableEntry.rooms) && timetableEntry.rooms.every(room => !room || String(room).trim() === ''))
-    }
-
-    /**
      * Calculate lesson number based on start time from timetable data
      */
-    async calculateLessonNumber(timeStart, schoolId = 9, timetableEntry = null) {
+    async calculateLessonNumber(timeStart, schoolId = 9) {
         // Fetch lesson times from local JSON
         const schoolLessonTimes = await this.fetchLessonTimes(schoolId)
 
-        if (!timeStart || !schoolLessonTimes || Object.keys(schoolLessonTimes).length === 0) return 1
+        if (!timeStart || !schoolLessonTimes || schoolLessonTimes.length === 0) return 1
 
-        // Determine if this is a remote lesson
-        const isRemote = timetableEntry ? this.isRemoteLesson(timetableEntry) : false
-        const lessonSchedule = isRemote ? 'remote' : 'inPerson'
+        // Get the lesson times (now just a simple array)
+        const lessonTimes = schoolLessonTimes
 
-        // Get the appropriate lesson times
-        const lessonTimes = schoolLessonTimes[lessonSchedule] || schoolLessonTimes.inPerson || []
-
-        if (!lessonTimes.length) {
-            Logger.warning(`[${this.name}] No lesson times found for schedule: ${lessonSchedule}`)
-            return 1
-        }
-
-        Logger.debug(`[${this.name}] Using ${lessonSchedule} schedule for time ${timeStart}`)
+        Logger.debug(`[${this.name}] Using lesson schedule for time ${timeStart}`)
 
         // First, try to find exact match
         for (const lessonTime of lessonTimes) {
             if (lessonTime.timeStart === timeStart) {
-                console.log(`[${this.name}] Found exact match: ${timeStart} = lesson ${lessonTime.number} (${lessonSchedule})`)
+                console.log(`[${this.name}] Found exact match: ${timeStart} = lesson ${lessonTime.number}`)
                 return lessonTime.number
             }
         }
 
         // If no exact match, find closest lesson time
-        console.log(`[${this.name}] No exact match for ${timeStart}, finding closest match in ${lessonSchedule} schedule`)
+        console.log(`[${this.name}] No exact match for ${timeStart}, finding closest match`)
         const eventTime = new Date(`2021-01-01T${timeStart}`).getTime()
 
         let closestLesson = lessonTimes[0]
@@ -319,7 +298,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
         }
 
-        console.log(`[${this.name}] Closest match for ${timeStart}: lesson ${closestLesson.number} (${closestLesson.timeStart}) in ${lessonSchedule} schedule`)
+        console.log(`[${this.name}] Closest match for ${timeStart}: lesson ${closestLesson.number} (${closestLesson.timeStart})`)
         return closestLesson.number
     }
 
@@ -385,7 +364,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             if (timetableDateTime < now) {
                 // Calculate lesson number using local lesson times data
                 const schoolId = journalData.info.school?.id || 9
-                const correctLessonNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId, timetableEntry)
+                const correctLessonNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId)
 
                 // Create the lesson key for timetable entry
                 const correctLessonKey = `${timetableDate}_lesson_${correctLessonNumber}`
@@ -407,7 +386,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                             const entryLessonNumber = entryStartLesson + i
 
                             if (entryLessonNumber !== correctLessonNumber) {
-                                const entryExpectedTime = await this.getLessonTimeForNumber(entryLessonNumber, schoolId, timetableEntry)
+                                const entryExpectedTime = await this.getLessonTimeForNumber(entryLessonNumber, schoolId)
 
                                 // If this entry is for a different time, it might be a wrong lesson number
                                 if (entryExpectedTime && !this.timesAreClose(entryExpectedTime, timetableEntry.timeStart)) {
@@ -831,19 +810,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     /**
      * Get the start time for a specific lesson number
      */
-    async getLessonTimeForNumber(lessonNumber, schoolId = 9, timetableEntry = null) {
+    async getLessonTimeForNumber(lessonNumber, schoolId = 9) {
         const schoolLessonTimes = await this.fetchLessonTimes(schoolId)
 
-        if (!schoolLessonTimes || Object.keys(schoolLessonTimes).length === 0) {
+        if (!schoolLessonTimes || schoolLessonTimes.length === 0) {
             return null
         }
 
-        // Determine if this should use remote or in-person schedule
-        const isRemote = timetableEntry ? this.isRemoteLesson(timetableEntry) : false
-        const lessonSchedule = isRemote ? 'remote' : 'inPerson'
-
-        // Get the appropriate lesson times
-        const lessonTimes = schoolLessonTimes[lessonSchedule] || schoolLessonTimes.inPerson || []
+        // Get the lesson times (now just a simple array)
+        const lessonTimes = schoolLessonTimes
 
         const lessonTime = lessonTimes.find(lt => lt.number === lessonNumber)
         return lessonTime ? lessonTime.timeStart : null
