@@ -266,7 +266,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Fetch lesson times from local JSON
         const schoolLessonTimes = await this.fetchLessonTimes(schoolId)
 
-        if (!timeStart || !schoolLessonTimes || schoolLessonTimes.length === 0) return 1
+        if (!timeStart || !schoolLessonTimes || schoolLessonTimes.length === 0) {
+            return 1
+        }
 
         // Get the lesson times (now just a simple array)
         const lessonTimes = schoolLessonTimes
@@ -325,8 +327,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 journalEntriesByDate.get(entryDate).push(entry)
 
                 // Handle multiple lessons in one entry
-                // NOTE: We assume consecutive lessons for now, but this might not always be accurate
-                // if the same subject has non-consecutive lessons on the same day
                 const startLessonNr = entry.startLessonNr || 1
                 const lessonCount = entry.lessons || 1
 
@@ -351,8 +351,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
 
         Logger.debug(`[${this.name}] Found ${journalEntryLessons.size} unique journal entry lessons`)
-        Logger.debug(`[${this.name}] Analyzing ${timetableData.length} timetable entries`)        // Check each timetable entry for missing journal entries or incorrect lesson numbers
-        // First, collect all issues by date and entry
+        console.log(`[${this.name}] All journal entry lessons:`, Array.from(journalEntryLessons))
+        Logger.debug(`[${this.name}] Analyzing ${timetableData.length} timetable entries`)
+
+        // Collect missing lessons by date first
+        const missingLessonsByDate = new Map()
         const issuesByDateAndEntry = new Map() // "date_entryId" -> { entry, issues: [timetable entries] }
 
         for (const timetableEntry of timetableData) {
@@ -369,57 +372,114 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 // Create the lesson key for timetable entry
                 const correctLessonKey = `${timetableDate}_lesson_${correctLessonNumber}`
 
+                console.log(`[${this.name}] Checking timetable lesson:`, {
+                    date: timetableDate,
+                    timeStart: timetableEntry.timeStart,
+                    correctLessonNumber: correctLessonNumber,
+                    correctLessonKey: correctLessonKey,
+                    hasJournalEntry: journalEntryLessons.has(correctLessonKey)
+                })
+
                 // Check if this specific lesson has a journal entry
                 if (!journalEntryLessons.has(correctLessonKey)) {
-                    // Check if there are any journal entries on this date with wrong lesson numbers
+                    // Check if there are any journal entries on this date that might cover this lesson
                     const entriesOnDate = journalEntriesByDate.get(timetableDate) || []
                     let foundRelatedEntry = false
+                    let conflictingEntry = null
 
                     for (const entry of entriesOnDate) {
                         const entryStartLesson = entry.startLessonNr || 1
                         const entryLessonCount = entry.lessons || 1
-                        const entryKey = `${timetableDate}_${entry.id}`
+                        const entryEndLesson = entryStartLesson + entryLessonCount - 1
 
-                        // Check if this entry might be related to this timetable slot
-                        // by checking if it's a wrong lesson number case
-                        for (let i = 0; i < entryLessonCount; i++) {
-                            const entryLessonNumber = entryStartLesson + i
+                        // Check if this timetable lesson is actually covered by this journal entry
+                        if (correctLessonNumber >= entryStartLesson && correctLessonNumber <= entryEndLesson) {
+                            // This lesson is actually covered by the existing journal entry
+                            Logger.debug(`[${this.name}] Lesson ${correctLessonNumber} on ${timetableDate} is covered by journal entry ${entry.id} (lessons ${entryStartLesson}-${entryEndLesson})`)
+                            foundRelatedEntry = true
+                            break
+                        }
 
-                            if (entryLessonNumber !== correctLessonNumber) {
-                                const entryExpectedTime = await this.getLessonTimeForNumber(entryLessonNumber, schoolId)
+                        // Check if there's a journal entry that conflicts with the timetable
+                        if (entryStartLesson !== correctLessonNumber && entryLessonCount === 1) {
+                            // Single lesson entry with wrong lesson number
+                            conflictingEntry = entry
+                        } else if (entryLessonCount > 1) {
+                            // Multi-lesson entry that might need adjustment
+                            // Determine if this entry covers any of the timetable lessons for this date
+                            const allTimetableForDate = timetableData.filter(te =>
+                                this.formatDate(te.date) === timetableDate &&
+                                new Date(te.date) < now
+                            )
 
-                                // If this entry is for a different time, it might be a wrong lesson number
-                                if (entryExpectedTime && !this.timesAreClose(entryExpectedTime, timetableEntry.timeStart)) {
-                                    // This timetable entry is missing because of wrong lesson number in this entry
-                                    if (!issuesByDateAndEntry.has(entryKey)) {
-                                        issuesByDateAndEntry.set(entryKey, {
-                                            date: timetableDate,
-                                            entry: entry,
-                                            issues: []
-                                        })
-                                    }
+                            const timetableLessonsForDate = []
+                            for (const te of allTimetableForDate) {
+                                const ln = await this.calculateLessonNumber(te.timeStart, schoolId)
+                                timetableLessonsForDate.push(ln)
+                            }
 
-                                    issuesByDateAndEntry.get(entryKey).issues.push({
-                                        correctLessonNumber: correctLessonNumber,
-                                        timeStart: timetableEntry.timeStart,
-                                        timeEnd: timetableEntry.timeEnd,
-                                        name: timetableEntry.nameEt || journalData.info.nameEt,
-                                        rooms: timetableEntry.rooms || []
+                            // Check if the journal entry covers some but not all of the timetable lessons
+                            const entryLessons = []
+                            for (let i = 0; i < entryLessonCount; i++) {
+                                entryLessons.push(entryStartLesson + i)
+                            }
+
+                            const hasAnyMatch = entryLessons.some(el => timetableLessonsForDate.includes(el))
+                            const hasAllMatches = timetableLessonsForDate.every(tl => entryLessons.includes(tl))
+
+                            if (hasAnyMatch && !hasAllMatches) {
+                                // This is a conflicting entry that needs fixing
+                                const entryKey = `${timetableDate}_${entry.id}`
+                                if (!issuesByDateAndEntry.has(entryKey)) {
+                                    issuesByDateAndEntry.set(entryKey, {
+                                        date: timetableDate,
+                                        entry: entry,
+                                        issues: []
                                     })
-
-                                    foundRelatedEntry = true
-                                    break
                                 }
+
+                                issuesByDateAndEntry.get(entryKey).issues.push({
+                                    correctLessonNumber: correctLessonNumber,
+                                    timeStart: timetableEntry.timeStart,
+                                    timeEnd: timetableEntry.timeEnd,
+                                    name: timetableEntry.nameEt || journalData.info.nameEt,
+                                    rooms: timetableEntry.rooms || []
+                                })
+                                foundRelatedEntry = true
                             }
                         }
-                        if (foundRelatedEntry) break
                     }
 
-                    // If no related entry found, it's just a missing journal entry
+                    // Handle single lesson conflicts
+                    if (!foundRelatedEntry && conflictingEntry) {
+                        const entryKey = `${timetableDate}_${conflictingEntry.id}`
+                        if (!issuesByDateAndEntry.has(entryKey)) {
+                            issuesByDateAndEntry.set(entryKey, {
+                                date: timetableDate,
+                                entry: conflictingEntry,
+                                issues: []
+                            })
+                        }
+
+                        issuesByDateAndEntry.get(entryKey).issues.push({
+                            correctLessonNumber: correctLessonNumber,
+                            timeStart: timetableEntry.timeStart,
+                            timeEnd: timetableEntry.timeEnd,
+                            name: timetableEntry.nameEt || journalData.info.nameEt,
+                            rooms: timetableEntry.rooms || []
+                        })
+                        foundRelatedEntry = true
+                    }
+
+                    // If no related entry found, it's a missing journal entry
                     if (!foundRelatedEntry) {
                         Logger.debug(`[${this.name}] Missing journal entry for: ${correctLessonKey}`)
 
-                        discrepancies.push({
+                        if (!missingLessonsByDate.has(timetableDate)) {
+                            missingLessonsByDate.set(timetableDate, [])
+                        }
+
+                        missingLessonsByDate.get(timetableDate).push({
                             date: timetableDate,
                             timeStart: timetableEntry.timeStart,
                             timeEnd: timetableEntry.timeEnd,
@@ -430,6 +490,26 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                         })
                     }
                 }
+            }
+        }
+
+        // Process missing lessons with consecutive grouping
+        for (const [date, missingLessons] of missingLessonsByDate) {
+            const lessonNumbers = missingLessons.map(ml => ml.lessonNumber).sort((a, b) => a - b)
+            const groupedLessons = this.groupConsecutiveLessons(lessonNumbers)
+
+            for (const group of groupedLessons) {
+                const firstLesson = group[0]
+                const lessonCount = group.length
+                const firstMissing = missingLessons.find(ml => ml.lessonNumber === firstLesson)
+
+                discrepancies.push({
+                    ...firstMissing,
+                    lessonNumber: firstLesson,
+                    lessonCount: lessonCount,
+                    lessonNumbers: group,
+                    type: 'missing_journal_entry'
+                })
             }
         }
 
@@ -457,25 +537,88 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 // Multiple issues - suggest multi-lesson fix
                 const lessonNumbers = issues.map(i => i.correctLessonNumber).sort((a, b) => a - b)
                 const minLesson = Math.min(...lessonNumbers)
+                const maxLesson = Math.max(...lessonNumbers)
                 const currentRange = `Algustund: ${entry.startLessonNr || 1}, Tundide arv: ${entry.lessons || 1}`
 
-                discrepancies.push({
-                    date: date,
-                    timeStart: `${issues[0].timeStart} (${issues.length} tunnid)`,
-                    timeEnd: issues[issues.length - 1].timeEnd,
-                    name: issues[0].name,
-                    rooms: issues[0].rooms,
-                    lessonNumber: `Algustund: ${minLesson}, Tundide arv: ${issues.length}`,
-                    actualLessonNumber: currentRange,
-                    entryId: entry.id,
-                    neededLessons: lessonNumbers,
-                    type: 'multi_lesson_fix_needed'
-                })
+                // Keep the original lesson count from the journal entry
+                const originalLessonCount = entry.lessons || 1
+
+                // Find the issue with the minimum lesson number (first lesson)
+                const firstIssue = issues.find(i => i.correctLessonNumber === minLesson)
+                const lastIssue = issues.find(i => i.correctLessonNumber === maxLesson)
+
+                // Check if the lessons are mostly consecutive or if we should suggest a different approach
+                let consecutiveCount = 0
+                for (let i = minLesson; i <= maxLesson; i++) {
+                    if (lessonNumbers.includes(i)) consecutiveCount++
+                }
+
+                const isMainlyConsecutive = consecutiveCount >= lessonNumbers.length * 0.7
+
+                if (isMainlyConsecutive && lessonNumbers.length === originalLessonCount) {
+                    // Suggest moving the start lesson but keeping the same count
+                    discrepancies.push({
+                        date: date,
+                        timeStart: firstIssue.timeStart,
+                        timeEnd: lastIssue.timeEnd,
+                        name: firstIssue.name,
+                        rooms: firstIssue.rooms,
+                        lessonNumber: `Algustund: ${minLesson}, Tundide arv: ${originalLessonCount}`,
+                        actualLessonNumber: currentRange,
+                        entryId: entry.id,
+                        neededLessons: lessonNumbers,
+                        originalLessonCount: originalLessonCount,
+                        correctStartLesson: minLesson,
+                        type: 'multi_lesson_fix_needed'
+                    })
+                } else {
+                    // Suggest adding individual entries for non-consecutive lessons
+                    for (const lessonNumber of lessonNumbers) {
+                        const issue = issues.find(i => i.correctLessonNumber === lessonNumber)
+                        discrepancies.push({
+                            date: date,
+                            timeStart: issue.timeStart,
+                            timeEnd: issue.timeEnd,
+                            name: issue.name,
+                            rooms: issue.rooms,
+                            lessonNumber: lessonNumber,
+                            type: 'missing_journal_entry'
+                        })
+                    }
+                }
             }
         }
 
         Logger.info(`[${this.name}] Found ${discrepancies.length} lesson discrepancies`)
         return discrepancies
+    }
+
+    /**
+     * Group consecutive lesson numbers into arrays
+     * Example: [4, 5, 7, 8] becomes [[4, 5], [7, 8]]
+     */
+    groupConsecutiveLessons(lessonNumbers) {
+        if (lessonNumbers.length === 0) return []
+
+        const sorted = [...lessonNumbers].sort((a, b) => a - b)
+        const groups = []
+        let currentGroup = [sorted[0]]
+
+        for (let i = 1; i < sorted.length; i++) {
+            if (sorted[i] === sorted[i - 1] + 1) {
+                // Consecutive lesson
+                currentGroup.push(sorted[i])
+            } else {
+                // Non-consecutive, start new group
+                groups.push(currentGroup)
+                currentGroup = [sorted[i]]
+            }
+        }
+
+        // Add the last group
+        groups.push(currentGroup)
+
+        return groups
     }
 
     /**
@@ -579,43 +722,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         const wrongNumbers = discrepancies.filter(d => d.type === 'wrong_lesson_number')
         const multiLessonFixes = discrepancies.filter(d => d.type === 'multi_lesson_fix_needed')
 
-        // Sort discrepancies by date (earliest first), then by lesson number
-        const sortedMissing = missingEntries.sort((a, b) => {
+        // Combine all discrepancies into one sorted list
+        const allDiscrepancies = [...missingEntries, ...wrongNumbers, ...multiLessonFixes].sort((a, b) => {
             const dateA = new Date(a.date)
             const dateB = new Date(b.date)
             if (dateA.getTime() !== dateB.getTime()) {
                 return dateA - dateB
             }
-            return a.lessonNumber - b.lessonNumber
+            const lessonA = a.type === 'multi_lesson_fix_needed' ? a.neededLessons[0] : a.lessonNumber
+            const lessonB = b.type === 'multi_lesson_fix_needed' ? b.neededLessons[0] : b.lessonNumber
+            return lessonA - lessonB
         })
-
-        const sortedWrong = wrongNumbers.sort((a, b) => {
-            const dateA = new Date(a.date)
-            const dateB = new Date(b.date)
-            if (dateA.getTime() !== dateB.getTime()) {
-                return dateA - dateB
-            }
-            return a.lessonNumber - b.lessonNumber
-        })
-
-        const sortedMultiFixes = multiLessonFixes.sort((a, b) => {
-            const dateA = new Date(a.date)
-            const dateB = new Date(b.date)
-            if (dateA.getTime() !== dateB.getTime()) {
-                return dateA - dateB
-            }
-            return a.neededLessons[0] - b.neededLessons[0]
-        })
-
-        // Sort and group missing entries by date
-        const groupedMissing = sortedMissing.reduce((groups, discrepancy) => {
-            const date = discrepancy.date
-            if (!groups[date]) {
-                groups[date] = []
-            }
-            groups[date].push(discrepancy)
-            return groups
-        }, {})
 
         const container = document.createElement('div')
         container.style.cssText = `
@@ -631,43 +748,38 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             <div style="display: flex; align-items: center; margin-bottom: 15px;">
                 <span style="font-size: 20px; margin-right: 10px;">⚠️</span>
                 <h3 style="margin: 0; color: #856404;">Tunnisisekannete probleemid (${discrepancies.length})</h3>
-            </div>`
+            </div>
+            <table style="width: 100%; border-collapse: collapse; background: white;">
+                <thead>
+                    <tr style="background: #f8f9fa;">
+                        <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
+                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Algustund</th>
+                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tundide arv</th>
+                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tegevus</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${allDiscrepancies.map(discrepancy => {
+            if (discrepancy.type === 'missing_journal_entry') {
+                // Use the new grouped lesson information
+                const lessonNumbers = discrepancy.lessonNumbers || [discrepancy.lessonNumber]
+                const startLesson = discrepancy.lessonNumber
+                const lessonCount = discrepancy.lessonCount || 1
 
-        // Missing journal entries section
-        if (sortedMissing.length > 0) {
-            content += `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="margin: 0 0 10px 0; color: #856404;">Puuduvad tunnisisseukanded (${sortedMissing.length})</h4>
-                    <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
-                        Tunniplaanist leitud tunnid, millele ei vasta ühtegi päeviku sissekannet:
-                    </p>
-                    <table style="width: 100%; border-collapse: collapse; background: white; margin-bottom: 15px;">
-                        <thead>
-                            <tr style="background: #f8f9fa;">
-                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
-                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tunnid</th>
-                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kellaajad</th>
-                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tegevus</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${Object.keys(groupedMissing).sort().map(date => {
-                const dayMissing = groupedMissing[date]
-                // Keep all lesson numbers, but sort them - don't deduplicate
-                const lessonNumbers = dayMissing.map(d => d.lessonNumber).sort((a, b) => a - b)
-                const timeRanges = dayMissing.map(d => `${d.timeStart}-${d.timeEnd}`)
-                const buttonId = `add-missing-${date.replace(/\./g, '-')}`
+                const buttonId = `add-missing-${discrepancy.date.replace(/\./g, '-')}-${startLesson}`
 
                 return `
-                                <tr>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${lessonNumbers.join(', ')}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${timeRanges.join(', ')}</td>
+                                <tr style="background: #f8f9fa;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${startLesson}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${lessonCount}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
                                         <button 
                                             id="${buttonId}"
-                                            data-date="${date}"
+                                            data-date="${discrepancy.date}"
                                             data-lessons="${lessonNumbers.join(',')}"
+                                            data-start-lesson="${startLesson}"
+                                            data-lesson-count="${lessonCount}"
                                             style="
                                                 background: #28a745; 
                                                 color: white; 
@@ -685,123 +797,96 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                         </button>
                                     </td>
                                 </tr>`
-            }).join('')}
-                        </tbody>
-                    </table>
-                </div>`
-        }
+            } else if (discrepancy.type === 'multi_lesson_fix_needed') {
+                // Multi-lesson fix
+                const buttonId = `edit-multi-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
+                const currentStartLesson = parseInt(discrepancy.actualLessonNumber.match(/Algustund: (\d+)/)?.[1] || 1)
+                const currentLessonCount = parseInt(discrepancy.actualLessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
+                const correctStartLesson = discrepancy.correctStartLesson || parseInt(discrepancy.lessonNumber.match(/Algustund: (\d+)/)?.[1] || discrepancy.neededLessons[0])
+                const correctLessonCount = discrepancy.originalLessonCount || currentLessonCount
 
-        // Wrong lesson numbers and multi-lesson fixes combined section
-        if (sortedWrong.length > 0 || sortedMultiFixes.length > 0) {
-            const allFixes = [...sortedWrong, ...sortedMultiFixes].sort((a, b) => {
-                const dateA = new Date(a.date)
-                const dateB = new Date(b.date)
-                if (dateA.getTime() !== dateB.getTime()) {
-                    return dateA - dateB
-                }
-                const lessonA = a.type === 'multi_lesson_fix_needed' ? a.neededLessons[0] : a.lessonNumber
-                const lessonB = b.type === 'multi_lesson_fix_needed' ? b.neededLessons[0] : b.lessonNumber
-                return lessonA - lessonB
-            })
-
-            content += `
-                <div>
-                    <h4 style="margin: 0 0 10px 0; color: #856404;">Erinevused (${allFixes.length})</h4>
-                    <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
-                        Tunnid, mis vajavad korrigeerimist:
-                    </p>
-                    <table style="width: 100%; border-collapse: collapse; background: white;">
-                        <thead>
-                            <tr style="background: #fff2e6;">
-                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
-                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Erinevus</th>
-                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tegevus</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${allFixes.map(discrepancy => {
-                if (discrepancy.type === 'multi_lesson_fix_needed') {
-                    // Multi-lesson fix
-                    const buttonId = `edit-multi-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
-                    return `
-                                        <tr>
-                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                                <div style="margin-bottom: 4px;">
-                                                    <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px;">${discrepancy.actualLessonNumber}</span>
-                                                    <span style="color: #28a745; font-weight: bold; font-size: 14px;">${discrepancy.lessonNumber}</span>
-                                                </div>
-                                                <div style="padding: 2px 4px; background: #e6f3ff; border-radius: 2px; font-size: 11px; color: #0066cc;">
-                                                    Tunnid: ${discrepancy.neededLessons.join(', ')}
-                                                </div>
-                                            </td>
-                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                                <button 
-                                                    id="${buttonId}"
-                                                    data-date="${discrepancy.date}"
-                                                    data-entry-id="${discrepancy.entryId}"
-                                                    data-current="${discrepancy.actualLessonNumber}"
-                                                    data-correct="${discrepancy.lessonNumber}"
-                                                    data-type="multi_lesson_fix"
-                                                    data-lessons="${discrepancy.neededLessons.join(',')}"
-                                                    style="
-                                                        background: #ffc107; 
-                                                        color: #212529; 
-                                                        border: none; 
-                                                        padding: 4px 8px; 
-                                                        border-radius: 3px; 
-                                                        font-size: 12px; 
-                                                        cursor: pointer;
-                                                        font-weight: bold;
-                                                    "
-                                                    onmouseover="this.style.background='#e0a800'"
-                                                    onmouseout="this.style.background='#ffc107'"
-                                                >
-                                                    Muuda
-                                                </button>
-                                            </td>
-                                        </tr>`
-                } else {
-                    // Single lesson fix
-                    const buttonId = `edit-single-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
-                    return `
-                                        <tr>
-                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                                <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px;">Algustund: ${discrepancy.actualLessonNumber}</span>
-                                                <span style="color: #28a745; font-weight: bold; font-size: 14px;">Algustund: ${discrepancy.lessonNumber}</span>
-                                            </td>
-                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                                <button 
-                                                    id="${buttonId}"
-                                                    data-date="${discrepancy.date}"
-                                                    data-entry-id="${discrepancy.entryId}"
-                                                    data-current="${discrepancy.actualLessonNumber}"
-                                                    data-correct="${discrepancy.lessonNumber}"
-                                                    data-type="single_lesson_fix"
-                                                    style="
-                                                        background: #ffc107; 
-                                                        color: #212529; 
-                                                        border: none; 
-                                                        padding: 4px 8px; 
-                                                        border-radius: 3px; 
-                                                        font-size: 12px; 
-                                                        cursor: pointer;
-                                                        font-weight: bold;
-                                                    "
-                                                    onmouseover="this.style.background='#e0a800'"
-                                                    onmouseout="this.style.background='#ffc107'"
-                                                >
-                                                    Muuda
-                                                </button>
-                                            </td>
-                                        </tr>`
-                }
-            }).join('')}
-                        </tbody>
-                    </table>
-                </div>`
-        }
+                return `
+                                <tr style="background: #fff2e6;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
+                                        <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>
+                                    </td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        ${currentLessonCount !== correctLessonCount
+                        ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
+                                               <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                        : `<span style="font-size: 14px;">${correctLessonCount}</span>`
+                    }
+                                    </td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <button 
+                                            id="${buttonId}"
+                                            data-date="${discrepancy.date}"
+                                            data-entry-id="${discrepancy.entryId}"
+                                            data-current="${discrepancy.actualLessonNumber}"
+                                            data-correct="${discrepancy.lessonNumber}"
+                                            data-type="multi_lesson_fix"
+                                            data-lessons="${discrepancy.neededLessons.join(',')}"
+                                            style="
+                                                background: #ffc107; 
+                                                color: #212529; 
+                                                border: none; 
+                                                padding: 4px 8px; 
+                                                border-radius: 3px; 
+                                                font-size: 12px; 
+                                                cursor: pointer;
+                                                font-weight: bold;
+                                            "
+                                            onmouseover="this.style.background='#e0a800'"
+                                            onmouseout="this.style.background='#ffc107'"
+                                        >
+                                            Muuda
+                                        </button>
+                                    </td>
+                                </tr>`
+            } else {
+                // Single lesson fix (wrong_lesson_number)
+                const buttonId = `edit-single-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
+                return `
+                                <tr style="background: #fff2e6;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.actualLessonNumber}</span>
+                                        <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.lessonNumber}</span>
+                                    </td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <span style="font-size: 14px;">1</span>
+                                    </td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <button 
+                                            id="${buttonId}"
+                                            data-date="${discrepancy.date}"
+                                            data-entry-id="${discrepancy.entryId}"
+                                            data-current="${discrepancy.actualLessonNumber}"
+                                            data-correct="${discrepancy.lessonNumber}"
+                                            data-type="single_lesson_fix"
+                                            style="
+                                                background: #ffc107; 
+                                                color: #212529; 
+                                                border: none; 
+                                                padding: 4px 8px; 
+                                                border-radius: 3px; 
+                                                font-size: 12px; 
+                                                cursor: pointer;
+                                                font-weight: bold;
+                                            "
+                                            onmouseover="this.style.background='#e0a800'"
+                                            onmouseout="this.style.background='#ffc107'"
+                                        >
+                                            Muuda
+                                        </button>
+                                    </td>
+                                </tr>`
+            }
+        }).filter(row => row !== '').join('')}
+                </tbody>
+            </table>`
 
         container.innerHTML = content
         return container
@@ -861,26 +946,26 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     /**
      * Handle adding missing journal entries
      */
-    async handleAddMissingEntry(date, lessonNumbers) {
-        Logger.info(`[${this.name}] Adding missing entry for date: ${date}, lessons: ${lessonNumbers.join(', ')}`)
+    async handleAddMissingEntry(date, lessonNumbers, startLesson, lessonCount) {
+        Logger.info(`[${this.name}] Adding missing entry for date: ${date}, start lesson: ${startLesson}, lesson count: ${lessonCount}`)
 
         try {
             // Try to automatically open the add entry form and fill it out
-            await this.openAndFillAddEntryForm(date, lessonNumbers)
+            await this.openAndFillAddEntryForm(date, startLesson, lessonCount)
         } catch (error) {
             Logger.error(`[${this.name}] Error opening add entry form:`, error)
 
             // Fallback to instructions if automation fails
             const formattedDate = this.formatDisplayDate(date)
-            const lessonsText = lessonNumbers.length === 1 ? `tund ${lessonNumbers[0]}` : `tunnid ${lessonNumbers.join(', ')}`
-            alert(`Lisa sissekanne kuupäevale ${formattedDate} (${lessonsText})\n\nJuhised:\n1. Ava päeviku sissekannete leht\n2. Lisa uus sissekanne\n3. Määra õige kuupäev: ${formattedDate}\n4. Määra algustund: ${Math.min(...lessonNumbers)}\n5. Määra tundide arv: ${lessonNumbers.length}`)
+            const lessonsText = lessonCount === 1 ? `tund ${startLesson}` : `${lessonCount} tundi alates ${startLesson}. tunnist`
+            alert(`Lisa sissekanne kuupäevale ${formattedDate} (${lessonsText})\n\nJuhised:\n1. Ava päeviku sissekannete leht\n2. Lisa uus sissekanne\n3. Määra õige kuupäev: ${formattedDate}\n4. Määra algustund: ${startLesson}\n5. Määra tundide arv: ${lessonCount}`)
         }
     }
 
     /**
      * Open and fill the add entry form automatically
      */
-    async openAndFillAddEntryForm(date, lessonNumbers) {
+    async openAndFillAddEntryForm(date, startLesson, lessonCount) {
         Logger.debug(`[${this.name}] Attempting to open and fill add entry form`)
 
         // First, try to find and click the "Lisa sissekanne" button
@@ -893,7 +978,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         await this.waitForFormToOpen()
 
         // Fill out the form fields
-        await this.fillEntryForm(date, lessonNumbers)
+        await this.fillEntryForm(date, startLesson, lessonCount)
 
         Logger.info(`[${this.name}] Successfully opened and filled add entry form`)
     }
@@ -1042,12 +1127,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     /**
      * Fill out the entry form with the provided data
      */
-    async fillEntryForm(date, lessonNumbers) {
-        Logger.debug(`[${this.name}] Filling entry form with date: ${date}, lessons: ${lessonNumbers}`)
+    async fillEntryForm(date, startLesson, lessonCount) {
+        Logger.debug(`[${this.name}] Filling entry form with date: ${date}, start lesson: ${startLesson}, lesson count: ${lessonCount}`)
 
         const formattedDate = this.formatDisplayDate(date)
-        const minLesson = Math.min(...lessonNumbers)
-        const lessonCount = lessonNumbers.length
 
         // Fill entry type (Sissekande liik) - set to "Tund"
         await this.fillEntryTypeField()
@@ -1056,7 +1139,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         await this.fillDateField(formattedDate)
 
         // Fill start lesson number
-        await this.fillStartLessonField(minLesson)
+        await this.fillStartLessonField(startLesson)
 
         // Fill lesson count
         await this.fillLessonCountField(lessonCount)
@@ -1064,7 +1147,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Check "Auditoorne õpe" checkbox
         await this.checkAuditoriumLearningCheckbox()
 
-        Logger.info(`[${this.name}] Form filled successfully - Entry type: Tund, Date: ${formattedDate}, Start lesson: ${minLesson}, Count: ${lessonCount}, Auditoorne õpe: checked`)
+        Logger.info(`[${this.name}] Form filled successfully - Entry type: Tund, Date: ${formattedDate}, Start lesson: ${startLesson}, Count: ${lessonCount}, Auditoorne õpe: checked`)
     }
 
     /**
@@ -1454,6 +1537,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 const clickedButton = event.target
                 const date = clickedButton.getAttribute('data-date')
                 const lessonsStr = clickedButton.getAttribute('data-lessons')
+                const startLesson = parseInt(clickedButton.getAttribute('data-start-lesson'))
+                const lessonCount = parseInt(clickedButton.getAttribute('data-lesson-count'))
                 const lessonNumbers = lessonsStr.split(',').map(n => parseInt(n.trim()))
 
                 // Only disable and process the clicked button
@@ -1470,7 +1555,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 try {
                     Logger.debug(`[${this.name}] Processing button for date: ${date}`)
-                    await this.handleAddMissingEntry(date, lessonNumbers)
+                    await this.handleAddMissingEntry(date, lessonNumbers, startLesson, lessonCount)
                 } catch (error) {
                     Logger.error(`[${this.name}] Error processing button:`, error)
                 } finally {
