@@ -198,7 +198,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Calculate lesson number based on start time (like old extension)
+     * Calculate lesson number based on start time from timetable data
      */
     async calculateLessonNumber(timeStart, schoolId = 9) {
         // Fetch lesson times from local JSON
@@ -206,10 +206,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (!timeStart || !lessonTimes.length) return 1
 
-        // Convert timeStart to comparable format
+        // First, try to find exact match
+        for (const lessonTime of lessonTimes) {
+            if (lessonTime.timeStart === timeStart) {
+                console.log(`[${this.name}] Found exact match: ${timeStart} = lesson ${lessonTime.number}`)
+                return lessonTime.number
+            }
+        }
+
+        // If no exact match, find closest lesson time
+        console.log(`[${this.name}] No exact match for ${timeStart}, finding closest match`)
         const eventTime = new Date(`2021-01-01T${timeStart}`).getTime()
 
-        // Find closest lesson time
         let closestLesson = lessonTimes[0]
         let smallestDifference = Infinity
 
@@ -223,6 +231,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
         }
 
+        console.log(`[${this.name}] Closest match for ${timeStart}: lesson ${closestLesson.number} (${closestLesson.timeStart})`)
         return closestLesson.number
     }
 
