@@ -7,7 +7,7 @@ import Logger from '../services/Logger.js'
  * Provides a structured approach to loading features
  * @returns {Promise<Array>} Array of all features
  */
-export async function loadFeatures () {
+export async function loadFeatures() {
   Logger.debug('Loading features...')
 
   // Check if Kriit is enabled
@@ -42,8 +42,30 @@ export async function loadFeatures () {
     Logger.debug('Skipping feature journalListSync because it requires Kriit and Kriit is disabled')
   }
 
-  // TODO: Import non-Kriit features here (they should always be loaded)
+  // Load non-Kriit features here (they should always be loaded)
   
+  // Load warning triangles feature (always enabled)
+  try {
+    const WarningTrianglesFeature = (await import('../features/triangles/WarningTrianglesFeature.js')).default
+    const warningTrianglesFeature = new WarningTrianglesFeature()
+    allAvailableFeatures.journalList.push(warningTrianglesFeature)
+    Logger.debug('Feature "WarningTrianglesFeature" created')
+  } catch (error) {
+    Logger.error('Error loading WarningTrianglesFeature:', error)
+  }
+  
+  // Load missing lessons feature (always enabled)
+  // Temporarily disabled - using warning triangles instead
+  /*
+  try {
+    const { missingLessonsFeature } = await import('../features/missingLessons/MissingLessonsFeature.js')
+    allAvailableFeatures.singleJournal.push(missingLessonsFeature)
+    Logger.debug('Feature "MissingLessonsFeature" created')
+  } catch (error) {
+    Logger.error('Error loading MissingLessonsFeature:', error)
+  }
+  */
+
   // Load triangles debug feature (always enabled for debugging)
   try {
     const { trianglesDebugFeature } = await import('../features/triangles/TrianglesDebugFeature.js')
