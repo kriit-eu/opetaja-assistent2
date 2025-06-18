@@ -623,9 +623,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
             content += `
                 <div>
-                    <h4 style="margin: 0 0 10px 0; color: #856404;">Vale tunniaeg märgitud (${allFixes.length})</h4>
+                    <h4 style="margin: 0 0 10px 0; color: #856404;">Erinevused (${allFixes.length})</h4>
                     <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
-                        Tunnid, millel on sissekanne olemas, kuid vale tunninumbriga märgitud:
+                        Tunnid, mis vajavad korrigeerimist:
                     </p>
                     <table style="width: 100%; border-collapse: collapse; background: white;">
                         <thead>
