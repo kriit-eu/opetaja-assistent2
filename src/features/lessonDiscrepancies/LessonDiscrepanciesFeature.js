@@ -180,7 +180,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             // Get lesson times for the specific school ID
             const schoolLessonTimes = lessonTimesData[schoolId.toString()]
 
-            if (schoolLessonTimes && Array.isArray(schoolLessonTimes)) {
+            if (schoolLessonTimes) {
                 return schoolLessonTimes
             }
 
@@ -190,32 +190,58 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 return lessonTimesData['9']
             }
 
-            return []
+            return {}
         } catch (error) {
             Logger.warning(`[${this.name}] Error loading lesson times:`, error.message)
-            return []
+            return {}
         }
+    }
+
+    /**
+     * Determine if a timetable entry is for remote learning
+     * @param {Object} timetableEntry - The timetable entry object
+     * @returns {boolean} True if remote (no room assigned), false if in-person
+     */
+    isRemoteLesson(timetableEntry) {
+        // Remote lessons have no room assigned or empty rooms array
+        return !timetableEntry.rooms ||
+            timetableEntry.rooms.length === 0 ||
+            (Array.isArray(timetableEntry.rooms) && timetableEntry.rooms.every(room => !room || String(room).trim() === ''))
     }
 
     /**
      * Calculate lesson number based on start time from timetable data
      */
-    async calculateLessonNumber(timeStart, schoolId = 9) {
+    async calculateLessonNumber(timeStart, schoolId = 9, timetableEntry = null) {
         // Fetch lesson times from local JSON
-        const lessonTimes = await this.fetchLessonTimes(schoolId)
+        const schoolLessonTimes = await this.fetchLessonTimes(schoolId)
 
-        if (!timeStart || !lessonTimes.length) return 1
+        if (!timeStart || !schoolLessonTimes || Object.keys(schoolLessonTimes).length === 0) return 1
+
+        // Determine if this is a remote lesson
+        const isRemote = timetableEntry ? this.isRemoteLesson(timetableEntry) : false
+        const lessonSchedule = isRemote ? 'remote' : 'inPerson'
+
+        // Get the appropriate lesson times
+        const lessonTimes = schoolLessonTimes[lessonSchedule] || schoolLessonTimes.inPerson || []
+
+        if (!lessonTimes.length) {
+            Logger.warning(`[${this.name}] No lesson times found for schedule: ${lessonSchedule}`)
+            return 1
+        }
+
+        Logger.debug(`[${this.name}] Using ${lessonSchedule} schedule for time ${timeStart}`)
 
         // First, try to find exact match
         for (const lessonTime of lessonTimes) {
             if (lessonTime.timeStart === timeStart) {
-                console.log(`[${this.name}] Found exact match: ${timeStart} = lesson ${lessonTime.number}`)
+                console.log(`[${this.name}] Found exact match: ${timeStart} = lesson ${lessonTime.number} (${lessonSchedule})`)
                 return lessonTime.number
             }
         }
 
         // If no exact match, find closest lesson time
-        console.log(`[${this.name}] No exact match for ${timeStart}, finding closest match`)
+        console.log(`[${this.name}] No exact match for ${timeStart}, finding closest match in ${lessonSchedule} schedule`)
         const eventTime = new Date(`2021-01-01T${timeStart}`).getTime()
 
         let closestLesson = lessonTimes[0]
@@ -231,7 +257,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
         }
 
-        console.log(`[${this.name}] Closest match for ${timeStart}: lesson ${closestLesson.number} (${closestLesson.timeStart})`)
+        console.log(`[${this.name}] Closest match for ${timeStart}: lesson ${closestLesson.number} (${closestLesson.timeStart}) in ${lessonSchedule} schedule`)
         return closestLesson.number
     }
 
@@ -297,7 +323,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             if (timetableDateTime < now) {
                 // Calculate lesson number using local lesson times data
                 const schoolId = journalData.info.school?.id || 9
-                const correctLessonNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId)
+                const correctLessonNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId, timetableEntry)
 
                 // Create the lesson key for timetable entry
                 const correctLessonKey = `${timetableDate}_lesson_${correctLessonNumber}`
@@ -319,7 +345,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                             const entryLessonNumber = entryStartLesson + i
 
                             if (entryLessonNumber !== correctLessonNumber) {
-                                const entryExpectedTime = await this.getLessonTimeForNumber(entryLessonNumber, schoolId)
+                                const entryExpectedTime = await this.getLessonTimeForNumber(entryLessonNumber, schoolId, timetableEntry)
 
                                 // If this entry is for a different time, it might be a wrong lesson number
                                 if (entryExpectedTime && !this.timesAreClose(entryExpectedTime, timetableEntry.timeStart)) {
@@ -428,6 +454,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Insert into page
         insertionPoint.insertBefore(table, insertionPoint.firstChild)
 
+        // Add event listeners for "Lisa" buttons
+        this.addMissingEntryButtonListeners()
+
+        // Add event listeners for "Muuda" buttons
+        this.addEditEntryButtonListeners()
+
         Logger.debug(`[${this.name}] Discrepancies table inserted into page`)
     }
 
@@ -492,6 +524,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             return a.neededLessons[0] - b.neededLessons[0]
         })
 
+        // Sort and group missing entries by date
+        const groupedMissing = sortedMissing.reduce((groups, discrepancy) => {
+            const date = discrepancy.date
+            if (!groups[date]) {
+                groups[date] = []
+            }
+            groups[date].push(discrepancy)
+            return groups
+        }, {})
+
         const container = document.createElement('div')
         container.style.cssText = `
             background: #fff3cd;
@@ -520,18 +562,47 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                         <thead>
                             <tr style="background: #f8f9fa;">
                                 <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
-                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tund</th>
-                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kellaaeg</th>
+                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tunnid</th>
+                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kellaajad</th>
+                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tegevus</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${sortedMissing.map(discrepancy => `
+                            ${Object.keys(groupedMissing).sort().map(date => {
+                const dayMissing = groupedMissing[date]
+                // Keep all lesson numbers, but sort them - don't deduplicate
+                const lessonNumbers = dayMissing.map(d => d.lessonNumber).sort((a, b) => a - b)
+                const timeRanges = dayMissing.map(d => `${d.timeStart}-${d.timeEnd}`)
+                const buttonId = `add-missing-${date.replace(/\./g, '-')}`
+
+                return `
                                 <tr>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${discrepancy.lessonNumber}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
-                                </tr>
-                            `).join('')}
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${lessonNumbers.join(', ')}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${timeRanges.join(', ')}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <button 
+                                            id="${buttonId}"
+                                            data-date="${date}"
+                                            data-lessons="${lessonNumbers.join(',')}"
+                                            style="
+                                                background: #28a745; 
+                                                color: white; 
+                                                border: none; 
+                                                padding: 4px 8px; 
+                                                border-radius: 3px; 
+                                                font-size: 12px; 
+                                                cursor: pointer;
+                                                font-weight: bold;
+                                            "
+                                            onmouseover="this.style.background='#218838'"
+                                            onmouseout="this.style.background='#28a745'"
+                                        >
+                                            Lisa
+                                        </button>
+                                    </td>
+                                </tr>`
+            }).join('')}
                         </tbody>
                     </table>
                 </div>`
@@ -561,12 +632,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                             <tr style="background: #fff2e6;">
                                 <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
                                 <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Erinevus</th>
+                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tegevus</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${allFixes.map(discrepancy => {
                 if (discrepancy.type === 'multi_lesson_fix_needed') {
                     // Multi-lesson fix
+                    const buttonId = `edit-multi-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
                     return `
                                         <tr>
                                             <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
@@ -579,15 +652,65 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                                     Tunnid: ${discrepancy.neededLessons.join(', ')}
                                                 </div>
                                             </td>
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                                <button 
+                                                    id="${buttonId}"
+                                                    data-date="${discrepancy.date}"
+                                                    data-entry-id="${discrepancy.entryId}"
+                                                    data-current="${discrepancy.actualLessonNumber}"
+                                                    data-correct="${discrepancy.lessonNumber}"
+                                                    data-type="multi_lesson_fix"
+                                                    data-lessons="${discrepancy.neededLessons.join(',')}"
+                                                    style="
+                                                        background: #ffc107; 
+                                                        color: #212529; 
+                                                        border: none; 
+                                                        padding: 4px 8px; 
+                                                        border-radius: 3px; 
+                                                        font-size: 12px; 
+                                                        cursor: pointer;
+                                                        font-weight: bold;
+                                                    "
+                                                    onmouseover="this.style.background='#e0a800'"
+                                                    onmouseout="this.style.background='#ffc107'"
+                                                >
+                                                    Muuda
+                                                </button>
+                                            </td>
                                         </tr>`
                 } else {
                     // Single lesson fix
+                    const buttonId = `edit-single-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
                     return `
                                         <tr>
                                             <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                             <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
                                                 <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px;">Algustund: ${discrepancy.actualLessonNumber}</span>
                                                 <span style="color: #28a745; font-weight: bold; font-size: 14px;">Algustund: ${discrepancy.lessonNumber}</span>
+                                            </td>
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                                <button 
+                                                    id="${buttonId}"
+                                                    data-date="${discrepancy.date}"
+                                                    data-entry-id="${discrepancy.entryId}"
+                                                    data-current="${discrepancy.actualLessonNumber}"
+                                                    data-correct="${discrepancy.lessonNumber}"
+                                                    data-type="single_lesson_fix"
+                                                    style="
+                                                        background: #ffc107; 
+                                                        color: #212529; 
+                                                        border: none; 
+                                                        padding: 4px 8px; 
+                                                        border-radius: 3px; 
+                                                        font-size: 12px; 
+                                                        cursor: pointer;
+                                                        font-weight: bold;
+                                                    "
+                                                    onmouseover="this.style.background='#e0a800'"
+                                                    onmouseout="this.style.background='#ffc107'"
+                                                >
+                                                    Muuda
+                                                </button>
                                             </td>
                                         </tr>`
                 }
@@ -604,8 +727,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     /**
      * Get the start time for a specific lesson number
      */
-    async getLessonTimeForNumber(lessonNumber, schoolId = 9) {
-        const lessonTimes = await this.fetchLessonTimes(schoolId)
+    async getLessonTimeForNumber(lessonNumber, schoolId = 9, timetableEntry = null) {
+        const schoolLessonTimes = await this.fetchLessonTimes(schoolId)
+
+        if (!schoolLessonTimes || Object.keys(schoolLessonTimes).length === 0) {
+            return null
+        }
+
+        // Determine if this should use remote or in-person schedule
+        const isRemote = timetableEntry ? this.isRemoteLesson(timetableEntry) : false
+        const lessonSchedule = isRemote ? 'remote' : 'inPerson'
+
+        // Get the appropriate lesson times
+        const lessonTimes = schoolLessonTimes[lessonSchedule] || schoolLessonTimes.inPerson || []
+
         const lessonTime = lessonTimes.find(lt => lt.number === lessonNumber)
         return lessonTime ? lessonTime.timeStart : null
     }
@@ -642,5 +777,83 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         const month = (date.getMonth() + 1).toString().padStart(2, '0')
         const year = date.getFullYear()
         return `${day}.${month}.${year}`
+    }
+
+    /**
+     * Handle adding missing journal entries
+     */
+    handleAddMissingEntry(date, lessonNumbers) {
+        Logger.info(`[${this.name}] Adding missing entry for date: ${date}, lessons: ${lessonNumbers.join(', ')}`)
+
+        // Create a more user-friendly alert with instructions
+        const formattedDate = this.formatDisplayDate(date)
+        const lessonsText = lessonNumbers.length === 1 ? `tund ${lessonNumbers[0]}` : `tunnid ${lessonNumbers.join(', ')}`
+
+        alert(`Lisa sissekanne kuupäevale ${formattedDate} (${lessonsText})\n\nJuhised:\n1. Ava päeviku sissekannete leht\n2. Lisa uus sissekanne\n3. Määra õige kuupäev: ${formattedDate}\n4. Määra algustund: ${Math.min(...lessonNumbers)}\n5. Määra tundide arv: ${lessonNumbers.length}`)
+
+        // Optional: You could also try to navigate to the journal entry page
+        // or pre-fill a form if the application supports it
+    }
+
+    /**
+     * Add event listeners for missing entry buttons
+     */
+    addMissingEntryButtonListeners() {
+        // Find all "Lisa" buttons and add event listeners
+        const buttons = document.querySelectorAll('button[id^="add-missing-"]')
+        buttons.forEach(button => {
+            button.addEventListener('click', (event) => {
+                const date = event.target.getAttribute('data-date')
+                const lessonsStr = event.target.getAttribute('data-lessons')
+                const lessonNumbers = lessonsStr.split(',').map(n => parseInt(n.trim()))
+                this.handleAddMissingEntry(date, lessonNumbers)
+            })
+        })
+
+        Logger.debug(`[${this.name}] Added event listeners to ${buttons.length} Lisa buttons`)
+    }
+
+    /**
+     * Add event listeners for edit entry buttons
+     */
+    addEditEntryButtonListeners() {
+        // Find all "Muuda" buttons and add event listeners
+        const buttons = document.querySelectorAll('button[id^="edit-"]')
+        buttons.forEach(button => {
+            button.addEventListener('click', (event) => {
+                const date = event.target.getAttribute('data-date')
+                const entryId = event.target.getAttribute('data-entry-id')
+                const current = event.target.getAttribute('data-current')
+                const correct = event.target.getAttribute('data-correct')
+                const type = event.target.getAttribute('data-type')
+                const lessons = event.target.getAttribute('data-lessons')
+
+                this.handleEditEntry(date, entryId, current, correct, type, lessons)
+            })
+        })
+
+        Logger.debug(`[${this.name}] Added event listeners to ${buttons.length} Muuda buttons`)
+    }
+
+    /**
+     * Handle editing journal entries
+     */
+    handleEditEntry(date, entryId, current, correct, type, lessons) {
+        Logger.info(`[${this.name}] Editing entry for date: ${date}, entry ID: ${entryId}, type: ${type}`)
+
+        const formattedDate = this.formatDisplayDate(date)
+
+        if (type === 'multi_lesson_fix') {
+            const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
+            const minLesson = Math.min(...lessonNumbers)
+            const lessonCount = lessonNumbers.length
+
+            alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${lessonCount}\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
+        } else {
+            const currentLesson = current.replace('Algustund: ', '')
+            const correctLesson = correct.replace('Algustund: ', '')
+
+            alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune algustund: ${currentLesson}\nUus algustund: ${correctLesson}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund väärtuselt ${currentLesson} väärtusele ${correctLesson}`)
+        }
     }
 }
