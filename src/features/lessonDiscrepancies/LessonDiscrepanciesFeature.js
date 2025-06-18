@@ -522,7 +522,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kuupäev</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Tund</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kellaaeg</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Aine</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -531,7 +530,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                     <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">${discrepancy.lessonNumber}</td>
                                     <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.name}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -563,8 +561,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                             <tr style="background: #fff2e6;">
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kuupäev</th>
                                 <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Erinevus</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kellaaeg</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Aine</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -574,35 +570,25 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     return `
                                         <tr>
                                             <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">
-                                                <div style="margin-bottom: 5px; padding: 5px; background: #f8d7da; border-radius: 3px; font-weight: bold;">
-                                                    ❌ ${discrepancy.actualLessonNumber}
+                                            <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">
+                                                <div style="margin-bottom: 8px;">
+                                                    <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 10px; font-size: 16px;">${discrepancy.actualLessonNumber}</span>
+                                                    <span style="color: #28a745; font-weight: bold; font-size: 16px;">${discrepancy.lessonNumber}</span>
                                                 </div>
-                                                <div style="padding: 5px; background: #d4edda; border-radius: 3px; font-weight: bold;">
-                                                    ✅ ${discrepancy.lessonNumber}
-                                                </div>
-                                                <div style="margin-top: 5px; padding: 3px; background: #e6f3ff; border-radius: 3px; font-size: 12px;">
+                                                <div style="padding: 3px; background: #e6f3ff; border-radius: 3px; font-size: 12px; color: #0066cc;">
                                                     Tunnid: ${discrepancy.neededLessons.join(', ')}
                                                 </div>
                                             </td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart}</td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.name}</td>
                                         </tr>`
                 } else {
                     // Single lesson fix
                     return `
                                         <tr>
                                             <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">
-                                                <div style="margin-bottom: 5px; padding: 5px; background: #f8d7da; border-radius: 3px; font-weight: bold;">
-                                                    ❌ Algustund: ${discrepancy.actualLessonNumber}
-                                                </div>
-                                                <div style="padding: 5px; background: #d4edda; border-radius: 3px; font-weight: bold;">
-                                                    ✅ Algustund: ${discrepancy.lessonNumber}
-                                                </div>
+                                            <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">
+                                                <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 10px; font-size: 16px;">Algustund: ${discrepancy.actualLessonNumber}</span>
+                                                <span style="color: #28a745; font-weight: bold; font-size: 16px;">Algustund: ${discrepancy.lessonNumber}</span>
                                             </td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.name}</td>
                                         </tr>`
                 }
             }).join('')}
