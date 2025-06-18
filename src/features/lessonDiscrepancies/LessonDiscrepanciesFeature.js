@@ -519,17 +519,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     <table style="width: 100%; border-collapse: collapse; background: white; margin-bottom: 15px;">
                         <thead>
                             <tr style="background: #f8f9fa;">
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kuupäev</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Tund</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kellaaeg</th>
+                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
+                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tund</th>
+                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kellaaeg</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${sortedMissing.map(discrepancy => `
                                 <tr>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">${discrepancy.lessonNumber}</td>
-                                    <td style="padding: 10px; border: 1px solid #dee2e6;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${discrepancy.lessonNumber}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${discrepancy.timeStart} - ${discrepancy.timeEnd}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -559,8 +559,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     <table style="width: 100%; border-collapse: collapse; background: white;">
                         <thead>
                             <tr style="background: #fff2e6;">
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Kuupäev</th>
-                                <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6;">Erinevus</th>
+                                <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
+                                <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Erinevus</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -569,13 +569,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     // Multi-lesson fix
                     return `
                                         <tr>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">
-                                                <div style="margin-bottom: 8px;">
-                                                    <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 10px; font-size: 16px;">${discrepancy.actualLessonNumber}</span>
-                                                    <span style="color: #28a745; font-weight: bold; font-size: 16px;">${discrepancy.lessonNumber}</span>
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                                <div style="margin-bottom: 4px;">
+                                                    <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px;">${discrepancy.actualLessonNumber}</span>
+                                                    <span style="color: #28a745; font-weight: bold; font-size: 14px;">${discrepancy.lessonNumber}</span>
                                                 </div>
-                                                <div style="padding: 3px; background: #e6f3ff; border-radius: 3px; font-size: 12px; color: #0066cc;">
+                                                <div style="padding: 2px 4px; background: #e6f3ff; border-radius: 2px; font-size: 11px; color: #0066cc;">
                                                     Tunnid: ${discrepancy.neededLessons.join(', ')}
                                                 </div>
                                             </td>
@@ -584,10 +584,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     // Single lesson fix
                     return `
                                         <tr>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                            <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center;">
-                                                <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 10px; font-size: 16px;">Algustund: ${discrepancy.actualLessonNumber}</span>
-                                                <span style="color: #28a745; font-weight: bold; font-size: 16px;">Algustund: ${discrepancy.lessonNumber}</span>
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                                <span style="color: #dc3545; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px;">Algustund: ${discrepancy.actualLessonNumber}</span>
+                                                <span style="color: #28a745; font-weight: bold; font-size: 14px;">Algustund: ${discrepancy.lessonNumber}</span>
                                             </td>
                                         </tr>`
                 }
