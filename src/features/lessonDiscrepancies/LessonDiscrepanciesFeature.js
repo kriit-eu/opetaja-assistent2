@@ -968,7 +968,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 const buttonId = `add-missing-${discrepancy.date.replace(/\./g, '-')}-${startLesson}`
 
                 return `
-                                <tr style="background: #f8f9fa;">
+                                <tr style="background: white;">
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${startLesson}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${lessonCount}</td>
@@ -1097,7 +1097,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 }).join('')
 
                 return `
-                                <tr style="background: #fff2e6;">
+                                <tr style="background: white;">
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
@@ -1125,7 +1125,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     : `<span style="font-size: 14px;">${correctLessonCount}</span>`
 
                 return `
-                                <tr style="background: #fff2e6;">
+                                <tr style="background: white;">
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
@@ -1159,7 +1159,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 // Single lesson fix (wrong_lesson_number)
                 const buttonId = `edit-single-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
                 return `
-                                <tr style="background: #fff2e6;">
+                                <tr style="background: white;">
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
                                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.actualLessonNumber}</span>
