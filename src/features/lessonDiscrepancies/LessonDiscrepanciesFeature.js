@@ -283,7 +283,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     }
                 )
             })
-            console.log(`[${this.name}] DEBUG: Loaded lesson times data:`, lessonTimesData)
 
             Logger.debug(`[${this.name}] Loaded lesson times for school ${schoolId}:`, lessonTimesData)
 
@@ -326,13 +325,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // First, try to find exact match
         for (const lessonTime of lessonTimes) {
             if (lessonTime.timeStart === timeStart) {
-                console.log(`[${this.name}] Found exact match: ${timeStart} = lesson ${lessonTime.number}`)
                 return lessonTime.number
             }
         }
 
         // If no exact match, find closest lesson time
-        console.log(`[${this.name}] No exact match for ${timeStart}, finding closest match`)
         const eventTime = new Date(`2021-01-01T${timeStart}`).getTime()
 
         let closestLesson = lessonTimes[0]
@@ -347,8 +344,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 closestLesson = lessonTime
             }
         }
-
-        console.log(`[${this.name}] Closest match for ${timeStart}: lesson ${closestLesson.number} (${closestLesson.timeStart})`)
         return closestLesson.number
     }
 
@@ -1275,17 +1270,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      */
     async handleAddMissingEntry(date, lessonNumbers, startLesson, lessonCount) {
         Logger.info(`[${this.name}] Adding missing entry for date: ${date}, start lesson: ${startLesson}, lesson count: ${lessonCount}`)
-
         try {
             // Try to automatically open the add entry form and fill it out
             await this.openAndFillAddEntryForm(date, startLesson, lessonCount)
         } catch (error) {
             Logger.error(`[${this.name}] Error opening add entry form:`, error)
 
-            // Fallback to instructions if automation fails
-            const formattedDate = this.formatDisplayDate(date)
-            const lessonsText = lessonCount === 1 ? `tund ${startLesson}` : `${lessonCount} tundi alates ${startLesson}. tunnist`
-            alert(`Lisa sissekanne kuupäevale ${formattedDate} (${lessonsText})\n\nJuhised:\n1. Ava päeviku sissekannete leht\n2. Lisa uus sissekanne\n3. Määra õige kuupäev: ${formattedDate}\n4. Määra algustund: ${startLesson}\n5. Määra tundide arv: ${lessonCount}`)
         }
     }
 
@@ -1964,38 +1954,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      */
     async handleEditEntry(date, entryId, current, correct, type, lessons) {
         Logger.info(`[${this.name}] Editing entry for date: ${date}, entry ID: ${entryId}, type: ${type}`)
-
         try {
             // Try to automatically find and edit the journal entry
             await this.openAndEditJournalEntry(date, entryId, current, correct, type, lessons)
         } catch (error) {
             Logger.error(`[${this.name}] Error opening edit entry form:`, error)
 
-            // Enhanced fallback instructions for different button types
-            const formattedDate = this.formatDisplayDate(date)
-
-            if (type === 'smart_multi_lesson_fix') {
-                const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-                const minLesson = Math.min(...lessonNumbers)
-                const targetCount = this.getSmartTargetLessonCount() || lessonNumbers.length
-
-                alert(`Muuda sissekannet kuupäeval ${formattedDate} (Nutikas lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${targetCount} (nutikalt arvutatud)\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
-            } else if (type === 'multi_entry_lesson_fix') {
-                const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-
-                alert(`Muuda sissekannet kuupäeval ${formattedDate} (Mitme sissekande lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Määra ise algustund ja tundide arv\n3. Väljad ei ole eeltäidetud - otsusta ise sobivad väärtused\n4. Vajalikud tunnid kokku: ${lessonNumbers.join(', ')}`)
-            } else if (type === 'multi_lesson_fix') {
-                const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-                const minLesson = Math.min(...lessonNumbers)
-                const lessonCount = lessonNumbers.length
-
-                alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${lessonCount}\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
-            } else {
-                const currentLesson = current.replace('Algustund: ', '')
-                const correctLesson = correct.replace('Algustund: ', '')
-
-                alert(`Muuda sissekannet kuupäeval ${formattedDate}\n\nPraegune algustund: ${currentLesson}\nUus algustund: ${correctLesson}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund väärtuselt ${currentLesson} väärtusele ${correctLesson}`)
-            }
         }
     }
 
