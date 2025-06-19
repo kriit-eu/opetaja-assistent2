@@ -1092,7 +1092,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                 onmouseover="this.style.background='#5a6268'"
                                 onmouseout="this.style.background='#6c757d'"
                             >
-                                Muuda (${entry.startLesson}) (${entry.lessonCount})
+                                Muuda ${entry.startLesson}. (${entry.lessonCount}t)
                             </button>`
                 }).join('')
 
@@ -2360,10 +2360,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             // for their specific journal entry without automatic interference
 
         } else if (type === 'single_lesson_fix') {
-            Logger.debug(`[${this.name}] Single lesson fix: keeping existing start lesson (no changes)`)
+            const correctLesson = parseInt(correct.replace('Algustund: ', ''))
 
-            // Do NOT change start lesson - keep existing value
-            // User can manually adjust if needed
+            Logger.debug(`[${this.name}] Single lesson fix: updating start lesson to ${correctLesson} (no multiple buttons)`)
+
+            // Update the start lesson number since this is a single lesson fix (not multiple entries)
+            await this.fillStartLessonField(correctLesson)
         }
 
         Logger.info(`[${this.name}] Edit form filled successfully - starting lesson number preserved`)
