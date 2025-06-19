@@ -1008,13 +1008,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 // Enhanced display logic - Issue 1 fix: Only show differences when they exist
                 const startLessonDisplay = currentStartLesson !== correctStartLesson
-                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
-                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>`
+                    ? `<div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${currentStartLesson}</span>
+                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${correctStartLesson}</span>
+                       </div>`
                     : `<span style="font-size: 14px;">${correctStartLesson}</span>`
 
                 const lessonCountDisplay = currentLessonCount !== correctLessonCount
-                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
-                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                    ? `<div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${currentLessonCount}</span>
+                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${correctLessonCount}</span>
+                       </div>`
                     : `<span style="font-size: 14px;">${correctLessonCount}</span>`
 
                 return `
@@ -1058,13 +1062,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 // Enhanced display logic - Issue 1 fix: Only show differences when they exist
                 const startLessonDisplay = currentStartLesson !== correctStartLesson
-                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
-                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>`
+                    ? `<div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${currentStartLesson}</span>
+                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${correctStartLesson}</span>
+                       </div>`
                     : `<span style="font-size: 14px;">${correctStartLesson}</span>`
 
                 const lessonCountDisplay = currentLessonCount !== correctLessonCount
-                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
-                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                    ? `<div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${currentLessonCount}</span>
+                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${correctLessonCount}</span>
+                       </div>`
                     : `<span style="font-size: 14px;">${correctLessonCount}</span>`
 
                 // Generate multiple buttons for each entry
@@ -1118,13 +1126,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 // Enhanced display logic - Issue 1 fix: Only show differences when they exist
                 const startLessonDisplay = currentStartLesson !== correctStartLesson
-                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
-                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>`
+                    ? `<div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${currentStartLesson}</span>
+                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${correctStartLesson}</span>
+                       </div>`
                     : `<span style="font-size: 14px;">${correctStartLesson}</span>`
 
                 const lessonCountDisplay = currentLessonCount !== correctLessonCount
-                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
-                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                    ? `<div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${currentLessonCount}</span>
+                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${correctLessonCount}</span>
+                       </div>`
                     : `<span style="font-size: 14px;">${correctLessonCount}</span>`
 
                 return `
@@ -1165,8 +1177,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                 <tr style="background: white;">
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 70px;">
-                                        <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.actualLessonNumber}</span>
-                                        <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.lessonNumber}</span>
+                                        <div style="display: inline-flex; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                                            <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; font-size: 14px; padding: 4px 8px;">${discrepancy.actualLessonNumber}</span>
+                                            <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 4px 8px;">${discrepancy.lessonNumber}</span>
+                                        </div>
                                     </td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 80px;">
                                         <span style="font-size: 14px;">1</span>
