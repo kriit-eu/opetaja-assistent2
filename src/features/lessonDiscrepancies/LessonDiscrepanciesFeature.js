@@ -941,7 +941,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             padding: 15px;
             margin: 20px 0;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            width: 50%;
+            width: 600px;
+            min-width: 430px;
         `
 
         let content = `
@@ -949,13 +950,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 <span style="font-size: 20px; margin-right: 10px;">⚠️</span>
                 <h3 style="margin: 0; color: #856404;">Tunnisissekannete probleemid (${discrepancies.length})</h3>
             </div>
-            <table style="width: 100%; border-collapse: collapse; background: white;">
+            <table style="width: 600px; border-collapse: collapse; background: white;">
                 <thead>
                     <tr style="background: #f8f9fa;">
-                        <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px;">Kuupäev</th>
-                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Algustund</th>
-                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tundide arv</th>
-                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px;">Tegevus</th>
+                        <th style="padding: 6px 8px; text-align: left; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">Kuupäev</th>
+                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px; width: 70px;">Algustund</th>
+                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">Tundide arv</th>
+                        <th style="padding: 6px 8px; text-align: center; border: 1px solid #dee2e6; font-size: 14px; width: 200px;">Tegevus</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -970,10 +971,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 return `
                                 <tr style="background: white;">
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${startLesson}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${lessonCount}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold; width: 70px;">${startLesson}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold; width: 80px;">${lessonCount}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 200px;">
                                         <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
@@ -1018,10 +1019,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 return `
                                 <tr style="background: #fff2e6;">
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 70px;">${startLessonDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 80px;">${lessonCountDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 200px;">
                                         <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
@@ -1080,8 +1081,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                 data-lessons="${discrepancy.neededLessons.join(',')}"
                                 data-entry-lesson-count="${entry.lessonCount}"
                                 style="
-                                    background: #6c757d;
-                                    color: white;
+                                    background: #ffc107;
+                                    color: #212529;
                                     border: none;
                                     padding: 4px 8px;
                                     border-radius: 3px;
@@ -1089,9 +1090,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                     cursor: pointer;
                                     font-weight: bold;
                                     margin-right: 4px;
+                                    margin-bottom: 4px;
                                 "
-                                onmouseover="this.style.background='#5a6268'"
-                                onmouseout="this.style.background='#6c757d'"
+                                onmouseover="this.style.background='#e0a800'"
+                                onmouseout="this.style.background='#ffc107'"
                             >
                                 Muuda ${entry.startLesson}. (${entry.lessonCount}t)
                             </button>`
@@ -1099,10 +1101,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 return `
                                 <tr style="background: white;">
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 70px;">${startLessonDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 80px;">${lessonCountDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; vertical-align: middle; width: 200px;">
                                         ${buttonsHtml}
                                     </td>
                                 </tr>`
@@ -1127,10 +1129,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 return `
                                 <tr style="background: white;">
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 70px;">${startLessonDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 80px;">${lessonCountDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 200px;">
                                         <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
@@ -1161,15 +1163,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 const buttonId = `edit-single-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
                 return `
                                 <tr style="background: white;">
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 70px;">
                                         <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.actualLessonNumber}</span>
                                         <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${discrepancy.lessonNumber}</span>
                                     </td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 80px;">
                                         <span style="font-size: 14px;">1</span>
                                     </td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 200px;">
                                         <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
