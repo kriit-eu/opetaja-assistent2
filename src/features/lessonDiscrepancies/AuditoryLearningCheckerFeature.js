@@ -198,9 +198,9 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
             })
             if (saveButton) {
                 saveButton.click()
-                Logger.info(`[${this.name}] Clicked save button for entry ${entry.id}`)
+                Logger.info(`[${this.name}] Clicked save button for entry date ${this.formatDisplayDate(entry.date)}`)
             } else {
-                Logger.warning(`[${this.name}] Could not find save button after checking Auditoorne õpe for entry ${entry.id}`)
+                Logger.warning(`[${this.name}] Could not find save button after checking Auditoorne õpe for entry date ${this.formatDisplayDate(entry.date)}`)
             }
             // Wait for save to complete and dialog to close
             await this.delay(1500)
@@ -212,13 +212,10 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
     }
 
     async openAndEditJournalEntry(date, entryId) {
-        // Reuse logic from LessonDiscrepanciesFeature to find and open the entry
-        const entryElement = await this.findJournalEntryElement(entryId, this.formatDate(date))
+        // Use the robust logic from LessonDiscrepanciesFeature to find and open the entry
+        const entryElement = await this.findJournalEntryElement(entryId, date)
         if (!entryElement) throw new Error('Entry element not found')
         await this.clickJournalEntry(entryElement)
-        await this.waitForEditFormToOpen()
-        await this.checkAuditoriumLearningCheckbox()
-        // Optionally, save the form (could trigger save button click here)
     }
 
     // --- Utility methods (reuse from LessonDiscrepanciesFeature) ---
@@ -302,31 +299,133 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
 
     // --- The following methods are copied from LessonDiscrepanciesFeature for reuse ---
     async findJournalEntryElement(entryId, date) {
-        // Try to find the journal entry element by matching the date (DD.MM or DD.MM.YYYY) and entryId
-        const formattedDate = this.formatDisplayDate(date)
-        const shortDate = formattedDate.slice(0, 5) // 'DD.MM'
-        // Look for spans with the date (short format) and editJournalEntry ng-click in the parent row
-        const dateSpans = document.querySelectorAll('span[ng-if*="journalEntry.entryType.code"]')
-        for (const span of dateSpans) {
-            if (span.textContent.trim() === shortDate) {
-                // Try to find the edit button in the same row or parent
-                let row = span.closest('tr') || span.parentElement
-                if (row) {
-                    const editBtn = row.querySelector('[ng-click*="editJournalEntry"]')
-                    if (editBtn) return editBtn
-                }
-            }
-        }
-        // Fallback: try to find by entryId in data attributes or text
+        Logger.debug(`[${this.name}] Looking for journal entry with ID: ${entryId} on date: ${date}`)
+
+        // Quick debug: Log available editJournalEntry elements
         const allEditElements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
-        for (const el of allEditElements) {
-            if (el.getAttribute('data-entry-id') == entryId || el.id == entryId || el.textContent.includes(entryId)) {
-                return el
+        Logger.debug(`[${this.name}] Found ${allEditElements.length} total editJournalEntry elements`)
+
+        // Look for journal entry elements using streamlined strategies
+        const strategies = [
+            // Strategy 1: Primary - Date-based span matching with position intelligence (PROVEN TO WORK)
+            () => {
+                const formattedDate = this.formatDisplayDate(date)
+                const shortDate = formattedDate.slice(0, 5) // 'DD.MM'
+                Logger.debug(`[${this.name}] Strategy 1: Looking for date ${formattedDate} or ${shortDate} in journal table`)
+
+                // Look for spans with the date that have editJournalEntry ng-click
+                const dateSpans = document.querySelectorAll('span[ng-click*="editJournalEntry"]')
+                const matchingSpans = Array.from(dateSpans).filter(span => {
+                    const spanText = span.textContent.trim()
+                    return spanText === formattedDate || spanText === shortDate
+                })
+
+                Logger.debug(`[${this.name}] Strategy 1: Found ${matchingSpans.length} spans with matching date`)
+
+                if (matchingSpans.length === 1) {
+                    Logger.debug(`[${this.name}] Strategy 1: Single match found, using it`)
+                    return matchingSpans[0]
+                } else if (matchingSpans.length > 1) {
+                    Logger.debug(`[${this.name}] Strategy 1: Multiple matches found, using position intelligence`)
+                    return this.findSpecificJournalEntryByPosition(matchingSpans, entryId, date)
+                }
+
+                return null
+            },
+            // Strategy 2: Table row matching
+            () => {
+                const formattedDate = this.formatDisplayDate(date)
+                const shortDate = formattedDate.slice(0, 5) // 'DD.MM'
+                Logger.debug(`[${this.name}] Strategy 2: Looking for table rows with date ${formattedDate} or ${shortDate}`)
+
+                const tableRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
+                const matchingRows = Array.from(tableRows).filter(row => {
+                    const rowText = row.textContent
+                    return rowText.includes(formattedDate) || rowText.includes(shortDate)
+                })
+
+                Logger.debug(`[${this.name}] Strategy 2: Found ${matchingRows.length} rows with matching date`)
+
+                if (matchingRows.length === 1) {
+                    Logger.debug(`[${this.name}] Strategy 2: Single match found, using it`)
+                    return matchingRows[0]
+                } else if (matchingRows.length > 1) {
+                    Logger.debug(`[${this.name}] Strategy 2: Multiple matches found, using position intelligence`)
+                    return this.findSpecificJournalEntryByPosition(matchingRows, entryId, date)
+                }
+
+                return null
+            },
+            // Strategy 3: Any element matching (fallback)
+            () => {
+                Logger.debug(`[${this.name}] Strategy 3: Fallback - looking for any editJournalEntry element`)
+                if (allEditElements.length === 1) {
+                    Logger.debug(`[${this.name}] Strategy 3: Only one edit element found, using it`)
+                    return allEditElements[0]
+                }
+                return null
+            }
+        ]
+
+        for (let i = 0; i < strategies.length; i++) {
+            const strategy = strategies[i]
+            const result = strategy()
+            if (result) {
+                Logger.debug(`[${this.name}] ✅ Strategy ${i + 1} succeeded, found entry element`)
+                return result
+            } else {
+                Logger.debug(`[${this.name}] ❌ Strategy ${i + 1} failed`)
             }
         }
-        // Fallback: return the first element if only one entry for the date
-        if (allEditElements.length === 1) return allEditElements[0]
+
+        // If we still haven't found it, provide simplified debugging info
+        Logger.warning(`[${this.name}] ❌ Could not find journal entry ${entryId} on date ${date}`)
+        Logger.debug(`[${this.name}] Available editJournalEntry elements: ${allEditElements.length}`)
+        Logger.debug(`[${this.name}] Date spans found: ${document.querySelectorAll('span[ng-click*="editJournalEntry"]').length}`)
+        Logger.debug(`[${this.name}] Table rows found: ${document.querySelectorAll('tr[ng-click*="editJournalEntry"]').length}`)
+
         return null
+    }
+
+    /**
+     * Find specific journal entry by position when multiple entries exist for the same date
+     */
+    findSpecificJournalEntryByPosition(matchingElements, targetEntryId, date) {
+        Logger.debug(`[${this.name}] Finding specific entry ${targetEntryId} among ${matchingElements.length} elements for date ${date}`)
+
+        // Get all journal entries for this date from our data
+        const journalData = this.lastJournalData
+        if (!journalData || !journalData.entries) {
+            Logger.warning(`[${this.name}] No journal data available for position matching`)
+            return matchingElements[0] // Fallback to first
+        }
+
+        // Find all entries for this date and sort them by ID
+        const entriesForDate = journalData.entries
+            .filter(entry => this.formatDate(entry.entryDate) === date && entry.entryType === 'SISSEKANNE_T')
+            .sort((a, b) => a.id - b.id)
+
+        Logger.debug(`[${this.name}] Found ${entriesForDate.length} journal entries for date ${date}:`,
+            entriesForDate.map(e => ({ id: e.id, lessons: e.lessons || 1 })))
+
+        // Find the index of our target entry ID
+        const targetIndex = entriesForDate.findIndex(entry => entry.id.toString() === targetEntryId.toString())
+
+        if (targetIndex === -1) {
+            Logger.warning(`[${this.name}] Target entry ${targetEntryId} not found in journal data, using first element`)
+            return matchingElements[0]
+        }
+
+        Logger.debug(`[${this.name}] Target entry ${targetEntryId} is at index ${targetIndex} in sorted list`)
+
+        // Return the element at the corresponding position
+        if (targetIndex < matchingElements.length) {
+            Logger.debug(`[${this.name}] ✅ Using element at position ${targetIndex}`)
+            return matchingElements[targetIndex]
+        } else {
+            Logger.warning(`[${this.name}] Position ${targetIndex} out of range, using last element`)
+            return matchingElements[matchingElements.length - 1]
+        }
     }
 
     async clickJournalEntry(entryElement) {
