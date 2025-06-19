@@ -29,7 +29,7 @@ const cacheService = {
    * @param {boolean} useMemoryCache - Whether to use memory cache (default: true)
    * @returns {Promise<any>} The data
    */
-  async getOrFetch (key, fetchFn, expiration = CACHE_EXPIRATION.MEDIUM, useMemoryCache = true) {
+  async getOrFetch(key, fetchFn, expiration = CACHE_EXPIRATION.MEDIUM, useMemoryCache = true) {
     const cacheKey = `${CACHE_PREFIX}${key}`
 
     // Try memory cache first (for current page session)
@@ -129,7 +129,7 @@ const cacheService = {
    * Clear all API request caches
    * @returns {Promise<number>} Number of cache entries cleared
    */
-  async clearCache () {
+  async clearCache() {
     // Clear memory cache
     const memoryKeysCount = Object.keys(memoryCache).length
     Object.keys(memoryCache).forEach(key => {
@@ -158,10 +158,97 @@ const cacheService = {
   },
 
   /**
+   * Clear journal-related API request caches only
+   * @param {number} journalId - Optional journal ID to clear cache for specific journal
+   * @returns {Promise<number>} Number of cache entries cleared
+   */
+  async clearJournalCache(journalId = null) {
+    // Clear memory cache
+    const memoryKeysToRemove = []
+    for (const key in memoryCache) {
+      if (this.isJournalRelatedCache(key, journalId)) {
+        memoryKeysToRemove.push(key)
+        delete memoryCache[key]
+      }
+    }
+
+    // Clear storage cache
+    return new Promise(resolve => {
+      chrome.storage.local.get(null, items => {
+        const keysToRemove = Object.keys(items).filter(key =>
+          key.startsWith(CACHE_PREFIX) && this.isJournalRelatedCache(key, journalId))
+
+        if (keysToRemove.length > 0) {
+          chrome.storage.local.remove(keysToRemove, () => {
+            Logger.debug(`Cleared ${keysToRemove.length} journal cache entries from storage`)
+            Logger.debug(`Cleared ${memoryKeysToRemove.length} journal cache entries from memory`)
+            resolve(keysToRemove.length + memoryKeysToRemove.length)
+          })
+        } else {
+          Logger.debug('No journal cache entries to clear from storage')
+          Logger.debug(`Cleared ${memoryKeysToRemove.length} journal cache entries from memory`)
+          resolve(memoryKeysToRemove.length)
+        }
+      })
+    })
+  },
+
+  /**
+   * Check if a cache key is journal-related (but not timetable-related)
+   * @param {string} key - Cache key to check
+   * @param {number} journalId - Optional journal ID to filter by
+   * @returns {boolean} True if the cache key is journal-related
+   */
+  isJournalRelatedCache(key, journalId = null) {
+    // Remove cache prefix for checking
+    const cleanKey = key.replace(CACHE_PREFIX, '')
+
+    // Journal-related patterns (but exclude timetable data)
+    const journalPatterns = [
+      'journalEntriesByDate',
+      'journalEntry',
+      'journalStudents',
+      '/journals/',
+    ]
+
+    // Timetable-related patterns to exclude
+    const timetablePatterns = [
+      'timetableEvents',
+      'timetable',
+      '/schools/',
+      '/teachers/',
+    ]
+
+    // Check if it's timetable-related (should not be cleared)
+    for (const pattern of timetablePatterns) {
+      if (cleanKey.includes(pattern)) {
+        return false
+      }
+    }
+
+    // Check if it's journal-related
+    let isJournalRelated = false
+    for (const pattern of journalPatterns) {
+      if (cleanKey.includes(pattern)) {
+        isJournalRelated = true
+        break
+      }
+    }
+
+    // If specific journal ID provided, filter by it
+    if (isJournalRelated && journalId) {
+      const journalIdPattern = `/journals/${journalId}/`
+      return cleanKey.includes(journalIdPattern)
+    }
+
+    return isJournalRelated
+  },
+
+  /**
    * Get cache statistics
    * @returns {Promise<Object>} Cache statistics
    */
-  async getStats () {
+  async getStats() {
     // Get memory cache stats
     const memoryStats = {
       count: Object.keys(memoryCache).length,

@@ -5,6 +5,7 @@
 
 import { BaseFeature } from '../../core/BaseFeature.js'
 import Logger from '../../services/Logger.js'
+import { cacheService } from '../../services/CacheService.js'
 
 /**
  * LessonDiscrepanciesFeature class for displaying detailed missing lessons table
@@ -16,6 +17,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         this.name = 'LessonDiscrepanciesFeature'
         this.tableCreated = false
         this.currentJournalId = null
+        this.saveMonitoringSetup = false
+        this.dialogObserver = null
+        this.boundSaveButtonHandler = null
+        this.isRefreshing = false
+
+        // Add cache service reference
+        this.api.cache = cacheService
     }
 
     /**
@@ -31,6 +39,25 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Wait for page to be ready and create the discrepancies table
         await this.waitForPageReady()
         await this.createLessonDiscrepanciesTable()
+
+        // Set up monitoring for journal entry saves
+        this.setupJournalSaveMonitoring()
+    }
+
+    /**
+     * Called when the feature is deactivated (override BaseFeature method)
+     */
+    onDeactivate() {
+        Logger.debug(`[${this.name}] Deactivating feature`)
+
+        // Clean up monitoring
+        this.cleanupMonitoring()
+
+        // Reset state
+        this.reset()
+
+        // Call parent deactivate
+        super.onDeactivate()
     }
 
     /**
@@ -1065,7 +1092,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                 onmouseover="this.style.background='#5a6268'"
                                 onmouseout="this.style.background='#6c757d'"
                             >
-                                Muuda (${entry.lessonCount})
+                                Muuda (${entry.startLesson}) (${entry.lessonCount})
                             </button>`
                 }).join('')
 
@@ -1799,9 +1826,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Simple delay utility
+     * Simple delay utility function
      */
-    async delay(ms) {
+    delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms))
     }
 
@@ -2304,28 +2331,24 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if (type === 'smart_multi_lesson_fix') {
             // Enhanced: Smart multi-lesson fix with intelligent prefilling (Issue 2 fix)
             const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-            const minLesson = Math.min(...lessonNumbers)
             const lessonCount = lessonNumbers.length
 
             // Get the smart target lesson count from the button data
             const smartTargetCount = this.getSmartTargetLessonCount()
             const targetLessonCount = smartTargetCount || lessonCount
 
-            Logger.debug(`[${this.name}] Smart multi-lesson fix: start=${minLesson}, target_count=${targetLessonCount}, original_count=${lessonCount}`)
+            Logger.debug(`[${this.name}] Smart multi-lesson fix: keeping existing start lesson, target_count=${targetLessonCount}, original_count=${lessonCount}`)
 
-            // Update start lesson and lesson count with smart prefilling
-            await this.fillStartLessonField(minLesson)
+            // Do NOT change start lesson - only update lesson count with smart prefilling
             await this.fillLessonCountField(targetLessonCount)
 
         } else if (type === 'multi_lesson_fix') {
             const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-            const minLesson = Math.min(...lessonNumbers)
             const lessonCount = lessonNumbers.length
 
-            Logger.debug(`[${this.name}] Multi-lesson fix: start=${minLesson}, count=${lessonCount}`)
+            Logger.debug(`[${this.name}] Multi-lesson fix: keeping existing start lesson, count=${lessonCount}`)
 
-            // Update start lesson and lesson count
-            await this.fillStartLessonField(minLesson)
+            // Do NOT change start lesson - only update lesson count
             await this.fillLessonCountField(lessonCount)
 
         } else if (type === 'multi_entry_lesson_fix') {
@@ -2337,15 +2360,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             // for their specific journal entry without automatic interference
 
         } else if (type === 'single_lesson_fix') {
-            const correctLesson = parseInt(correct.replace('Algustund: ', ''))
+            Logger.debug(`[${this.name}] Single lesson fix: keeping existing start lesson (no changes)`)
 
-            Logger.debug(`[${this.name}] Single lesson fix: new start lesson=${correctLesson}`)
-
-            // Update just the start lesson number
-            await this.fillStartLessonField(correctLesson)
+            // Do NOT change start lesson - keep existing value
+            // User can manually adjust if needed
         }
 
-        Logger.info(`[${this.name}] Edit form filled successfully`)
+        Logger.info(`[${this.name}] Edit form filled successfully - starting lesson number preserved`)
     }
 
     /**
@@ -2364,116 +2385,277 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Wait for page to be ready and journal ID to be available
+     * Refresh the lesson discrepancies table after journal entry changes
+     * @param {number} journalId - Optional journal ID, will extract from URL if not provided
      */
-    async waitForPageReady() {
-        Logger.debug(`[${this.name}] Waiting for page to be ready...`)
-
-        // First, wait for DOM to be ready
-        await this.waitForDOMReady()
-
-        // Then wait for journal ID to be available in URL
-        await this.waitForJournalId()
-
-        // Finally, wait for any Angular/AngularJS content to be loaded
-        await this.waitForContentReady()
-
-        Logger.debug(`[${this.name}] Page is ready!`)
-    }
-
-    /**
-     * Wait for DOM to be ready
-     */
-    async waitForDOMReady() {
-        return new Promise((resolve) => {
-            if (document.readyState === 'complete' || document.readyState === 'interactive') {
-                resolve()
-            } else {
-                document.addEventListener('DOMContentLoaded', resolve, { once: true })
-                window.addEventListener('load', resolve, { once: true })
-            }
-        })
-    }
-
-    /**
-     * Wait for journal ID to be available in URL with polling
-     */
-    async waitForJournalId(maxAttempts = 50, intervalMs = 200) {
-        Logger.debug(`[${this.name}] Polling for journal ID in URL...`)
-
-        return new Promise((resolve, reject) => {
-            let attempts = 0
-
-            const checkJournalId = () => {
-                attempts++
-                const journalId = this.extractJournalId()
-
-                if (journalId) {
-                    Logger.debug(`[${this.name}] Journal ID found: ${journalId} (attempt ${attempts})`)
-                    resolve(journalId)
-                    return
-                }
-
-                if (attempts >= maxAttempts) {
-                    Logger.warning(`[${this.name}] Failed to find journal ID after ${maxAttempts} attempts`)
-                    reject(new Error(`Journal ID not found after ${maxAttempts} attempts`))
-                    return
-                }
-
-                Logger.debug(`[${this.name}] Journal ID not found, attempt ${attempts}/${maxAttempts}`)
-                setTimeout(checkJournalId, intervalMs)
+    async refreshTable(journalId = null) {
+        try {
+            // Prevent multiple simultaneous refreshes
+            if (this.isRefreshing) {
+                Logger.debug(`[${this.name}] Refresh already in progress, skipping`)
+                return
             }
 
-            checkJournalId()
-        })
+            this.isRefreshing = true
+
+            if (!journalId) {
+                journalId = this.extractJournalId()
+            }
+
+            if (!journalId) {
+                Logger.warning(`[${this.name}] Cannot refresh table: no journal ID found`)
+                return
+            }
+
+            Logger.info(`[${this.name}] Refreshing lesson discrepancies table for journal ${journalId}`)
+
+            // Clear journal-related cache only (preserve timetable cache)
+            const cacheEntriesCleared = await this.api.cache.clearJournalCache(journalId)
+            Logger.debug(`[${this.name}] Cleared ${cacheEntriesCleared} journal cache entries`)
+
+            // Remove existing table
+            const existingTable = document.querySelector('[data-discrepancies-table]')
+            if (existingTable) {
+                existingTable.remove()
+                Logger.debug(`[${this.name}] Removed existing table for refresh`)
+            }
+
+            // Reset table creation flag
+            this.tableCreated = false
+
+            // Wait a short time for any ongoing DOM changes to settle
+            await this.delay(500)
+
+            // Recreate the table with fresh data
+            await this.createLessonDiscrepanciesTable()
+
+            Logger.info(`[${this.name}] Table refresh completed`)
+
+        } catch (error) {
+            Logger.error(`[${this.name}] Error refreshing table:`, error)
+        } finally {
+            this.isRefreshing = false
+        }
     }
 
     /**
-     * Wait for Angular content to be loaded by checking for key elements
+     * Set up monitoring for journal entry save operations
      */
-    async waitForContentReady(maxAttempts = 25, intervalMs = 400) {
-        Logger.debug(`[${this.name}] Waiting for content to be ready...`)
+    setupJournalSaveMonitoring() {
+        if (this.saveMonitoringSetup) {
+            return // Already set up
+        }
 
-        return new Promise((resolve) => {
-            let attempts = 0
+        Logger.debug(`[${this.name}] Setting up journal save monitoring`)
 
-            const checkContent = () => {
-                attempts++
+        // Monitor for dialog/modal closing which typically indicates save completion
+        this.dialogObserver = new MutationObserver((mutations) => {
+            // Skip if already refreshing
+            if (this.isRefreshing) {
+                return
+            }
 
-                // Check for common Angular Material elements that indicate content is loaded
-                const indicators = [
-                    'md-content',
-                    '.layout-padding',
-                    '[ng-controller]',
-                    '.md-toolbar',
-                    'md-card'
-                ]
-
-                const hasContent = indicators.some(selector => {
-                    const element = document.querySelector(selector)
-                    if (element) {
-                        const rect = element.getBoundingClientRect()
-                        return rect.width > 50 && rect.height > 50 // Make sure it's actually rendered
+            mutations.forEach((mutation) => {
+                // Check for removed nodes (dialog closing)
+                mutation.removedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const element = node
+                        // Check if a dialog/modal was removed
+                        if (this.isJournalEntryDialog(element)) {
+                            Logger.debug(`[${this.name}] Detected journal entry dialog closing`)
+                            // Wait for save operation to complete before refreshing
+                            setTimeout(() => {
+                                this.refreshTable()
+                            }, 1000)
+                        }
                     }
-                    return false
                 })
 
-                if (hasContent || attempts >= maxAttempts) {
-                    if (hasContent) {
-                        Logger.debug(`[${this.name}] Content ready detected (attempt ${attempts})`)
-                    } else {
-                        Logger.debug(`[${this.name}] Content wait timeout reached (attempt ${attempts})`)
+                // Also check for added success notifications
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const element = node
+                        if (this.isSuccessNotification(element)) {
+                            Logger.debug(`[${this.name}] Detected success notification`)
+                            // Wait for notification to settle before refreshing
+                            setTimeout(() => {
+                                this.refreshTable()
+                            }, 1500)
+                        }
                     }
-                    resolve()
-                    return
-                }
-
-                Logger.debug(`[${this.name}] Waiting for content, attempt ${attempts}/${maxAttempts}`)
-                setTimeout(checkContent, intervalMs)
-            }
-
-            checkContent()
+                })
+            })
         })
+
+        // Also set up a more specific monitoring for button clicks
+        this.setupSaveButtonMonitoring()
+
+        // Start observing the entire document
+        this.dialogObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        })
+
+        this.saveMonitoringSetup = true
+        Logger.debug(`[${this.name}] Journal save monitoring active`)
+    }
+
+    /**
+     * Set up specific monitoring for "Salvesta" (Save) button clicks
+     */
+    setupSaveButtonMonitoring() {
+        // Store bound function for proper cleanup
+        this.boundSaveButtonHandler = this.handleSaveButtonClick.bind(this)
+
+        // Use event delegation to catch save button clicks
+        document.addEventListener('click', this.boundSaveButtonHandler, true)
+        Logger.debug(`[${this.name}] Save button monitoring active`)
+    }
+
+    /**
+     * Handle potential save button clicks
+     */
+    handleSaveButtonClick(event) {
+        // Skip if already refreshing
+        if (this.isRefreshing) {
+            return
+        }
+
+        const target = event.target
+        if (!target) return
+
+        // Check if this is a save button
+        const isSaveButton = this.isSaveButton(target)
+
+        if (isSaveButton) {
+            Logger.debug(`[${this.name}] Detected save button click`)
+
+            // Wait for save operation to complete, then refresh
+            setTimeout(() => {
+                this.refreshTable()
+            }, 2000)
+        }
+    }
+
+    /**
+     * Check if an element is a save button
+     */
+    isSaveButton(element) {
+        if (!element) return false
+
+        const tagName = element.tagName.toLowerCase()
+        const textContent = element.textContent || ''
+        const className = element.className || ''
+        const id = element.id || ''
+
+        // Check for save button patterns
+        const savePatterns = [
+            'salvesta',
+            'save',
+            'salvestama',
+            'submit'
+        ]
+
+        // Check button text content
+        const hasButtonText = savePatterns.some(pattern =>
+            textContent.toLowerCase().includes(pattern))
+
+        // Check button classes/IDs
+        const hasButtonClass = savePatterns.some(pattern =>
+            className.toLowerCase().includes(pattern) ||
+            id.toLowerCase().includes(pattern))
+
+        // Must be a button-like element
+        const isButtonElement = ['button', 'input'].includes(tagName) ||
+            className.includes('btn') ||
+            className.includes('button') ||
+            element.getAttribute('role') === 'button'
+
+        return isButtonElement && (hasButtonText || hasButtonClass)
+    }
+
+    /**
+     * Check if an element is a journal entry dialog/modal
+     */
+    isJournalEntryDialog(element) {
+        if (!element || !element.tagName) return false
+
+        const tagName = element.tagName.toLowerCase()
+        const className = element.className || ''
+        const innerHTML = element.innerHTML || ''
+
+        // Don't trigger on our own table removal
+        if (element.hasAttribute && element.hasAttribute('data-discrepancies-table')) {
+            return false
+        }
+
+        // Check for Angular Material dialog
+        if (tagName === 'md-dialog') {
+            // Must contain journal entry specific content
+            return innerHTML.includes('Sissekande liik') ||
+                innerHTML.includes('journal') ||
+                innerHTML.includes('entry')
+        }
+
+        // Check for modal classes with journal content
+        if (['modal', 'dialog'].some(cls => className.includes(cls))) {
+            return innerHTML.includes('Sissekande liik') ||
+                innerHTML.includes('Salvesta')
+        }
+
+        return false
+    }
+
+    /**
+     * Check if an element is a success notification/toast
+     */
+    isSuccessNotification(element) {
+        if (!element || !element.tagName) return false
+
+        const className = element.className || ''
+        const innerHTML = element.innerHTML || ''
+        const textContent = element.textContent || ''
+
+        // Check for common success notification patterns
+        const successPatterns = [
+            'success',
+            'saved',
+            'salvestatud',
+            'õnnestus',
+            'toast',
+            'notification',
+            'alert-success'
+        ]
+
+        const hasSuccessClass = successPatterns.some(pattern =>
+            className.toLowerCase().includes(pattern))
+
+        const hasSuccessText = successPatterns.some(pattern =>
+            textContent.toLowerCase().includes(pattern) ||
+            innerHTML.toLowerCase().includes(pattern))
+
+        return hasSuccessClass || hasSuccessText
+    }
+
+    /**
+     * Clean up monitoring when feature is deactivated
+     */
+    cleanupMonitoring() {
+        if (this.dialogObserver) {
+            this.dialogObserver.disconnect()
+            this.dialogObserver = null
+            Logger.debug(`[${this.name}] Cleaned up dialog observer`)
+        }
+
+        // Remove event listener for save button monitoring
+        if (this.boundSaveButtonHandler) {
+            document.removeEventListener('click', this.boundSaveButtonHandler, true)
+            this.boundSaveButtonHandler = null
+            Logger.debug(`[${this.name}] Cleaned up save button monitoring`)
+        }
+
+        this.saveMonitoringSetup = false
+        Logger.debug(`[${this.name}] Journal save monitoring cleanup complete`)
     }
 
     /**
@@ -2483,6 +2665,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Logger.debug(`[${this.name}] Resetting feature state`)
         this.tableCreated = false
         this.currentJournalId = null
+
+        // Clean up monitoring
+        this.cleanupMonitoring()
 
         // Remove any existing table
         const existingTable = document.querySelector('[data-discrepancies-table]')
@@ -2635,5 +2820,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         } catch (error) {
             Logger.error(`[${this.name}] Error checking Auditoorne õpe checkbox:`, error)
         }
+    }
+
+    /**
+     * Wait for the page to be ready before proceeding (simple delay, can be improved)
+     */
+    async waitForPageReady(timeout = 1000) {
+        // You can enhance this to check for specific DOM elements if needed
+        return new Promise(resolve => setTimeout(resolve, timeout));
     }
 }
