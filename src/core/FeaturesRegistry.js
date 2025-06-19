@@ -7,7 +7,7 @@ import Logger from '../services/Logger.js'
  * Provides a structured approach to loading features
  * @returns {Promise<Array>} Array of all features
  */
-export async function loadFeatures () {
+export async function loadFeatures() {
   Logger.debug('Loading features...')
 
   // Check if Kriit is enabled
@@ -62,6 +62,16 @@ export async function loadFeatures () {
     Logger.debug('Feature "LessonDiscrepanciesFeature" created')
   } catch (error) {
     Logger.error('Error loading LessonDiscrepanciesFeature:', error)
+  }
+
+  // Load auditory learning checker feature (always enabled)
+  try {
+    const AuditoryLearningCheckerFeature = (await import('../features/lessonDiscrepancies/AuditoryLearningCheckerFeature.js')).default
+    const auditoryLearningCheckerFeature = new AuditoryLearningCheckerFeature()
+    allAvailableFeatures.singleJournal.push(auditoryLearningCheckerFeature)
+    Logger.debug('Feature "AuditoryLearningCheckerFeature" created')
+  } catch (error) {
+    Logger.error('Error loading AuditoryLearningCheckerFeature:', error)
   }
 
   // Create a copy of the features structure for returning
