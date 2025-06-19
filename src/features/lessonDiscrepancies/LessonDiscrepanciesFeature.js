@@ -1089,8 +1089,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                     font-size: 12px;
                                     cursor: pointer;
                                     font-weight: bold;
-                                    margin-right: 4px;
-                                    margin-bottom: 4px;
                                 "
                                 onmouseover="this.style.background='#e0a800'"
                                 onmouseout="this.style.background='#ffc107'"
@@ -1104,8 +1102,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px; width: 80px;">${this.formatDisplayDate(discrepancy.date)}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 70px;">${startLessonDisplay}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 80px;">${lessonCountDisplay}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; vertical-align: middle; width: 200px;">
-                                        ${buttonsHtml}
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; width: 200px;">
+                                        <div style="display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 4px;">
+                                            ${buttonsHtml}
+                                        </div>
                                     </td>
                                 </tr>`
             } else if (discrepancy.type === 'multi_lesson_fix_needed') {
