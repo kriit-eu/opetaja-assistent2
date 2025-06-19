@@ -1938,9 +1938,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 alert(`Muuda sissekannet kuupäeval ${formattedDate} (Nutikas lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${targetCount} (nutikalt arvutatud)\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
             } else if (type === 'multi_entry_lesson_fix') {
                 const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-                const minLesson = Math.min(...lessonNumbers)
 
-                alert(`Muuda sissekannet kuupäeval ${formattedDate} (Mitme sissekande lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Otsusta ise tundide arv (mitu tundi sellest sissekandest eemaldada)\n4. Vajalikud tunnid kokku: ${lessonNumbers.join(', ')}`)
+                alert(`Muuda sissekannet kuupäeval ${formattedDate} (Mitme sissekande lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Määra ise algustund ja tundide arv\n3. Väljad ei ole eeltäidetud - otsusta ise sobivad väärtused\n4. Vajalikud tunnid kokku: ${lessonNumbers.join(', ')}`)
             } else if (type === 'multi_lesson_fix') {
                 const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
                 const minLesson = Math.min(...lessonNumbers)
@@ -2330,14 +2329,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             await this.fillLessonCountField(lessonCount)
 
         } else if (type === 'multi_entry_lesson_fix') {
-            // Enhanced: Multiple entry lesson fix - no prefilling, let user decide (Issue 2 fix)
-            const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
-            const minLesson = Math.min(...lessonNumbers)
+            // Enhanced: Multiple entry lesson fix - no prefilling, let user manually decide (Issue 2 fix)
+            Logger.debug(`[${this.name}] Multi-entry lesson fix: No prefilling - user will manually set start lesson and lesson count`)
 
-            Logger.debug(`[${this.name}] Multi-entry lesson fix: start=${minLesson}, no prefilling`)
-
-            // Only update start lesson, let user decide on lesson count
-            await this.fillStartLessonField(minLesson)
+            // Do not prefill any fields when multiple "Muuda (X)" buttons exist for the same date
+            // This allows the user to manually decide both the start lesson number and lesson count
+            // for their specific journal entry without automatic interference
 
         } else if (type === 'single_lesson_fix') {
             const correctLesson = parseInt(correct.replace('Algustund: ', ''))
