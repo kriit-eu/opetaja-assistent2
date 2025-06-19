@@ -26,24 +26,38 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
         await this.waitForPageReady()
         // Only activate if the A: lessonHours capacityHours is not full
         const capacitySpans = document.querySelectorAll('span[ng-repeat*="type in journal.lessonHours.capacityHours"]')
+        Logger.debug(`[${this.name}] Found ${capacitySpans.length} capacity spans`)
+        
         let shouldActivate = false
         capacitySpans.forEach(span => {
             const labelSpan = span.querySelectorAll('span')[0]
             const valueSpan = span.querySelectorAll('span')[1]
+            Logger.debug(`[${this.name}] Checking span - label: "${labelSpan?.textContent?.trim()}", value: "${valueSpan?.textContent?.trim()}"`)
+            
             if (labelSpan && valueSpan && labelSpan.textContent.trim() === 'A:') {
                 const match = valueSpan.textContent.match(/(\d+)\/(\d+)/)
                 if (match) {
-                    const [_, total, filled] = match.map(Number)
-                    if (total !== filled) {
+                    const total = Number(match[1])   // First number is total
+                    const filled = Number(match[2])  // Second number is filled
+                    Logger.debug(`[${this.name}] Found A: capacity - total: ${total}, filled: ${filled}`)
+                    if (filled < total) {
                         shouldActivate = true
+                        Logger.debug(`[${this.name}] Auditory learning hours not full (${filled}/${total}), activating feature`)
+                    } else {
+                        Logger.debug(`[${this.name}] Auditory learning hours are full (${filled}/${total}), not activating`)
                     }
+                } else {
+                    Logger.debug(`[${this.name}] No match found for A: value "${valueSpan.textContent}"`)
                 }
             }
         })
+        
         if (!shouldActivate) {
-            Logger.debug(`[${this.name}] Auditoorne (A:) lesson hours are full, not activating auditory checker feature`)
+            Logger.debug(`[${this.name}] Feature not activated - either no A: found or hours are full`)
             return
         }
+        
+        Logger.debug(`[${this.name}] Feature activated, setting up monitoring and checking entries`)
         this.setupSaveMonitoring()
         await this.checkAuditoryLearningOnEntries()
     }
@@ -63,35 +77,44 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
             return
         }
         Logger.debug(`[${this.name}] Checking auditory learning for journal ${journalId}`)
-        const { journalData } = await this.fetchJournalAndTimetableData(journalId)
-        this.lastJournalData = journalData
-        this.incompleteEntries = []
-        Logger.debug(`[${this.name}] Found ${journalData.entries.length} journal entries to check`)
-        // Fetch details for each entry
-        const detailPromises = journalData.entries.map(async entry => {
-            if (entry.entryType !== 'SISSEKANNE_T') return null
-            try {
-                const detail = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`)
-                if (!this.hasAuditoryLearning(detail)) {
-                    Logger.debug(`[${this.name}] Entry ${entry.id} missing auditory learning: journalEntryCapacityTypes=${JSON.stringify(detail.journalEntryCapacityTypes)}`)
-                    return {
-                        id: entry.id,
-                        date: entry.entryDate,
-                        lessons: entry.lessons || 1,
-                        startLessonNr: entry.startLessonNr || 1,
-                        note: 'Auditoorne õpe puudub',
-                        fixed: false
+        
+        try {
+            const { journalData } = await this.fetchJournalAndTimetableData(journalId)
+            this.lastJournalData = journalData
+            this.incompleteEntries = []
+            Logger.debug(`[${this.name}] Found ${journalData.entries.length} journal entries to check`)
+            
+            // Fetch details for each entry
+            const detailPromises = journalData.entries.map(async entry => {
+                if (entry.entryType !== 'SISSEKANNE_T') return null
+                try {
+                    Logger.debug(`[${this.name}] Fetching details for entry ${entry.id}`)
+                    const detail = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`)
+                    if (!this.hasAuditoryLearning(detail)) {
+                        Logger.debug(`[${this.name}] Entry ${entry.id} missing auditory learning: journalEntryCapacityTypes=${JSON.stringify(detail.journalEntryCapacityTypes)}`)
+                        return {
+                            id: entry.id,
+                            date: entry.entryDate,
+                            lessons: entry.lessons || 1,
+                            startLessonNr: entry.startLessonNr || 1,
+                            note: 'Auditoorne õpe puudub',
+                            fixed: false
+                        }
+                    } else {
+                        Logger.debug(`[${this.name}] Entry ${entry.id} has auditory learning`)
                     }
+                } catch (e) {
+                    Logger.error(`[${this.name}] Failed to fetch details for entry ${entry.id}:`, e)
                 }
-            } catch (e) {
-                Logger.error(`[${this.name}] Failed to fetch details for entry ${entry.id}:`, e)
-            }
-            return null
-        })
-        const incomplete = (await Promise.all(detailPromises)).filter(Boolean)
-        this.incompleteEntries = incomplete
-        Logger.debug(`[${this.name}] Total incomplete entries found: ${this.incompleteEntries.length}`)
-        this.insertIncompleteAuditoryLearningTable()
+                return null
+            })
+            const incomplete = (await Promise.all(detailPromises)).filter(Boolean)
+            this.incompleteEntries = incomplete
+            Logger.info(`[${this.name}] Total incomplete entries found: ${this.incompleteEntries.length}`)
+            this.insertIncompleteAuditoryLearningTable()
+        } catch (error) {
+            Logger.error(`[${this.name}] Error in checkAuditoryLearningOnEntries:`, error)
+        }
     }
 
     hasAuditoryLearning(entry) {
@@ -120,11 +143,22 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
         // Remove any existing table first
         const existingTable = document.querySelector('[data-auditory-learning-table]')
         if (existingTable) existingTable.remove()
-        if (this.incompleteEntries.length === 0) return
+        
+        Logger.debug(`[${this.name}] insertIncompleteAuditoryLearningTable called with ${this.incompleteEntries.length} entries`)
+        
+        if (this.incompleteEntries.length === 0) {
+            Logger.debug(`[${this.name}] No incomplete entries, not inserting table`)
+            return
+        }
 
         // Find insertion point (reuse logic from LessonDiscrepanciesFeature)
         const insertionPoint = this.findInsertionPoint()
-        if (!insertionPoint) return
+        if (!insertionPoint) {
+            Logger.error(`[${this.name}] No insertion point found for table`)
+            return
+        }
+
+        Logger.debug(`[${this.name}] Inserting table with ${this.incompleteEntries.length} incomplete entries`)
 
         const container = document.createElement('div')
         container.setAttribute('data-auditory-learning-table', 'true')
@@ -165,6 +199,8 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
             </table>`
         container.innerHTML = content
         insertionPoint.insertBefore(container, insertionPoint.firstChild)
+        
+        Logger.debug(`[${this.name}] Table inserted successfully`)
         this.addFixButtonListeners()
     }
 
