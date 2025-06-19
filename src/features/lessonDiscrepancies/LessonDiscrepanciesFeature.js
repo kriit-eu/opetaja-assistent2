@@ -142,20 +142,25 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Fetch both journal and timetable data
+     * Fetch both journal and timetable data with proper cache expiration
      */
     async fetchJournalAndTimetableData(journalId) {
-        // Get journal info
-        const journalInfo = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true })
+        // Get journal info (basic info can be cached for 24 hours)
+        const journalInfo = await this.api.tahvel.get(
+            `/journals/${journalId}`,
+            {},
+            { cacheExpiration: 24 * 60 * 60 * 1000 } // 24 hours
+        )
 
         // Get journal entries with allStudents=true to get all entries including those that might be filtered out
+        // Journal entries should be cached for shorter time as they change frequently
         const journalEntries = await this.api.tahvel.get(
             `/journals/${journalId}/journalEntriesByDate`,
             { allStudents: true },
-            { cache: true }
+            { cacheExpiration: 60 * 60 * 1000 } // 1 hour
         )
 
-        // Get timetable data using the old extension's API pattern
+        // Get timetable data using the old extension's API pattern with date-based caching
         const timetableData = await this.fetchTimetableData(journalInfo)
 
         return {
@@ -168,7 +173,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Fetch timetable data using old extension's API
+     * Fetch timetable data using old extension's API with date-based cache expiration
      */
     async fetchTimetableData(journalInfo) {
         try {
@@ -195,7 +200,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
             Logger.debug(`[${this.name}] Fetching timetable data from: ${endpoint}`)
 
-            const data = await this.api.tahvel.get(endpoint, {}, { cache: true })
+            // Determine cache expiration based on date range
+            const now = new Date()
+            const endDate = new Date(thruDate)
+            let cacheExpiration
+
+            if (endDate < now) {
+                // Past timetable data: 30 days cache expiration
+                cacheExpiration = 30 * 24 * 60 * 60 * 1000
+            } else {
+                // Future timetable data: 24 hours cache expiration
+                cacheExpiration = 24 * 60 * 60 * 1000
+            }
+
+            const data = await this.api.tahvel.get(endpoint, {}, { cacheExpiration })
 
             if (data && data.timetableEvents && Array.isArray(data.timetableEvents)) {
                 // Filter for this journal only
@@ -308,319 +326,252 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      * Find discrepancies between journal entries and timetable
      */
     async findLessonDiscrepancies(journalData, timetableData) {
-        const discrepancies = []
-        const journalEntryLessons = new Set()
-        const journalEntriesByDate = new Map() // Store all journal entries by date for lesson number checking
+        Logger.debug(`[${this.name}] Starting lesson discrepancies analysis using legacy logic`)
+        Logger.debug(`[${this.name}] Analyzing ${journalData.entries.length} journal entries and ${timetableData.length} timetable entries`)
 
-        Logger.debug(`[${this.name}] Analyzing ${journalData.entries.length} journal entries`)
+        // Initialize data structures following legacy pattern
+        const lessonCounts = {} // Record<string, { journal: number; timetable: number }>
+        const firstLessonStartNumbers = {} // Record<string, { journal: number; timetable: number }>
+        const differences = [] // AssistentJournalDifference[]
 
-        // Create set of date+lesson number combinations that have journal entries
-        // Also store journal entries by date for lesson number validation
-        for (const entry of journalData.entries) {
-            if (entry.entryType === 'SISSEKANNE_T') { // Regular lesson entry
-                const entryDate = this.formatDate(entry.entryDate)
+        // Process journal entries (equivalent to journal.entriesInJournal)
+        for (const journalEntry of journalData.entries) {
+            // Only process regular lesson entries (equivalent to lessonType !== LessonType.lesson check)
+            if (journalEntry.entryType !== 'SISSEKANNE_T') {
+                continue // Skip entries with entryType other than regular lesson
+            }
 
-                // Store the entry by date for later lesson number checking
-                if (!journalEntriesByDate.has(entryDate)) {
-                    journalEntriesByDate.set(entryDate, [])
-                }
-                journalEntriesByDate.get(entryDate).push(entry)
+            const date = this.formatDate(journalEntry.entryDate)
 
-                // Handle multiple lessons in one entry
-                const startLessonNr = entry.startLessonNr || 1
-                const lessonCount = entry.lessons || 1
-
-                // For entries with multiple lessons, we need to be more careful
-                // as they might represent non-consecutive lessons
-                if (lessonCount > 1) {
-                    Logger.debug(`[${this.name}] Multi-lesson entry found:`, {
-                        date: entryDate,
-                        startLessonNr: startLessonNr,
-                        lessonCount: lessonCount,
-                        entryId: entry.id
-                    })
-                }
-
-                for (let i = 0; i < lessonCount; i++) {
-                    const lessonNumber = startLessonNr + i
-                    const lessonKey = `${entryDate}_lesson_${lessonNumber}`
-                    journalEntryLessons.add(lessonKey)
-                    Logger.debug(`[${this.name}] Found journal entry: ${lessonKey}`)
+            // Initialize tracking objects for this date if not exists
+            if (!firstLessonStartNumbers[date]) {
+                firstLessonStartNumbers[date] = {
+                    journal: Infinity,
+                    timetable: Infinity
                 }
             }
+            if (!lessonCounts[date]) {
+                lessonCounts[date] = { journal: 0, timetable: 0 }
+            }
+
+            // Add lesson count (equivalent to journalEntry.lessonCount)
+            const lessonCount = journalEntry.lessons || 1
+            lessonCounts[date].journal += lessonCount
+
+            // Track first lesson start number (equivalent to journalEntry.firstLessonStartNumber)
+            const firstLessonStartNumber = journalEntry.startLessonNr || 1
+            if (firstLessonStartNumber < firstLessonStartNumbers[date].journal) {
+                firstLessonStartNumbers[date].journal = firstLessonStartNumber
+            }
+
+            Logger.debug(`[${this.name}] Journal entry on ${date}: start=${firstLessonStartNumber}, count=${lessonCount}`)
         }
 
-        Logger.debug(`[${this.name}] Found ${journalEntryLessons.size} unique journal entry lessons`)
-        console.log(`[${this.name}] All journal entry lessons:`, Array.from(journalEntryLessons))
-        Logger.debug(`[${this.name}] Analyzing ${timetableData.length} timetable entries`)
-
-        // Collect missing lessons by date first and detect conflicting entries
-        const missingLessonsByDate = new Map()
-        const conflictingEntriesByDate = new Map()
-
-        // First, collect all timetable lessons by date
-        const timetableLessonsByDate = new Map()
+        // Process timetable entries (equivalent to journal.entriesInTimetable)
         for (const timetableEntry of timetableData) {
-            const timetableDate = this.formatDate(timetableEntry.date)
-            const timetableDateTime = new Date(timetableEntry.date)
-            const now = new Date()
+            const date = this.formatDate(timetableEntry.date)
 
-            if (timetableDateTime < now) {
-                const schoolId = journalData.info.school?.id || 9
-                const correctLessonNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId)
-
-                if (!timetableLessonsByDate.has(timetableDate)) {
-                    timetableLessonsByDate.set(timetableDate, [])
+            // Initialize tracking objects for this date if not exists
+            if (!firstLessonStartNumbers[date]) {
+                firstLessonStartNumbers[date] = {
+                    journal: Infinity,
+                    timetable: Infinity
                 }
+            }
+            if (!lessonCounts[date]) {
+                lessonCounts[date] = { journal: 0, timetable: 0 }
+            }
 
-                timetableLessonsByDate.get(timetableDate).push({
-                    lessonNumber: correctLessonNumber,
-                    timeStart: timetableEntry.timeStart,
-                    timeEnd: timetableEntry.timeEnd,
-                    name: timetableEntry.nameEt || journalData.info.nameEt,
-                    rooms: timetableEntry.rooms || []
+            // Calculate lesson number from time (equivalent to timetableEntry.firstLessonStartNumber)
+            const schoolId = journalData.info.school?.id || 9
+            const firstLessonStartNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId)
+
+            if (firstLessonStartNumber < firstLessonStartNumbers[date].timetable) {
+                firstLessonStartNumbers[date].timetable = firstLessonStartNumber
+            }
+
+            // Each timetable entry represents one lesson (equivalent to lessonCounts[date].timetable++)
+            lessonCounts[date].timetable++
+
+            Logger.debug(`[${this.name}] Timetable entry on ${date}: start=${firstLessonStartNumber}, total_count=${lessonCounts[date].timetable}`)
+        }
+
+        // Compare lesson counts and first lesson start numbers for each date (legacy logic)
+        for (const date in lessonCounts) {
+            if (
+                date !== 'null' &&
+                (lessonCounts[date].journal !== lessonCounts[date].timetable ||
+                    firstLessonStartNumbers[date].journal !== firstLessonStartNumbers[date].timetable)
+            ) {
+                // Find the journal entry id for the date where entryType is regular lesson
+                const journalEntryId = journalData.entries.find(
+                    (entry) =>
+                        this.formatDate(entry.entryDate) === date &&
+                        entry.entryType === 'SISSEKANNE_T'
+                )?.id || 0
+
+                differences.push({
+                    date: date,
+                    lessonType: 'lesson', // LessonType.lesson equivalent
+                    timetableLessonCount: lessonCounts[date].timetable,
+                    timetableFirstLessonStartNumber: firstLessonStartNumbers[date].timetable,
+                    journalLessonCount: lessonCounts[date].journal,
+                    journalFirstLessonStartNumber: firstLessonStartNumbers[date].journal,
+                    journalEntryId: journalEntryId
                 })
+
+                Logger.info(`[${this.name}] Found discrepancy on ${date}: journal(${lessonCounts[date].journal} lessons, start=${firstLessonStartNumbers[date].journal}) vs timetable(${lessonCounts[date].timetable} lessons, start=${firstLessonStartNumbers[date].timetable})`)
             }
         }
 
-        // Now analyze each date for discrepancies
-        for (const [date, timetableLessons] of timetableLessonsByDate) {
-            const timetableLessonNumbers = timetableLessons.map(tl => tl.lessonNumber).sort((a, b) => a - b)
-            const entriesOnDate = journalEntriesByDate.get(date) || []
-
-            Logger.debug(`[${this.name}] Analyzing date ${date}: timetable lessons [${timetableLessonNumbers.join(', ')}], journal entries: ${entriesOnDate.length}`)
-
-            if (entriesOnDate.length === 0) {
-                // No journal entries for this date - all timetable lessons are missing
-                if (!missingLessonsByDate.has(date)) {
-                    missingLessonsByDate.set(date, [])
-                }
-
-                for (const timetableLesson of timetableLessons) {
-                    missingLessonsByDate.get(date).push({
-                        date: date,
-                        timeStart: timetableLesson.timeStart,
-                        timeEnd: timetableLesson.timeEnd,
-                        name: timetableLesson.name,
-                        rooms: timetableLesson.rooms,
-                        lessonNumber: timetableLesson.lessonNumber,
-                        type: 'missing_journal_entry'
-                    })
-                }
-                continue
+        // Replace Infinity with 0 (legacy logic)
+        differences.forEach((difference) => {
+            if (difference.timetableFirstLessonStartNumber === Infinity) {
+                difference.timetableFirstLessonStartNumber = 0
             }
-
-            // Create a mutable copy of timetable lesson numbers for tracking
-            let remainingTimetableLessons = [...timetableLessonNumbers]
-
-            // Check each journal entry against the timetable lessons
-            for (const entry of entriesOnDate) {
-                const entryStartLesson = entry.startLessonNr || 1
-                const entryLessonCount = entry.lessons || 1
-                const entryLessons = []
-
-                for (let i = 0; i < entryLessonCount; i++) {
-                    entryLessons.push(entryStartLesson + i)
-                }
-
-                Logger.debug(`[${this.name}] Journal entry ${entry.id}: lessons [${entryLessons.join(', ')}]`)
-
-                // Find which timetable lessons this entry covers correctly
-                const correctMatches = entryLessons.filter(el => timetableLessonNumbers.includes(el))
-                const incorrectLessons = entryLessons.filter(el => !timetableLessonNumbers.includes(el))
-
-                Logger.debug(`[${this.name}] Entry ${entry.id} correct matches: [${correctMatches.join(', ')}], incorrect: [${incorrectLessons.join(', ')}]`)
-
-                if (correctMatches.length === 0) {
-                    // Entry doesn't match any timetable lessons - this entry is completely wrong
-                    // Instead of ignoring it, we should correct it to match the timetable
-                    Logger.debug(`[${this.name}] Entry ${entry.id} has no correct matches - completely wrong entry`)
-                    
-                    // Group all timetable lessons to find consecutive groups
-                    const allTimetableGroups = this.groupConsecutiveLessons(timetableLessonNumbers)
-                    
-                    // Assign this wrong entry to the first group (or best fitting group)
-                    if (allTimetableGroups.length > 0) {
-                        const targetGroup = allTimetableGroups[0] // Use first group
-                        const correctStartLesson = targetGroup[0]
-                        const correctLessonCount = targetGroup.length
-                        
-                        const entryKey = `${date}_${entry.id}`
-                        conflictingEntriesByDate.set(entryKey, {
-                            date: date,
-                            entry: entry,
-                            currentStartLesson: entryStartLesson,
-                            currentLessonCount: entryLessonCount,
-                            correctStartLesson: correctStartLesson,
-                            correctLessonCount: correctLessonCount,
-                            correctLessons: targetGroup,
-                            type: targetGroup.length === 1 ? 'single_lesson_fix' : 'multi_lesson_fix'
-                        })
-                        
-                        // Remove all lessons from this group from remaining lessons
-                        for (const lesson of targetGroup) {
-                            const index = remainingTimetableLessons.indexOf(lesson)
-                            if (index > -1) {
-                                remainingTimetableLessons.splice(index, 1)
-                            }
-                        }
-                        
-                        continue // Skip the rest of processing for this entry
-                    }
-                } if (incorrectLessons.length > 0 || correctMatches.length !== entryLessonCount) {
-                    // Entry has incorrect lessons or doesn't match the expected pattern
-                    // This is a conflicting entry that needs modification
-
-                    // Group all timetable lessons to find consecutive groups
-                    const allTimetableGroups = this.groupConsecutiveLessons(timetableLessonNumbers)
-
-                    // If the journal entry covers significantly more lessons than any single group,
-                    // or if it's completely misaligned, assign it to the first group
-                    let targetGroup = null
-
-                    if (allTimetableGroups.length > 0) {
-                        // Find which group contains matches from this journal entry
-                        let groupWithMatches = null
-                        for (const group of allTimetableGroups) {
-                            if (group.some(lesson => correctMatches.includes(lesson))) {
-                                groupWithMatches = group
-                                break
-                            }
-                        }
-
-                        // If entry claims more lessons than any group can handle,
-                        // or if it doesn't match well, assign to first group
-                        const maxGroupSize = Math.max(...allTimetableGroups.map(g => g.length))
-                        if (entryLessonCount > maxGroupSize || correctMatches.length <= 1) {
-                            targetGroup = allTimetableGroups[0] // Assign to first group
-                        } else if (groupWithMatches) {
-                            targetGroup = groupWithMatches
-                        } else {
-                            targetGroup = allTimetableGroups[0]
-                        }
-                    }
-
-                    // If we found a target group, suggest correction to cover that entire group
-                    if (targetGroup && targetGroup.length > 0) {
-                        const correctStartLesson = targetGroup[0]
-                        const correctLessonCount = targetGroup.length
-
-                        const entryKey = `${date}_${entry.id}`
-                        conflictingEntriesByDate.set(entryKey, {
-                            date: date,
-                            entry: entry,
-                            currentStartLesson: entryStartLesson,
-                            currentLessonCount: entryLessonCount,
-                            correctStartLesson: correctStartLesson,
-                            correctLessonCount: correctLessonCount,
-                            correctLessons: targetGroup,
-                            type: targetGroup.length === 1 ? 'single_lesson_fix' : 'multi_lesson_fix'
-                        })
-
-                        // Remove all lessons from this group from remaining lessons
-                        // since they'll be covered by the corrected entry
-                        for (const lesson of targetGroup) {
-                            const index = remainingTimetableLessons.indexOf(lesson)
-                            if (index > -1) {
-                                remainingTimetableLessons.splice(index, 1)
-                            }
-                        }
-
-                        // Don't remove correctMatches again later since we handled the whole group
-                        continue
-                    }
-                }
-
-                // Remove correctly covered lessons from the missing list
-                for (const coveredLesson of correctMatches) {
-                    const index = remainingTimetableLessons.indexOf(coveredLesson)
-                    if (index > -1) {
-                        remainingTimetableLessons.splice(index, 1)
-                    }
-                }
+            if (difference.journalFirstLessonStartNumber === Infinity) {
+                difference.journalFirstLessonStartNumber = 0
             }
+        })
 
-            // Any remaining timetable lessons are missing
-            if (remainingTimetableLessons.length > 0) {
-                if (!missingLessonsByDate.has(date)) {
-                    missingLessonsByDate.set(date, [])
-                }
+        Logger.info(`[${this.name}] Found ${differences.length} lesson discrepancies using legacy logic`)
 
-                for (const lessonNumber of remainingTimetableLessons) {
-                    const timetableLesson = timetableLessons.find(tl => tl.lessonNumber === lessonNumber)
-                    if (timetableLesson) {
-                        missingLessonsByDate.get(date).push({
-                            date: date,
-                            timeStart: timetableLesson.timeStart,
-                            timeEnd: timetableLesson.timeEnd,
-                            name: timetableLesson.name,
-                            rooms: timetableLesson.rooms,
-                            lessonNumber: timetableLesson.lessonNumber,
-                            type: 'missing_journal_entry'
-                        })
-                    }
-                }
+        // Convert legacy differences to the expected output format for the table
+        return this.convertLegacyDifferencesToDiscrepancies(differences, journalData, timetableData)
+    }
+
+    /**
+     * Convert legacy AssistentJournalDifference[] to the expected discrepancies format
+     */
+    async convertLegacyDifferencesToDiscrepancies(differences, journalData, timetableData) {
+        const discrepancies = []
+
+        for (const difference of differences) {
+            const date = difference.date
+            const timetableLessonCount = difference.timetableLessonCount
+            const timetableFirstLessonStartNumber = difference.timetableFirstLessonStartNumber
+            const journalLessonCount = difference.journalLessonCount
+            const journalFirstLessonStartNumber = difference.journalFirstLessonStartNumber
+            const journalEntryId = difference.journalEntryId
+
+            // Find corresponding timetable entries for this date
+            const timetableEntriesForDate = timetableData.filter(entry =>
+                this.formatDate(entry.date) === date
+            )
+
+            // Determine the type of discrepancy and create appropriate entries
+            if (journalLessonCount === 0 && timetableLessonCount > 0) {
+                // Missing journal entries - all timetable lessons are missing
+                await this.createMissingLessonDiscrepancies(
+                    date, timetableEntriesForDate, journalData, discrepancies
+                )
+            } else if (journalLessonCount > 0 && timetableLessonCount > 0) {
+                // Lesson count or start number mismatch - need to fix existing entry
+                await this.createLessonMismatchDiscrepancies(
+                    date, difference, timetableEntriesForDate, journalData, discrepancies
+                )
             }
+            // Note: We don't handle journalLessonCount > 0 && timetableLessonCount === 0
+            // as that would mean journal entries exist but no timetable - this is handled elsewhere
         }
 
-        // Process conflicting entries
-        for (const [entryKey, conflictData] of conflictingEntriesByDate) {
-            const { date, entry, currentStartLesson, currentLessonCount, correctStartLesson, correctLessonCount, type } = conflictData
+        Logger.info(`[${this.name}] Converted ${differences.length} legacy differences to ${discrepancies.length} discrepancies`)
+        return discrepancies
+    }
+    /**
+     * Create missing lesson discrepancies for dates with no journal entries
+     */
+    async createMissingLessonDiscrepancies(date, timetableEntriesForDate, journalData, discrepancies) {
+        const missingLessons = []
 
-            const firstTimetableLesson = timetableLessonsByDate.get(date).find(tl => tl.lessonNumber === correctStartLesson)
+        for (const timetableEntry of timetableEntriesForDate) {
+            const schoolId = journalData.info.school?.id || 9
+            const lessonNumber = await this.calculateLessonNumber(timetableEntry.timeStart, schoolId)
 
-            if (type === 'single_lesson_fix') {
+            missingLessons.push({
+                date: date,
+                timeStart: timetableEntry.timeStart,
+                timeEnd: timetableEntry.timeEnd,
+                name: timetableEntry.nameEt || journalData.info.nameEt,
+                rooms: timetableEntry.rooms || [],
+                lessonNumber: lessonNumber,
+                type: 'missing_journal_entry'
+            })
+        }
+
+        // Group consecutive lessons
+        const lessonNumbers = missingLessons.map(ml => ml.lessonNumber).sort((a, b) => a - b)
+        const groupedLessons = this.groupConsecutiveLessons(lessonNumbers)
+
+        for (const group of groupedLessons) {
+            const firstLesson = group[0]
+            const lessonCount = group.length
+            const firstMissing = missingLessons.find(ml => ml.lessonNumber === firstLesson)
+
+            discrepancies.push({
+                ...firstMissing,
+                lessonNumber: firstLesson,
+                lessonCount: lessonCount,
+                lessonNumbers: group,
+                type: 'missing_journal_entry'
+            })
+        }
+    }
+
+    /**
+     * Create lesson mismatch discrepancies for dates with incorrect journal entries
+     */
+    async createLessonMismatchDiscrepancies(date, difference, timetableEntriesForDate, journalData, discrepancies) {
+        const timetableLessonCount = difference.timetableLessonCount
+        const timetableFirstLessonStartNumber = difference.timetableFirstLessonStartNumber
+        const journalLessonCount = difference.journalLessonCount
+        const journalFirstLessonStartNumber = difference.journalFirstLessonStartNumber
+        const journalEntryId = difference.journalEntryId
+
+        // Find the first timetable entry for this date to get basic info
+        const firstTimetableEntry = timetableEntriesForDate[0]
+        if (!firstTimetableEntry) return
+
+        if (timetableLessonCount !== journalLessonCount ||
+            timetableFirstLessonStartNumber !== journalFirstLessonStartNumber) {
+
+            // This is a mismatch that needs fixing
+            if (timetableLessonCount === 1 && journalLessonCount === 1 && timetableFirstLessonStartNumber !== journalFirstLessonStartNumber) {
+                // Single lesson fix - only when both have 1 lesson but different start numbers
                 discrepancies.push({
                     date: date,
-                    timeStart: firstTimetableLesson?.timeStart || '',
-                    timeEnd: firstTimetableLesson?.timeEnd || '',
-                    name: firstTimetableLesson?.name || '',
-                    rooms: firstTimetableLesson?.rooms || [],
-                    lessonNumber: correctStartLesson,
-                    actualLessonNumber: currentStartLesson,
-                    entryId: entry.id,
+                    timeStart: firstTimetableEntry.timeStart,
+                    timeEnd: firstTimetableEntry.timeEnd,
+                    name: firstTimetableEntry.nameEt || journalData.info.nameEt,
+                    rooms: firstTimetableEntry.rooms || [],
+                    lessonNumber: timetableFirstLessonStartNumber,
+                    actualLessonNumber: journalFirstLessonStartNumber,
+                    entryId: journalEntryId,
                     type: 'wrong_lesson_number'
                 })
             } else {
+                // Multi-lesson fix - for any lesson count mismatch or start number mismatch with different counts
+                const neededLessons = []
+                for (let i = 0; i < timetableLessonCount; i++) {
+                    neededLessons.push(timetableFirstLessonStartNumber + i)
+                }
+
                 discrepancies.push({
                     date: date,
-                    timeStart: firstTimetableLesson?.timeStart || '',
-                    timeEnd: firstTimetableLesson?.timeEnd || '',
-                    name: firstTimetableLesson?.name || '',
-                    rooms: firstTimetableLesson?.rooms || [],
-                    lessonNumber: `Algustund: ${correctStartLesson}, Tundide arv: ${correctLessonCount}`,
-                    actualLessonNumber: `Algustund: ${currentStartLesson}, Tundide arv: ${currentLessonCount}`,
-                    entryId: entry.id,
-                    neededLessons: conflictData.correctLessons,
-                    originalLessonCount: correctLessonCount,
-                    correctStartLesson: correctStartLesson,
+                    timeStart: firstTimetableEntry.timeStart,
+                    timeEnd: firstTimetableEntry.timeEnd,
+                    name: firstTimetableEntry.nameEt || journalData.info.nameEt,
+                    rooms: firstTimetableEntry.rooms || [],
+                    lessonNumber: `Algustund: ${timetableFirstLessonStartNumber}, Tundide arv: ${timetableLessonCount}`,
+                    actualLessonNumber: `Algustund: ${journalFirstLessonStartNumber}, Tundide arv: ${journalLessonCount}`,
+                    entryId: journalEntryId,
+                    neededLessons: neededLessons,
+                    originalLessonCount: timetableLessonCount,
+                    correctStartLesson: timetableFirstLessonStartNumber,
                     type: 'multi_lesson_fix_needed'
                 })
             }
         }
-
-        // Process missing lessons with consecutive grouping
-        for (const [date, missingLessons] of missingLessonsByDate) {
-            const lessonNumbers = missingLessons.map(ml => ml.lessonNumber).sort((a, b) => a - b)
-            const groupedLessons = this.groupConsecutiveLessons(lessonNumbers)
-
-            for (const group of groupedLessons) {
-                const firstLesson = group[0]
-                const lessonCount = group.length
-                const firstMissing = missingLessons.find(ml => ml.lessonNumber === firstLesson)
-
-                discrepancies.push({
-                    ...firstMissing,
-                    lessonNumber: firstLesson,
-                    lessonCount: lessonCount,
-                    lessonNumbers: group,
-                    type: 'missing_journal_entry'
-                })
-            }
-        }
-
-        Logger.info(`[${this.name}] Found ${discrepancies.length} lesson discrepancies`)
-        return discrepancies
     }
 
     /**
@@ -777,7 +728,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         let content = `
             <div style="display: flex; align-items: center; margin-bottom: 15px;">
                 <span style="font-size: 20px; margin-right: 10px;">⚠️</span>
-                <h3 style="margin: 0; color: #856404;">Tunnisisekannete probleemid (${discrepancies.length})</h3>
+                <h3 style="margin: 0; color: #856404;">Tunnisissekannete probleemid (${discrepancies.length})</h3>
             </div>
             <table style="width: 100%; border-collapse: collapse; background: white;">
                 <thead>
@@ -804,19 +755,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${startLesson}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center; font-size: 14px; font-weight: bold;">${lessonCount}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                        <button 
+                                        <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
                                             data-lessons="${lessonNumbers.join(',')}"
                                             data-start-lesson="${startLesson}"
                                             data-lesson-count="${lessonCount}"
                                             style="
-                                                background: #28a745; 
-                                                color: white; 
-                                                border: none; 
-                                                padding: 4px 8px; 
-                                                border-radius: 3px; 
-                                                font-size: 12px; 
+                                                background: #28a745;
+                                                color: white;
+                                                border: none;
+                                                padding: 4px 8px;
+                                                border-radius: 3px;
+                                                font-size: 12px;
                                                 cursor: pointer;
                                                 font-weight: bold;
                                             "
@@ -833,7 +784,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 const currentStartLesson = parseInt(discrepancy.actualLessonNumber.match(/Algustund: (\d+)/)?.[1] || 1)
                 const currentLessonCount = parseInt(discrepancy.actualLessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
                 const correctStartLesson = discrepancy.correctStartLesson || parseInt(discrepancy.lessonNumber.match(/Algustund: (\d+)/)?.[1] || discrepancy.neededLessons[0])
-                const correctLessonCount = discrepancy.originalLessonCount || currentLessonCount
+                const correctLessonCount = discrepancy.originalLessonCount !== undefined ? discrepancy.originalLessonCount : parseInt(discrepancy.lessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
+
+                // Debug logging to see the values
+                console.log(`[LessonDiscrepancies] Multi-lesson fix for ${discrepancy.date}:`, {
+                    currentLessonCount,
+                    correctLessonCount,
+                    originalLessonCount: discrepancy.originalLessonCount,
+                    actualLessonNumber: discrepancy.actualLessonNumber,
+                    lessonNumber: discrepancy.lessonNumber
+                })
 
                 return `
                                 <tr style="background: #fff2e6;">
@@ -850,7 +810,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     }
                                     </td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                        <button 
+                                        <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
                                             data-entry-id="${discrepancy.entryId}"
@@ -859,12 +819,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                             data-type="multi_lesson_fix"
                                             data-lessons="${discrepancy.neededLessons.join(',')}"
                                             style="
-                                                background: #ffc107; 
-                                                color: #212529; 
-                                                border: none; 
-                                                padding: 4px 8px; 
-                                                border-radius: 3px; 
-                                                font-size: 12px; 
+                                                background: #ffc107;
+                                                color: #212529;
+                                                border: none;
+                                                padding: 4px 8px;
+                                                border-radius: 3px;
+                                                font-size: 12px;
                                                 cursor: pointer;
                                                 font-weight: bold;
                                             "
@@ -889,7 +849,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                         <span style="font-size: 14px;">1</span>
                                     </td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                        <button 
+                                        <button
                                             id="${buttonId}"
                                             data-date="${discrepancy.date}"
                                             data-entry-id="${discrepancy.entryId}"
@@ -897,12 +857,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                             data-correct="${discrepancy.lessonNumber}"
                                             data-type="single_lesson_fix"
                                             style="
-                                                background: #ffc107; 
-                                                color: #212529; 
-                                                border: none; 
-                                                padding: 4px 8px; 
-                                                border-radius: 3px; 
-                                                font-size: 12px; 
+                                                background: #ffc107;
+                                                color: #212529;
+                                                border: none;
+                                                padding: 4px 8px;
+                                                border-radius: 3px;
+                                                font-size: 12px;
                                                 cursor: pointer;
                                                 font-weight: bold;
                                             "

@@ -7,7 +7,7 @@ import Logger from '../services/Logger.js'
  * Provides a structured approach to loading features
  * @returns {Promise<Array>} Array of all features
  */
-export async function loadFeatures() {
+export async function loadFeatures () {
   Logger.debug('Loading features...')
 
   // Check if Kriit is enabled
