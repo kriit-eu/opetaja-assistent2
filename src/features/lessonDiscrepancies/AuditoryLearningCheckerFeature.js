@@ -15,6 +15,9 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
         this.currentJournalId = null
         this.incompleteEntries = []
         this.lastJournalData = null
+        this.saveMonitoringSetup = false
+        this.boundSaveButtonHandler = null
+        this.dialogObserver = null
     }
 
     async activate() {
@@ -41,11 +44,13 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
             Logger.debug(`[${this.name}] Auditoorne (A:) lesson hours are full, not activating auditory checker feature`)
             return
         }
+        this.setupSaveMonitoring()
         await this.checkAuditoryLearningOnEntries()
     }
 
     onDeactivate() {
         Logger.debug(`[${this.name}] Deactivating feature`)
+        this.cleanupMonitoring()
         this.reset()
         super.onDeactivate()
     }
@@ -197,8 +202,10 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
             } else {
                 Logger.warning(`[${this.name}] Could not find save button after checking Auditoorne õpe for entry ${entry.id}`)
             }
-            entry.fixed = true
-            this.insertIncompleteAuditoryLearningTable()
+            // Wait for save to complete and dialog to close
+            await this.delay(1500)
+            // Force refresh after fix
+            await this.checkAuditoryLearningOnEntries()
         } catch (e) {
             Logger.error(`[${this.name}] Failed to fix auditory learning for entry ${entry.id}:`, e)
         }
@@ -280,7 +287,7 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
         this.tableCreated = false
         this.currentJournalId = null
         this.incompleteEntries = []
-
+        this.cleanupMonitoring()
         // Remove any existing table
         const existingTable = document.querySelector('[data-auditory-learning-table]')
         if (existingTable) {
@@ -369,6 +376,80 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
                 await this.delay(200)
                 return
             }
+        }
+    }
+
+    setupSaveMonitoring() {
+        if (this.saveMonitoringSetup) return
+        this.saveMonitoringSetup = true
+        this.boundSaveButtonHandler = this.handleSaveButtonClick.bind(this)
+        document.addEventListener('click', this.boundSaveButtonHandler, true)
+        this.dialogObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                for (const node of mutation.removedNodes) {
+                    if (this.isJournalEntryDialog(node)) {
+                        Logger.debug(`[${this.name}] Detected dialog close, refreshing table`)
+                        this.checkAuditoryLearningOnEntries()
+                    }
+                }
+            }
+        })
+        this.dialogObserver.observe(document.body, { childList: true, subtree: true })
+    }
+
+    handleSaveButtonClick(event) {
+        const target = event.target
+        if (!target) return
+        const isSaveButton = this.isSaveButton(target)
+        if (isSaveButton) {
+            setTimeout(() => {
+                this.checkAuditoryLearningOnEntries()
+            }, 1200)
+        }
+    }
+
+    isSaveButton(element) {
+        if (!element) return false
+        const tagName = element.tagName.toLowerCase()
+        const textContent = element.textContent || ''
+        const className = element.className || ''
+        const id = element.id || ''
+        const savePatterns = [
+            'salvesta',
+            'save',
+            'salvestama',
+            'submit'
+        ]
+        const hasButtonText = savePatterns.some(pattern =>
+            textContent.toLowerCase().includes(pattern))
+        const hasButtonClass = savePatterns.some(pattern =>
+            className.toLowerCase().includes(pattern) ||
+            id.toLowerCase().includes(pattern))
+        const isButtonElement = ['button', 'input'].includes(tagName) ||
+            className.includes('btn') ||
+            className.includes('button') ||
+            element.getAttribute('role') === 'button'
+        return isButtonElement && (hasButtonText || hasButtonClass)
+    }
+
+    isJournalEntryDialog(element) {
+        if (!element || !element.tagName) return false
+        const tagName = element.tagName.toLowerCase()
+        const className = element.className || ''
+        if (element.hasAttribute && element.hasAttribute('data-auditory-learning-table')) return false
+        if (tagName === 'md-dialog') return true
+        if (["modal", "dialog"].some(cls => className.includes(cls))) return true
+        return false
+    }
+
+    cleanupMonitoring() {
+        if (this.dialogObserver) {
+            this.dialogObserver.disconnect()
+            this.dialogObserver = null
+        }
+        if (this.boundSaveButtonHandler) {
+            document.removeEventListener('click', this.boundSaveButtonHandler, true)
+            this.boundSaveButtonHandler = null
         }
     }
 }
