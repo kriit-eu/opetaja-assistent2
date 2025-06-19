@@ -117,6 +117,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             // Collect journal and timetable data
             const { journalData, timetableData } = await this.fetchJournalAndTimetableData(journalId)
 
+            // Store journal data for later use in position matching
+            this.lastJournalData = journalData
+
             // Compare and find discrepancies (now async)
             const discrepancies = await this.findLessonDiscrepancies(journalData, timetableData)
 
@@ -326,12 +329,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      * Find discrepancies between journal entries and timetable
      */
     async findLessonDiscrepancies(journalData, timetableData) {
-        Logger.debug(`[${this.name}] Starting lesson discrepancies analysis using legacy logic`)
+        Logger.debug(`[${this.name}] Starting lesson discrepancies analysis using enhanced logic`)
         Logger.debug(`[${this.name}] Analyzing ${journalData.entries.length} journal entries and ${timetableData.length} timetable entries`)
 
         // Initialize data structures following legacy pattern
         const lessonCounts = {} // Record<string, { journal: number; timetable: number }>
         const firstLessonStartNumbers = {} // Record<string, { journal: number; timetable: number }>
+        const journalEntriesPerDate = {} // Record<string, JournalEntry[]> - NEW: Track all entries per date
         const differences = [] // AssistentJournalDifference[]
 
         // Process journal entries (equivalent to journal.entriesInJournal)
@@ -353,6 +357,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             if (!lessonCounts[date]) {
                 lessonCounts[date] = { journal: 0, timetable: 0 }
             }
+            if (!journalEntriesPerDate[date]) {
+                journalEntriesPerDate[date] = []
+            }
+
+            // Add this entry to the date's entry list
+            journalEntriesPerDate[date].push(journalEntry)
 
             // Add lesson count (equivalent to journalEntry.lessonCount)
             const lessonCount = journalEntry.lessons || 1
@@ -396,19 +406,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             Logger.debug(`[${this.name}] Timetable entry on ${date}: start=${firstLessonStartNumber}, total_count=${lessonCounts[date].timetable}`)
         }
 
-        // Compare lesson counts and first lesson start numbers for each date (legacy logic)
+        // Compare lesson counts and first lesson start numbers for each date (enhanced logic)
         for (const date in lessonCounts) {
             if (
                 date !== 'null' &&
                 (lessonCounts[date].journal !== lessonCounts[date].timetable ||
                     firstLessonStartNumbers[date].journal !== firstLessonStartNumbers[date].timetable)
             ) {
-                // Find the journal entry id for the date where entryType is regular lesson
-                const journalEntryId = journalData.entries.find(
-                    (entry) =>
-                        this.formatDate(entry.entryDate) === date &&
-                        entry.entryType === 'SISSEKANNE_T'
-                )?.id || 0
+                // Enhanced: Pass all journal entries for this date instead of just the first one
+                const entriesForDate = journalEntriesPerDate[date] || []
+                const journalEntryId = entriesForDate.length > 0 ? entriesForDate[0].id : 0
 
                 differences.push({
                     date: date,
@@ -417,10 +424,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     timetableFirstLessonStartNumber: firstLessonStartNumbers[date].timetable,
                     journalLessonCount: lessonCounts[date].journal,
                     journalFirstLessonStartNumber: firstLessonStartNumbers[date].journal,
-                    journalEntryId: journalEntryId
+                    journalEntryId: journalEntryId,
+                    allJournalEntries: entriesForDate // NEW: Include all entries for smart handling
                 })
 
-                Logger.info(`[${this.name}] Found discrepancy on ${date}: journal(${lessonCounts[date].journal} lessons, start=${firstLessonStartNumbers[date].journal}) vs timetable(${lessonCounts[date].timetable} lessons, start=${firstLessonStartNumbers[date].timetable})`)
+                Logger.info(`[${this.name}] Found discrepancy on ${date}: journal(${lessonCounts[date].journal} lessons, start=${firstLessonStartNumbers[date].journal}) vs timetable(${lessonCounts[date].timetable} lessons, start=${firstLessonStartNumbers[date].timetable}), entries: ${entriesForDate.length}`)
             }
         }
 
@@ -436,12 +444,58 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         Logger.info(`[${this.name}] Found ${differences.length} lesson discrepancies using legacy logic`)
 
-        // Convert legacy differences to the expected output format for the table
-        return this.convertLegacyDifferencesToDiscrepancies(differences, journalData, timetableData)
+        // Convert enhanced differences to the expected output format for the table
+        return this.convertEnhancedDifferencesToDiscrepancies(differences, journalData, timetableData)
     }
 
     /**
-     * Convert legacy AssistentJournalDifference[] to the expected discrepancies format
+     * Convert enhanced AssistentJournalDifference[] to the expected discrepancies format
+     */
+    async convertEnhancedDifferencesToDiscrepancies(differences, journalData, timetableData) {
+        const discrepancies = []
+
+        for (const difference of differences) {
+            const date = difference.date
+            const timetableLessonCount = difference.timetableLessonCount
+            const timetableFirstLessonStartNumber = difference.timetableFirstLessonStartNumber
+            const journalLessonCount = difference.journalLessonCount
+            const journalFirstLessonStartNumber = difference.journalFirstLessonStartNumber
+            const allJournalEntries = difference.allJournalEntries || []
+
+            // Find corresponding timetable entries for this date
+            const timetableEntriesForDate = timetableData.filter(entry =>
+                this.formatDate(entry.date) === date
+            )
+
+            // Determine the type of discrepancy and create appropriate entries
+            if (journalLessonCount === 0 && timetableLessonCount > 0) {
+                // Missing journal entries - all timetable lessons are missing
+                await this.createMissingLessonDiscrepancies(
+                    date, timetableEntriesForDate, journalData, discrepancies
+                )
+            } else if (journalLessonCount > 0 && timetableLessonCount > 0) {
+                // Enhanced: Check if we should filter out redundant start lesson displays (Issue 1)
+                const startLessonsMatch = journalFirstLessonStartNumber === timetableFirstLessonStartNumber
+                const lessonCountsMatch = journalLessonCount === timetableLessonCount
+
+                // Only create discrepancy if there's actually something to fix
+                if (!startLessonsMatch || !lessonCountsMatch) {
+                    // Lesson count or start number mismatch - need to fix existing entry
+                    await this.createEnhancedLessonMismatchDiscrepancies(
+                        date, difference, timetableEntriesForDate, journalData, discrepancies
+                    )
+                }
+            }
+            // Note: We don't handle journalLessonCount > 0 && timetableLessonCount === 0
+            // as that would mean journal entries exist but no timetable - this is handled elsewhere
+        }
+
+        Logger.info(`[${this.name}] Converted ${differences.length} enhanced differences to ${discrepancies.length} discrepancies`)
+        return discrepancies
+    }
+
+    /**
+     * Convert legacy AssistentJournalDifference[] to the expected discrepancies format (kept for compatibility)
      */
     async convertLegacyDifferencesToDiscrepancies(differences, journalData, timetableData) {
         const discrepancies = []
@@ -519,7 +573,48 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     /**
-     * Create lesson mismatch discrepancies for dates with incorrect journal entries
+     * Create enhanced lesson mismatch discrepancies for dates with incorrect journal entries
+     */
+    async createEnhancedLessonMismatchDiscrepancies(date, difference, timetableEntriesForDate, journalData, discrepancies) {
+        const timetableLessonCount = difference.timetableLessonCount
+        const timetableFirstLessonStartNumber = difference.timetableFirstLessonStartNumber
+        const journalLessonCount = difference.journalLessonCount
+        const journalFirstLessonStartNumber = difference.journalFirstLessonStartNumber
+        const allJournalEntries = difference.allJournalEntries || []
+
+        // Find the first timetable entry for this date to get basic info
+        const firstTimetableEntry = timetableEntriesForDate[0]
+        if (!firstTimetableEntry) return
+
+        const startLessonsMatch = journalFirstLessonStartNumber === timetableFirstLessonStartNumber
+        const lessonCountsMatch = journalLessonCount === timetableLessonCount
+
+        if (!startLessonsMatch || !lessonCountsMatch) {
+            // This is a mismatch that needs fixing
+            if (timetableLessonCount === 1 && journalLessonCount === 1 && !startLessonsMatch) {
+                // Single lesson fix - only when both have 1 lesson but different start numbers
+                discrepancies.push({
+                    date: date,
+                    timeStart: firstTimetableEntry.timeStart,
+                    timeEnd: firstTimetableEntry.timeEnd,
+                    name: firstTimetableEntry.nameEt || journalData.info.nameEt,
+                    rooms: firstTimetableEntry.rooms || [],
+                    lessonNumber: timetableFirstLessonStartNumber,
+                    actualLessonNumber: journalFirstLessonStartNumber,
+                    entryId: allJournalEntries[0]?.id || difference.journalEntryId,
+                    type: 'wrong_lesson_number'
+                })
+            } else {
+                // Enhanced multi-lesson fix with smart button logic
+                await this.createSmartMultiLessonDiscrepancy(
+                    date, difference, firstTimetableEntry, journalData, discrepancies
+                )
+            }
+        }
+    }
+
+    /**
+     * Create lesson mismatch discrepancies for dates with incorrect journal entries (legacy method)
      */
     async createLessonMismatchDiscrepancies(date, difference, timetableEntriesForDate, journalData, discrepancies) {
         const timetableLessonCount = difference.timetableLessonCount
@@ -570,6 +665,100 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                     correctStartLesson: timetableFirstLessonStartNumber,
                     type: 'multi_lesson_fix_needed'
                 })
+            }
+        }
+    }
+
+    /**
+     * Create smart multi-lesson discrepancy with intelligent button logic
+     */
+    async createSmartMultiLessonDiscrepancy(date, difference, firstTimetableEntry, journalData, discrepancies) {
+        const timetableLessonCount = difference.timetableLessonCount
+        const timetableFirstLessonStartNumber = difference.timetableFirstLessonStartNumber
+        const journalLessonCount = difference.journalLessonCount
+        const journalFirstLessonStartNumber = difference.journalFirstLessonStartNumber
+        const allJournalEntries = difference.allJournalEntries || []
+
+        const neededLessons = []
+        for (let i = 0; i < timetableLessonCount; i++) {
+            neededLessons.push(timetableFirstLessonStartNumber + i)
+        }
+
+        // Calculate total excess lessons
+        const totalExcess = journalLessonCount - timetableLessonCount
+
+        // Sort entries by lesson count (descending) to find the largest entry
+        const sortedEntries = [...allJournalEntries].sort((a, b) => (b.lessons || 1) - (a.lessons || 1))
+        const largestEntry = sortedEntries[0]
+        const largestEntryLessonCount = largestEntry?.lessons || 1
+
+        // Check if smart adjustment is possible (would result in >= 1 lessons)
+        const canUseSmartAdjustment = totalExcess > 0 && (largestEntryLessonCount - totalExcess) >= 1
+
+        if (canUseSmartAdjustment && allJournalEntries.length > 1) {
+            // Smart single button approach
+            const targetLessonCount = largestEntryLessonCount - totalExcess
+
+            discrepancies.push({
+                date: date,
+                timeStart: firstTimetableEntry.timeStart,
+                timeEnd: firstTimetableEntry.timeEnd,
+                name: firstTimetableEntry.nameEt || journalData.info.nameEt,
+                rooms: firstTimetableEntry.rooms || [],
+                lessonNumber: `Algustund: ${timetableFirstLessonStartNumber}, Tundide arv: ${timetableLessonCount}`,
+                actualLessonNumber: `Algustund: ${journalFirstLessonStartNumber}, Tundide arv: ${journalLessonCount}`,
+                entryId: largestEntry.id,
+                neededLessons: neededLessons,
+                originalLessonCount: timetableLessonCount,
+                correctStartLesson: timetableFirstLessonStartNumber,
+                smartTargetLessonCount: targetLessonCount, // NEW: Smart prefill count
+                type: 'smart_multi_lesson_fix'
+            })
+
+            Logger.debug(`[${this.name}] Created smart single button for ${date}: largest entry ${largestEntry.id} (${largestEntryLessonCount} lessons) -> target ${targetLessonCount} lessons`)
+        } else {
+            // Multiple buttons approach or single entry
+            if (allJournalEntries.length > 1) {
+                // Multiple entries - create single discrepancy with multiple entries data
+                discrepancies.push({
+                    date: date,
+                    timeStart: firstTimetableEntry.timeStart,
+                    timeEnd: firstTimetableEntry.timeEnd,
+                    name: firstTimetableEntry.nameEt || journalData.info.nameEt,
+                    rooms: firstTimetableEntry.rooms || [],
+                    lessonNumber: `Algustund: ${timetableFirstLessonStartNumber}, Tundide arv: ${timetableLessonCount}`,
+                    actualLessonNumber: `Algustund: ${journalFirstLessonStartNumber}, Tundide arv: ${journalLessonCount}`,
+                    neededLessons: neededLessons,
+                    originalLessonCount: timetableLessonCount,
+                    correctStartLesson: timetableFirstLessonStartNumber,
+                    multipleEntries: allJournalEntries.map(entry => ({
+                        id: entry.id,
+                        lessonCount: entry.lessons || 1,
+                        startLesson: entry.startLessonNr || 1
+                    })), // NEW: Array of all entries for this date
+                    type: 'multi_entry_lesson_fix'
+                })
+
+                Logger.debug(`[${this.name}] Created single row with multiple buttons for ${date}: ${allJournalEntries.length} entries`)
+            } else {
+                // Single entry - use standard multi-lesson fix
+                const entry = allJournalEntries[0] || { id: difference.journalEntryId }
+                discrepancies.push({
+                    date: date,
+                    timeStart: firstTimetableEntry.timeStart,
+                    timeEnd: firstTimetableEntry.timeEnd,
+                    name: firstTimetableEntry.nameEt || journalData.info.nameEt,
+                    rooms: firstTimetableEntry.rooms || [],
+                    lessonNumber: `Algustund: ${timetableFirstLessonStartNumber}, Tundide arv: ${timetableLessonCount}`,
+                    actualLessonNumber: `Algustund: ${journalFirstLessonStartNumber}, Tundide arv: ${journalLessonCount}`,
+                    entryId: entry.id,
+                    neededLessons: neededLessons,
+                    originalLessonCount: timetableLessonCount,
+                    correctStartLesson: timetableFirstLessonStartNumber,
+                    type: 'multi_lesson_fix_needed'
+                })
+
+                Logger.debug(`[${this.name}] Created standard multi-lesson fix for ${date}: single entry ${entry.id}`)
             }
         }
     }
@@ -698,20 +887,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      * Create the HTML table element for discrepancies
      */
     createDiscrepanciesTableElement(discrepancies) {
-        // Separate different types of discrepancies
+        // Separate different types of discrepancies (including new types)
         const missingEntries = discrepancies.filter(d => d.type === 'missing_journal_entry')
         const wrongNumbers = discrepancies.filter(d => d.type === 'wrong_lesson_number')
         const multiLessonFixes = discrepancies.filter(d => d.type === 'multi_lesson_fix_needed')
+        const smartMultiLessonFixes = discrepancies.filter(d => d.type === 'smart_multi_lesson_fix')
+        const multiEntryLessonFixes = discrepancies.filter(d => d.type === 'multi_entry_lesson_fix')
 
         // Combine all discrepancies into one sorted list
-        const allDiscrepancies = [...missingEntries, ...wrongNumbers, ...multiLessonFixes].sort((a, b) => {
+        const allDiscrepancies = [...missingEntries, ...wrongNumbers, ...multiLessonFixes, ...smartMultiLessonFixes, ...multiEntryLessonFixes].sort((a, b) => {
             const dateA = new Date(a.date)
             const dateB = new Date(b.date)
             if (dateA.getTime() !== dateB.getTime()) {
                 return dateA - dateB
             }
-            const lessonA = a.type === 'multi_lesson_fix_needed' ? a.neededLessons[0] : a.lessonNumber
-            const lessonB = b.type === 'multi_lesson_fix_needed' ? b.neededLessons[0] : b.lessonNumber
+            const lessonA = a.type.includes('multi') ? a.neededLessons[0] : a.lessonNumber
+            const lessonB = b.type.includes('multi') ? b.neededLessons[0] : b.lessonNumber
             return lessonA - lessonB
         })
 
@@ -778,37 +969,139 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                                         </button>
                                     </td>
                                 </tr>`
+            } else if (discrepancy.type === 'smart_multi_lesson_fix') {
+                // Smart multi-lesson fix with intelligent prefilling
+                const buttonId = `edit-smart-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
+                const currentStartLesson = parseInt(discrepancy.actualLessonNumber.match(/Algustund: (\d+)/)?.[1] || 1)
+                const currentLessonCount = parseInt(discrepancy.actualLessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
+                const correctStartLesson = discrepancy.correctStartLesson || parseInt(discrepancy.lessonNumber.match(/Algustund: (\d+)/)?.[1] || discrepancy.neededLessons[0])
+                const correctLessonCount = discrepancy.originalLessonCount !== undefined ? discrepancy.originalLessonCount : parseInt(discrepancy.lessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
+
+                // Enhanced display logic - Issue 1 fix: Only show differences when they exist
+                const startLessonDisplay = currentStartLesson !== correctStartLesson
+                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
+                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>`
+                    : `<span style="font-size: 14px;">${correctStartLesson}</span>`
+
+                const lessonCountDisplay = currentLessonCount !== correctLessonCount
+                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
+                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                    : `<span style="font-size: 14px;">${correctLessonCount}</span>`
+
+                return `
+                                <tr style="background: #fff2e6;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        <button
+                                            id="${buttonId}"
+                                            data-date="${discrepancy.date}"
+                                            data-entry-id="${discrepancy.entryId}"
+                                            data-current="${discrepancy.actualLessonNumber}"
+                                            data-correct="${discrepancy.lessonNumber}"
+                                            data-type="smart_multi_lesson_fix"
+                                            data-lessons="${discrepancy.neededLessons.join(',')}"
+                                            data-smart-target="${discrepancy.smartTargetLessonCount}"
+                                            style="
+                                                background: #17a2b8;
+                                                color: white;
+                                                border: none;
+                                                padding: 4px 8px;
+                                                border-radius: 3px;
+                                                font-size: 12px;
+                                                cursor: pointer;
+                                                font-weight: bold;
+                                            "
+                                            onmouseover="this.style.background='#138496'"
+                                            onmouseout="this.style.background='#17a2b8'"
+                                        >
+                                            Muuda
+                                        </button>
+                                    </td>
+                                </tr>`
+            } else if (discrepancy.type === 'multi_entry_lesson_fix') {
+                // Multiple entry lesson fix - show multiple buttons in single row
+                const currentStartLesson = parseInt(discrepancy.actualLessonNumber.match(/Algustund: (\d+)/)?.[1] || 1)
+                const currentLessonCount = parseInt(discrepancy.actualLessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
+                const correctStartLesson = discrepancy.correctStartLesson || parseInt(discrepancy.lessonNumber.match(/Algustund: (\d+)/)?.[1] || discrepancy.neededLessons[0])
+                const correctLessonCount = discrepancy.originalLessonCount !== undefined ? discrepancy.originalLessonCount : parseInt(discrepancy.lessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
+
+                // Enhanced display logic - Issue 1 fix: Only show differences when they exist
+                const startLessonDisplay = currentStartLesson !== correctStartLesson
+                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
+                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>`
+                    : `<span style="font-size: 14px;">${correctStartLesson}</span>`
+
+                const lessonCountDisplay = currentLessonCount !== correctLessonCount
+                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
+                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                    : `<span style="font-size: 14px;">${correctLessonCount}</span>`
+
+                // Generate multiple buttons for each entry
+                const multipleEntries = discrepancy.multipleEntries || []
+                const buttonsHtml = multipleEntries.map(entry => {
+                    const buttonId = `edit-entry-${discrepancy.date.replace(/\./g, '-')}-${entry.id}`
+                    return `<button
+                                id="${buttonId}"
+                                data-date="${discrepancy.date}"
+                                data-entry-id="${entry.id}"
+                                data-current="${discrepancy.actualLessonNumber}"
+                                data-correct="${discrepancy.lessonNumber}"
+                                data-type="multi_entry_lesson_fix"
+                                data-lessons="${discrepancy.neededLessons.join(',')}"
+                                data-entry-lesson-count="${entry.lessonCount}"
+                                style="
+                                    background: #6c757d;
+                                    color: white;
+                                    border: none;
+                                    padding: 4px 8px;
+                                    border-radius: 3px;
+                                    font-size: 12px;
+                                    cursor: pointer;
+                                    font-weight: bold;
+                                    margin-right: 4px;
+                                "
+                                onmouseover="this.style.background='#5a6268'"
+                                onmouseout="this.style.background='#6c757d'"
+                            >
+                                Muuda (${entry.lessonCount})
+                            </button>`
+                }).join('')
+
+                return `
+                                <tr style="background: #fff2e6;">
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
+                                        ${buttonsHtml}
+                                    </td>
+                                </tr>`
             } else if (discrepancy.type === 'multi_lesson_fix_needed') {
-                // Multi-lesson fix
+                // Legacy multi-lesson fix
                 const buttonId = `edit-multi-${discrepancy.date.replace(/\./g, '-')}-${discrepancy.entryId}`
                 const currentStartLesson = parseInt(discrepancy.actualLessonNumber.match(/Algustund: (\d+)/)?.[1] || 1)
                 const currentLessonCount = parseInt(discrepancy.actualLessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
                 const correctStartLesson = discrepancy.correctStartLesson || parseInt(discrepancy.lessonNumber.match(/Algustund: (\d+)/)?.[1] || discrepancy.neededLessons[0])
                 const correctLessonCount = discrepancy.originalLessonCount !== undefined ? discrepancy.originalLessonCount : parseInt(discrepancy.lessonNumber.match(/Tundide arv: (\d+)/)?.[1] || 1)
 
-                // Debug logging to see the values
-                console.log(`[LessonDiscrepancies] Multi-lesson fix for ${discrepancy.date}:`, {
-                    currentLessonCount,
-                    correctLessonCount,
-                    originalLessonCount: discrepancy.originalLessonCount,
-                    actualLessonNumber: discrepancy.actualLessonNumber,
-                    lessonNumber: discrepancy.lessonNumber
-                })
+                // Enhanced display logic - Issue 1 fix: Only show differences when they exist
+                const startLessonDisplay = currentStartLesson !== correctStartLesson
+                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
+                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>`
+                    : `<span style="font-size: 14px;">${correctStartLesson}</span>`
+
+                const lessonCountDisplay = currentLessonCount !== correctLessonCount
+                    ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
+                       <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
+                    : `<span style="font-size: 14px;">${correctLessonCount}</span>`
 
                 return `
                                 <tr style="background: #fff2e6;">
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; font-size: 14px;">${this.formatDisplayDate(discrepancy.date)}</td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                        <span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentStartLesson}</span>
-                                        <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctStartLesson}</span>
-                                    </td>
-                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
-                                        ${currentLessonCount !== correctLessonCount
-                        ? `<span style="background-color: #f8d7da; color: #721c24; font-weight: bold; text-decoration: line-through; margin-right: 8px; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${currentLessonCount}</span>
-                                               <span style="background-color: #d1edcc; color: #155724; font-weight: bold; font-size: 14px; padding: 2px 4px; border-radius: 3px;">${correctLessonCount}</span>`
-                        : `<span style="font-size: 14px;">${correctLessonCount}</span>`
-                    }
-                                    </td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${startLessonDisplay}</td>
+                                    <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">${lessonCountDisplay}</td>
                                     <td style="padding: 6px 8px; border: 1px solid #dee2e6; text-align: center;">
                                         <button
                                             id="${buttonId}"
@@ -1591,20 +1884,29 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 // Disable only this button to prevent multiple clicks
                 clickedButton.disabled = true
                 const originalText = clickedButton.textContent
+                const originalBackground = clickedButton.style.background
                 clickedButton.textContent = 'Töötlen...'
                 clickedButton.style.background = '#6c757d' // Gray color when disabled
 
                 try {
-                    Logger.debug(`[${this.name}] Processing edit button for entry ID: ${entryId}`)
+                    Logger.debug(`[${this.name}] Processing edit button for entry ID: ${entryId}, type: ${type}`)
                     await this.handleEditEntry(date, entryId, current, correct, type, lessons)
                 } catch (error) {
                     Logger.error(`[${this.name}] Error processing edit button:`, error)
                 } finally {
-                    // Re-enable only this button after processing
+                    // Re-enable only this button after processing with correct original color
                     setTimeout(() => {
                         clickedButton.disabled = false
                         clickedButton.textContent = originalText
-                        clickedButton.style.background = '#ffc107' // Restore original yellow color
+
+                        // Restore original background color based on button type
+                        if (type === 'smart_multi_lesson_fix') {
+                            clickedButton.style.background = '#17a2b8' // Blue for smart buttons
+                        } else if (type === 'multi_entry_lesson_fix') {
+                            clickedButton.style.background = '#6c757d' // Gray for multi-entry buttons
+                        } else {
+                            clickedButton.style.background = '#ffc107' // Yellow for standard buttons
+                        }
                     }, 2000)
                 }
             })
@@ -1625,10 +1927,21 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         } catch (error) {
             Logger.error(`[${this.name}] Error opening edit entry form:`, error)
 
-            // Fallback to instructions if automation fails
+            // Enhanced fallback instructions for different button types
             const formattedDate = this.formatDisplayDate(date)
 
-            if (type === 'multi_lesson_fix') {
+            if (type === 'smart_multi_lesson_fix') {
+                const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
+                const minLesson = Math.min(...lessonNumbers)
+                const targetCount = this.getSmartTargetLessonCount() || lessonNumbers.length
+
+                alert(`Muuda sissekannet kuupäeval ${formattedDate} (Nutikas lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Muuda tundide arv: ${targetCount} (nutikalt arvutatud)\n4. Vajalikud tunnid: ${lessonNumbers.join(', ')}`)
+            } else if (type === 'multi_entry_lesson_fix') {
+                const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
+                const minLesson = Math.min(...lessonNumbers)
+
+                alert(`Muuda sissekannet kuupäeval ${formattedDate} (Mitme sissekande lahendus)\n\nPraegune seadistus:\n${current}\n\nUus seadistus:\n${correct}\n\nJuhised:\n1. Ava see sissekanne päevikus (ID: ${entryId})\n2. Muuda algustund: ${minLesson}\n3. Otsusta ise tundide arv (mitu tundi sellest sissekandest eemaldada)\n4. Vajalikud tunnid kokku: ${lessonNumbers.join(', ')}`)
+            } else if (type === 'multi_lesson_fix') {
                 const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
                 const minLesson = Math.min(...lessonNumbers)
                 const lessonCount = lessonNumbers.length
@@ -1671,115 +1984,98 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
      * Find the journal entry element on the page
      */
     async findJournalEntryElement(entryId, date) {
-        Logger.debug(`[${this.name}] Looking for journal entry with ID: ${entryId}`)
+        Logger.debug(`[${this.name}] Looking for journal entry with ID: ${entryId} on date: ${date}`)
 
-        // Look for journal entry elements using various strategies
+        // Quick debug: Log available editJournalEntry elements
+        const allEditElements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
+        Logger.debug(`[${this.name}] Found ${allEditElements.length} total editJournalEntry elements`)
+
+        // Look for journal entry elements using streamlined strategies
         const strategies = [
-            // Strategy 1: Look for journal-entry-button with ng-click containing the entry ID
+            // Strategy 1: Primary - Date-based span matching with position intelligence (PROVEN TO WORK)
             () => {
-                const buttons = document.querySelectorAll('.journal-entry-button[ng-click*="editJournalEntry"]')
-                return Array.from(buttons).find(btn => {
-                    const ngClick = btn.getAttribute('ng-click')
-                    return ngClick && ngClick.includes(entryId)
+                const formattedDate = this.formatDisplayDate(date)
+                Logger.debug(`[${this.name}] Strategy 1: Looking for date ${formattedDate} in journal table`)
+
+                // Look for spans with the date that have editJournalEntry ng-click
+                const dateSpans = document.querySelectorAll('span[ng-click*="editJournalEntry"]')
+                const matchingSpans = Array.from(dateSpans).filter(span => {
+                    const spanText = span.textContent.trim()
+                    return spanText === formattedDate.substring(0, 5) || spanText === formattedDate
                 })
+
+                Logger.debug(`[${this.name}] Found ${matchingSpans.length} date spans matching ${formattedDate}`)
+
+                if (matchingSpans.length === 1) {
+                    // Only one entry for this date, return it
+                    return matchingSpans[0]
+                } else if (matchingSpans.length > 1) {
+                    // Multiple entries for this date - use intelligent position matching
+                    return this.findSpecificJournalEntryByPosition(matchingSpans, entryId, date)
+                }
+
+                return null
             },
 
-            // Strategy 2: Look for any element with ng-click containing editJournalEntry and the entry ID
+            // Strategy 2: Fallback - Table row matching with position intelligence
+            () => {
+                const formattedDate = this.formatDisplayDate(date)
+                Logger.debug(`[${this.name}] Strategy 2: Looking for table rows with date ${formattedDate}`)
+
+                // Look for TR elements with editJournalEntry ng-click
+                const tableRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
+                const matchingRows = Array.from(tableRows).filter(row => {
+                    const rowText = row.textContent
+                    return rowText.includes(formattedDate.substring(0, 5))
+                })
+
+                Logger.debug(`[${this.name}] Found ${matchingRows.length} table rows matching ${formattedDate}`)
+
+                if (matchingRows.length === 1) {
+                    return matchingRows[0]
+                } else if (matchingRows.length > 1) {
+                    return this.findSpecificJournalEntryByPosition(matchingRows, entryId, date)
+                }
+
+                return null
+            },
+
+            // Strategy 3: Legacy fallback - Direct ID matching (rarely works but kept for edge cases)
             () => {
                 const elements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
                 return Array.from(elements).find(el => {
                     const ngClick = el.getAttribute('ng-click')
-                    return ngClick && ngClick.includes(entryId)
+                    // Look for exact entry ID match: editJournalEntry(123) or editJournalEntry('123')
+                    return ngClick && (
+                        ngClick.includes(`editJournalEntry(${entryId})`) ||
+                        ngClick.includes(`editJournalEntry('${entryId}')`) ||
+                        ngClick.includes(`editJournalEntry("${entryId}")`)
+                    )
                 })
             },
 
-            // Strategy 3: Look for table rows or containers that might contain the journal entry
-            () => {
-                const formattedDate = this.formatDisplayDate(date)
-                const dateSpans = document.querySelectorAll('span[ng-if*="journalEntry.entryType.code"]')
 
-                for (const span of dateSpans) {
-                    if (span.textContent.trim().includes(formattedDate.substring(0, 5))) { // Match DD.MM part
-                        // Look for clickable parent or nearby elements
-                        let current = span.parentElement
-                        while (current && current !== document.body) {
-                            // Check if this element or its children have edit functionality
-                            const editElement = current.querySelector('[ng-click*="editJournalEntry"]') ||
-                                current.querySelector('.journal-entry-button') ||
-                                (current.hasAttribute('ng-click') && current.getAttribute('ng-click').includes('edit') ? current : null)
-
-                            if (editElement) {
-                                // Verify this is for the correct entry ID
-                                const ngClick = editElement.getAttribute('ng-click')
-                                if (ngClick && ngClick.includes(entryId)) {
-                                    return editElement
-                                }
-                            }
-                            current = current.parentElement
-                        }
-                    }
-                }
-                return null
-            },
-
-            // Strategy 4: Look for spans or buttons with ng-click containing the entry ID (but exclude our own buttons)
-            () => {
-                const elements = document.querySelectorAll('span[ng-click], button[ng-click]')
-                return Array.from(elements).find(el => {
-                    // Skip our own discrepancies buttons
-                    if (this.isOurDiscrepanciesButton(el)) {
-                        return false
-                    }
-
-                    const ngClick = el.getAttribute('ng-click')
-                    return ngClick && (ngClick.includes(entryId) || ngClick.includes(`editJournalEntry(${entryId})`))
-                })
-            },
-
-            // Strategy 5: Look for table rows containing the date and entry information
-            () => {
-                const formattedDate = this.formatDisplayDate(date)
-                const rows = document.querySelectorAll('tr, .row, .entry')
-
-                return Array.from(rows).find(row => {
-                    // Skip our own discrepancies table
-                    if (row.closest('[data-discrepancies-table]')) {
-                        return false
-                    }
-
-                    const rowText = row.textContent
-                    const hasDate = rowText.includes(formattedDate) || rowText.includes(formattedDate.substring(0, 5))
-
-                    if (hasDate) {
-                        // Look for edit functionality in this row
-                        const editElement = row.querySelector('[ng-click*="editJournalEntry"]') ||
-                            row.querySelector('[ng-click*="edit"]') ||
-                            row.querySelector('.journal-entry-button')
-
-                        if (editElement) {
-                            const ngClick = editElement.getAttribute('ng-click')
-                            // Check if it contains our entry ID or if we can match by date
-                            if (ngClick && (ngClick.includes(entryId) || ngClick.includes('editJournalEntry'))) {
-                                return editElement
-                            }
-                        }
-                    }
-                    return false
-                })
-            }
         ]
 
         for (let i = 0; i < strategies.length; i++) {
             try {
+                Logger.debug(`[${this.name}] Trying strategy ${i + 1} to find entry ID ${entryId}`)
                 const element = strategies[i]()
                 if (element && this.isElementVisible(element) && !this.isOurDiscrepanciesButton(element)) {
-                    Logger.debug(`[${this.name}] Found journal entry element using strategy ${i + 1}:`, {
+                    Logger.debug(`[${this.name}] ✅ Found journal entry element using strategy ${i + 1}:`, {
                         tagName: element.tagName,
                         className: element.className,
                         ngClick: element.getAttribute('ng-click'),
-                        id: element.id
+                        id: element.id,
+                        targetEntryId: entryId
                     })
                     return element
+                } else if (element) {
+                    Logger.debug(`[${this.name}] ❌ Strategy ${i + 1} found element but it's not visible or is our own button:`, {
+                        tagName: element.tagName,
+                        visible: this.isElementVisible(element),
+                        isOurButton: this.isOurDiscrepanciesButton(element)
+                    })
                 }
             } catch (error) {
                 Logger.debug(`[${this.name}] Strategy ${i + 1} failed:`, error.message)
@@ -1787,26 +2083,54 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
         }
 
-        // If we still haven't found it, let's log all available journal-related elements for debugging
-        Logger.warning(`[${this.name}] Could not find journal entry ${entryId}. Available journal-related elements:`)
-
-        // Log spans with journal entry dates
-        const dateSpans = document.querySelectorAll('span[ng-if*="journalEntry"]')
-        Logger.debug(`[${this.name}] Found ${dateSpans.length} journal entry date spans`)
-
-        // Log clickable elements with editJournalEntry
-        const editElements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
-        Logger.debug(`[${this.name}] Found ${editElements.length} elements with editJournalEntry`)
-        Array.from(editElements).slice(0, 5).forEach((el, idx) => {
-            Logger.debug(`[${this.name}] EditJournalEntry ${idx + 1}:`, {
-                tagName: el.tagName,
-                className: el.className,
-                ngClick: el.getAttribute('ng-click'),
-                textContent: el.textContent.trim().substring(0, 30)
-            })
-        })
+        // If we still haven't found it, provide simplified debugging info
+        Logger.warning(`[${this.name}] ❌ Could not find journal entry ${entryId} on date ${date}`)
+        Logger.debug(`[${this.name}] Available editJournalEntry elements: ${allEditElements.length}`)
+        Logger.debug(`[${this.name}] Date spans found: ${document.querySelectorAll('span[ng-click*="editJournalEntry"]').length}`)
+        Logger.debug(`[${this.name}] Table rows found: ${document.querySelectorAll('tr[ng-click*="editJournalEntry"]').length}`)
 
         return null
+    }
+
+    /**
+     * Find specific journal entry by position when multiple entries exist for the same date
+     */
+    findSpecificJournalEntryByPosition(matchingElements, targetEntryId, date) {
+        Logger.debug(`[${this.name}] Finding specific entry ${targetEntryId} among ${matchingElements.length} elements for date ${date}`)
+
+        // Get all journal entries for this date from our data
+        const journalData = this.lastJournalData
+        if (!journalData || !journalData.entries) {
+            Logger.debug(`[${this.name}] No journal data available for position matching`)
+            return matchingElements[0] // Fallback to first element
+        }
+
+        // Find all entries for this date and sort them by ID
+        const entriesForDate = journalData.entries
+            .filter(entry => this.formatDate(entry.entryDate) === date && entry.entryType === 'SISSEKANNE_T')
+            .sort((a, b) => a.id - b.id) // Sort by ID to get consistent order
+
+        Logger.debug(`[${this.name}] Found ${entriesForDate.length} journal entries for date ${date}:`,
+            entriesForDate.map(e => ({ id: e.id, lessons: e.lessons || 1 })))
+
+        // Find the index of our target entry ID
+        const targetIndex = entriesForDate.findIndex(entry => entry.id.toString() === targetEntryId.toString())
+
+        if (targetIndex === -1) {
+            Logger.warning(`[${this.name}] Target entry ID ${targetEntryId} not found in journal data for date ${date}`)
+            return matchingElements[0] // Fallback to first element
+        }
+
+        Logger.debug(`[${this.name}] Target entry ${targetEntryId} is at index ${targetIndex} in sorted list`)
+
+        // Return the element at the corresponding position
+        if (targetIndex < matchingElements.length) {
+            Logger.debug(`[${this.name}] ✅ Selected element at index ${targetIndex} for entry ${targetEntryId}`)
+            return matchingElements[targetIndex]
+        } else {
+            Logger.warning(`[${this.name}] Target index ${targetIndex} exceeds available elements (${matchingElements.length})`)
+            return matchingElements[0] // Fallback to first element
+        }
     }
 
     /**
@@ -1978,7 +2302,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     async fillEditForm(current, correct, type, lessons) {
         Logger.debug(`[${this.name}] Filling edit form - type: ${type}`)
 
-        if (type === 'multi_lesson_fix') {
+        if (type === 'smart_multi_lesson_fix') {
+            // Enhanced: Smart multi-lesson fix with intelligent prefilling (Issue 2 fix)
+            const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
+            const minLesson = Math.min(...lessonNumbers)
+            const lessonCount = lessonNumbers.length
+
+            // Get the smart target lesson count from the button data
+            const smartTargetCount = this.getSmartTargetLessonCount()
+            const targetLessonCount = smartTargetCount || lessonCount
+
+            Logger.debug(`[${this.name}] Smart multi-lesson fix: start=${minLesson}, target_count=${targetLessonCount}, original_count=${lessonCount}`)
+
+            // Update start lesson and lesson count with smart prefilling
+            await this.fillStartLessonField(minLesson)
+            await this.fillLessonCountField(targetLessonCount)
+
+        } else if (type === 'multi_lesson_fix') {
             const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
             const minLesson = Math.min(...lessonNumbers)
             const lessonCount = lessonNumbers.length
@@ -1988,6 +2328,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             // Update start lesson and lesson count
             await this.fillStartLessonField(minLesson)
             await this.fillLessonCountField(lessonCount)
+
+        } else if (type === 'multi_entry_lesson_fix') {
+            // Enhanced: Multiple entry lesson fix - no prefilling, let user decide (Issue 2 fix)
+            const lessonNumbers = lessons ? lessons.split(',').map(n => parseInt(n.trim())) : []
+            const minLesson = Math.min(...lessonNumbers)
+
+            Logger.debug(`[${this.name}] Multi-entry lesson fix: start=${minLesson}, no prefilling`)
+
+            // Only update start lesson, let user decide on lesson count
+            await this.fillStartLessonField(minLesson)
 
         } else if (type === 'single_lesson_fix') {
             const correctLesson = parseInt(correct.replace('Algustund: ', ''))
@@ -1999,6 +2349,21 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
 
         Logger.info(`[${this.name}] Edit form filled successfully`)
+    }
+
+    /**
+     * Get the smart target lesson count from the currently clicked button
+     */
+    getSmartTargetLessonCount() {
+        // Look for the currently processing button to get its smart target data
+        const smartButtons = document.querySelectorAll('button[data-smart-target]')
+        for (const button of smartButtons) {
+            if (button.disabled && button.textContent.includes('Töötlen')) {
+                const smartTarget = button.getAttribute('data-smart-target')
+                return smartTarget ? parseInt(smartTarget) : null
+            }
+        }
+        return null
     }
 
     /**

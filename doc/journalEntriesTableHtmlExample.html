@@ -1,0 +1,123 @@
+  <!-- ── Container ─────────────────────────────────────────────── -->
+  <div id="journalEntriesByDate"
+       class="container journalTableContainer"
+       fixed-column-table
+       fixed-columns="2">
+
+    <!-- ── Table ───────────────────────────────────────────────── -->
+    <table class="journalTable">
+
+      <!-- ── Header row (1 × fixed + ng-repeat column prototypes) ─ -->
+      <thead>
+      <tr flex class="flex">
+
+        <!-- fixed columns -->
+        <th class="cross">Nr</th>
+        <th class="journal-entry-student-header cross">Õppija, Õpperühm</th>
+
+        <!-- date / lesson entries -->
+        <th class="bordered"
+            md-colors="{background: getEntryColor(journalEntry.entryType.code)}"
+            ng-repeat="journalEntry in journal.journalEntriesByDate | filter: filterJournalEntriesByDate">
+          <div ng-if="journalEntry.isCurrentJournal && journalEntry.entryType.code !== 'SISSEKANNE_O'"
+               layout="row" layout-align="space-between center"
+               class="layout-row layout-align-space-between-center">
+
+            <span class="journal-entry-button pointer">
+              <span ng-click="editJournalEntry(journalEntry.id)">
+                <span ng-if="journalEntry.entryType.code !== 'SISSEKANNE_L'">
+                  {{ journalEntry.date }}
+                </span>
+              </span>
+            </span>
+
+            <span class="journal-quick-update pointer" layout="row">
+              <md-icon ng-if="!journalEntry.quickUpdate"
+                       ng-click="quickUpdate(journalEntry)"
+                       md-font-set="material-icons">forward_5</md-icon>
+            </span>
+          </div>
+        </th>
+
+        <!-- outcome (ÕV) entries -->
+        <th class="bordered"
+            md-colors="{background: getEntryColor(journalEntry.entryType.code)}"
+            ng-repeat="journalEntry in journal.journalEntriesByDate | filter: filterJournalEntriesByDate">
+          <div ng-if="journalEntry.isCurrentJournal && journalEntry.entryType.code === 'SISSEKANNE_O'"
+               layout="row" layout-align="space-between center"
+               class="layout-row layout-align-space-between-center">
+
+            <span>
+              <span ng-click="editOutcome(journalEntry.curriculumModuleOutcomes)"
+                    class="journal-entry-button pointer">
+                {{ journalEntry.outcomeCode }}
+              </span>
+            </span>
+
+            <span class="journal-quick-update pointer">
+              <md-icon ng-if="!journalEntry.quickUpdate"
+                       ng-click="quickOutcomeUpdate(journalEntry)"
+                       md-font-set="material-icons">forward_5</md-icon>
+            </span>
+          </div>
+        </th>
+
+        <!-- admin column (hidden by default) -->
+        <th ng-show="auth.isAdmin() || auth.isLeadingTeacher()" aria-hidden="true"></th>
+      </tr>
+      </thead>
+
+      <!-- ── Body (one prototype row is enough – ng-repeat duplicates) ─ -->
+      <tbody>
+      <tr ng-repeat="row in journal.journalStudents"
+          ng-class-odd="'odd'" ng-class-even="'even'">
+
+        <!-- fixed cells -->
+        <td class="fixed-cell" width="5%">{{ $index + 1 }}</td>
+        <td class="fixed-cell" width="10%">
+          <span>
+            <i><span ng-if="row.status === 'OPPURSTAATUS_A'">AP</span></i>
+            <a ng-if="row.canView"
+               ng-href="/#/students/{{row.studentId}}/main">
+               {{ row.fullName }}
+            </a>
+            <span ng-if="::row.studentGroup">, {{ row.studentGroup }}</span>
+          </span>
+        </td>
+
+        <!-- date / lesson results -->
+        <td class="bordered"
+            ng-repeat="journalEntry in journal.journalEntriesByDate | filter: filterJournalEntriesByDate"
+            ng-class="{'deep-orange-100': journalEntry.quickUpdate && journalEntry.quickUpdateStudents[row.studentId].isCurriculumOutcome === false}">
+
+          <div ng-if="journalEntry.isCurrentJournal && journalEntry.entryType.code !== 'SISSEKANNE_O'"
+               layout="row" class="layout-row">
+
+            <!-- one result prototype -->
+            <div layout="row" layout-align="start center"
+                 ng-repeat="result in journalEntry.journalStudentResults[row.id] | orderBy:'gradeInserted'"
+                 class="layout-row layout-align-start-center">
+
+              <span ng-if="result.absence"
+                    aria-label="{{result.date | date:'dd.MM.yyyy'}}"
+                    md-labeled-by-tooltip>
+                {{ result.absenceType }} <!-- P, V, etc. -->
+              </span>
+
+            </div>
+          </div>
+
+          <!-- outcome result -->
+          <div ng-if="journalEntry.isCurrentJournal && journalEntry.entryType.code === 'SISSEKANNE_O'">
+            <!-- outcome values rendered here -->
+          </div>
+        </td>
+
+        <!-- admin cell -->
+        <td ng-show="auth.isAdmin() || auth.isLeadingTeacher()" aria-hidden="true">
+          <a class="remove nomargin" ng-click="removeStudentFromJournal(row)">×</a>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </div>

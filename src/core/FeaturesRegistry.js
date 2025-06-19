@@ -64,27 +64,6 @@ export async function loadFeatures () {
     Logger.error('Error loading LessonDiscrepanciesFeature:', error)
   }
 
-  // Load missing lessons feature (always enabled)
-  // Temporarily disabled - using warning triangles instead
-  /*
-  try {
-    const { missingLessonsFeature } = await import('../features/missingLessons/MissingLessonsFeature.js')
-    allAvailableFeatures.singleJournal.push(missingLessonsFeature)
-    Logger.debug('Feature "MissingLessonsFeature" created')
-  } catch (error) {
-    Logger.error('Error loading MissingLessonsFeature:', error)
-  }
-  */
-
-  // Load triangles debug feature (always enabled for debugging)
-  try {
-    const { trianglesDebugFeature } = await import('../features/triangles/TrianglesDebugFeature.js')
-    allAvailableFeatures.triangles.push(trianglesDebugFeature)
-    Logger.debug('Feature "TrianglesDebugFeature" created')
-  } catch (error) {
-    Logger.error('Error loading TrianglesDebugFeature:', error)
-  }
-
   // Create a copy of the features structure for returning
   const featureGroups = {
     journalList: [...allAvailableFeatures.journalList],
