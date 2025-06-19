@@ -175,10 +175,28 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
         })
     }
 
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     async fixAuditoryLearning(entry) {
         Logger.info(`[${this.name}] Fixing auditory learning for entry ${entry.id}`)
         try {
+            // Use the date from the table row (already in entry.date)
             await this.openAndEditJournalEntry(entry.date, entry.id)
+            await this.waitForEditFormToOpen()
+            await this.checkAuditoriumLearningCheckbox()
+            // Optionally, trigger save (simulate clicking the save button)
+            const saveButton = Array.from(document.querySelectorAll('button, md-button, [role="button"]')).find(btn => {
+                const text = btn.textContent.trim().toLowerCase()
+                return text.includes('salvesta') || text.includes('save')
+            })
+            if (saveButton) {
+                saveButton.click()
+                Logger.info(`[${this.name}] Clicked save button for entry ${entry.id}`)
+            } else {
+                Logger.warning(`[${this.name}] Could not find save button after checking Auditoorne õpe for entry ${entry.id}`)
+            }
             entry.fixed = true
             this.insertIncompleteAuditoryLearningTable()
         } catch (e) {
@@ -275,7 +293,82 @@ export default class AuditoryLearningCheckerFeature extends BaseFeature {
         return date.toISOString().split('T')[0]
     }
 
-    // --- The following methods should be reused from LessonDiscrepanciesFeature ---
-    // findJournalEntryElement, clickJournalEntry, waitForEditFormToOpen, checkAuditoriumLearningCheckbox
-    // These should be available in the global context or imported if refactored to a shared utility
+    // --- The following methods are copied from LessonDiscrepanciesFeature for reuse ---
+    async findJournalEntryElement(entryId, date) {
+        // Try to find the journal entry element by matching the date (DD.MM or DD.MM.YYYY) and entryId
+        const formattedDate = this.formatDisplayDate(date)
+        const shortDate = formattedDate.slice(0, 5) // 'DD.MM'
+        // Look for spans with the date (short format) and editJournalEntry ng-click in the parent row
+        const dateSpans = document.querySelectorAll('span[ng-if*="journalEntry.entryType.code"]')
+        for (const span of dateSpans) {
+            if (span.textContent.trim() === shortDate) {
+                // Try to find the edit button in the same row or parent
+                let row = span.closest('tr') || span.parentElement
+                if (row) {
+                    const editBtn = row.querySelector('[ng-click*="editJournalEntry"]')
+                    if (editBtn) return editBtn
+                }
+            }
+        }
+        // Fallback: try to find by entryId in data attributes or text
+        const allEditElements = document.querySelectorAll('[ng-click*="editJournalEntry"]')
+        for (const el of allEditElements) {
+            if (el.getAttribute('data-entry-id') == entryId || el.id == entryId || el.textContent.includes(entryId)) {
+                return el
+            }
+        }
+        // Fallback: return the first element if only one entry for the date
+        if (allEditElements.length === 1) return allEditElements[0]
+        return null
+    }
+
+    async clickJournalEntry(entryElement) {
+        entryElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        await this.delay(200)
+        entryElement.click()
+        await this.delay(500)
+    }
+
+    async waitForEditFormToOpen(maxAttempts = 20, intervalMs = 250) {
+        Logger.debug(`[${this.name}] Waiting for edit form to open`)
+        let attempts = 0
+        return new Promise((resolve, reject) => {
+            const check = () => {
+                const form = document.querySelector('form[name*="edit"], form[name*="entry"], .edit-form, .entry-edit-form, md-dialog, .modal, .dialog')
+                if (form) return resolve()
+                if (++attempts >= maxAttempts) return reject(new Error('Edit form did not open'))
+                setTimeout(check, intervalMs)
+            }
+            check()
+        })
+    }
+
+    async checkAuditoriumLearningCheckbox() {
+        // Try to find the "Auditoorne õpe" checkbox and check it
+        const checkboxSelectors = [
+            'md-checkbox[ng-model*="selectedCapacityTypes"][aria-label*="Auditoorne"]',
+            'md-checkbox[aria-label="Auditoorne õpe"]',
+            'input[type="checkbox"][ng-model*="selectedCapacityTypes"]',
+            'md-checkbox input[type="checkbox"]',
+            '.md-checkbox-container input[type="checkbox"]'
+        ]
+        for (const selector of checkboxSelectors) {
+            const el = document.querySelector(selector)
+            if (el && !el.checked) {
+                el.click()
+                await this.delay(200)
+                return
+            }
+        }
+        // Fallback: try to find by label text
+        const allCheckboxes = document.querySelectorAll('md-checkbox, input[type="checkbox"]')
+        for (const checkbox of allCheckboxes) {
+            const label = checkbox.getAttribute('aria-label') || (checkbox.closest('md-checkbox') && checkbox.closest('md-checkbox').getAttribute('aria-label'))
+            if (label && label.toLowerCase().includes('auditoorne') && !checkbox.checked) {
+                checkbox.click()
+                await this.delay(200)
+                return
+            }
+        }
+    }
 }
