@@ -1,0 +1,953 @@
+content.js:4562 DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION START ==========
+content.js:4563 DEBUG2: Starting comprehensive debugging for auditoorne õpe checkbox validation
+content.js:4564 DEBUG2: Journal data structure: {journalId: 348987, totalEntries: 7, capacityHours: Array(2)}
+content.js:4571 DEBUG2: Capacity hours analysis: {totalCapacityTypes: 2, auditoorneCapacity: {…}, capacityHours: '[{"capacity":"MAHT_a","plannedHours":9,"usedHours"…acity":"MAHT_i","plannedHours":17,"usedHours":4}]'}
+content.js:4576 DEBUG2: Capacity type code mappings:
+content.js:4577 DEBUG2: - "MAHT_a" = "Auditoorne õpe" (auditory learning)
+content.js:4578 DEBUG2: - "MAHT_i" = "Iseseisev õpe" (independent learning)
+content.js:4579 DEBUG2: Checkbox state interpretations:
+content.js:4580 DEBUG2: - Unchecked: "journalEntryCapacityTypes": []
+content.js:4581 DEBUG2: - "Auditoorne õpe" only: ["MAHT_a"]
+content.js:4582 DEBUG2: - "Iseseisev õpe" only: ["MAHT_i"]
+content.js:4583 DEBUG2: - Both checked: ["MAHT_a", "MAHT_i"] (ERROR CONDITION)
+content.js:4592 DEBUG2: ========== DETAILED CAPACITY VALIDATION START ==========
+content.js:4595 DEBUG2: Entry type filtering and validation logic:
+content.js:4596 DEBUG2: Total journal entries before filtering: 7
+content.js:4598 DEBUG2: Entry 1: ID=3504214, date=2025-04-14T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4598 DEBUG2: Entry 2: ID=3517716, date=2025-04-24T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4598 DEBUG2: Entry 3: ID=3526389, date=2025-04-30T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4598 DEBUG2: Entry 4: ID=3601463, date=2025-05-12T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4598 DEBUG2: Entry 5: ID=3543782, date=2025-05-13T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4598 DEBUG2: Entry 6: ID=null, date=null, entryType="SISSEKANNE_O"
+content.js:4598 DEBUG2: Entry 7: ID=null, date=null, entryType="SISSEKANNE_O"
+content.js:4602 DEBUG2: Entry ID=3504214 type="SISSEKANNE_T" - Target for validation: true
+content.js:4602 DEBUG2: Entry ID=3517716 type="SISSEKANNE_T" - Target for validation: true
+content.js:4602 DEBUG2: Entry ID=3526389 type="SISSEKANNE_T" - Target for validation: true
+content.js:4602 DEBUG2: Entry ID=3601463 type="SISSEKANNE_T" - Target for validation: true
+content.js:4602 DEBUG2: Entry ID=3543782 type="SISSEKANNE_T" - Target for validation: true
+content.js:4602 DEBUG2: Entry ID=null type="SISSEKANNE_O" - Target for validation: false
+content.js:4602 DEBUG2: Entry ID=null type="SISSEKANNE_O" - Target for validation: false
+content.js:4605 DEBUG2: Entries matching SISSEKANNE_T or SISSEKANNE_P after filtering: 5
+content.js:4606 DEBUG2: Target entry IDs: (5) [3504214, 3517716, 3526389, 3601463, 3543782]
+content.js:4607 DEBUG2: String comparison verification:
+content.js:4608 DEBUG2: - Case sensitivity: exact match required
+content.js:4609 DEBUG2: - Whitespace handling: no trimming applied
+content.js:4610 DEBUG2: - Comparison method: === (strict equality)
+content.js:4624 DEBUG2: ========== API RESPONSE DATA STRUCTURE ANALYSIS ==========
+content.js:4627 DEBUG2: Fetching detailed data for entry ID=3504214, date=2025-04-14T00:00:00Z
+content.js:4630 DEBUG2: API call URL: https://tahvel.edu.ee/hois_back/journals/348987/journalEntry/3504214
+content.js:4632 DEBUG2: Complete API response for entry 3504214: {
+  "version": 14,
+  "id": 3504214,
+  "inserted": "2025-04-14T10:25:29.039Z",
+  "entryType": "SISSEKANNE_T",
+  "nameEt": "1",
+  "entryDate": "2025-04-14T00:00:00Z",
+  "startLessonNr": 7,
+  "lessons": 4,
+  "content": "1",
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_i",
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    18737
+  ],
+  "journalEntryStudents": [
+    {
+      "id": 21872277,
+      "journalStudent": 4909899,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21872276,
+      "journalStudent": 4909896,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21872279,
+      "journalStudent": 4909906,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21872278,
+      "journalStudent": 4909901,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21872273,
+      "journalStudent": 4909905,
+      "absence": "PUUDUMINE_V",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21872275,
+      "journalStudent": 4909895,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21872274,
+      "journalStudent": 5215950,
+      "absence": "PUUDUMINE_V",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    }
+  ],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}
+content.js:4634 DEBUG2: Entry 3504214 journalEntryCapacityTypes: ["MAHT_i","MAHT_a"]
+content.js:4635 DEBUG2: Entry 3504214 capacityTypes type: object
+content.js:4636 DEBUG2: Entry 3504214 capacityTypes isArray: true
+content.js:4653 DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========
+content.js:4654 DEBUG2: Validating entry ID=3504214, date=2025-04-14T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4677 DEBUG2: Entry 3504214 - Raw journalEntryCapacityTypes array: ["MAHT_i","MAHT_a"]
+content.js:4680 DEBUG2: Entry 3504214 - Detection via includes(): auditoorne=true, iseseisev=true
+content.js:4685 DEBUG2: Entry 3504214 - Detection via indexOf(): auditoorne=true (index=1), iseseisev=true (index=0)
+content.js:4690 DEBUG2: Entry 3504214 - Detection via find(): auditoorne=true, iseseisev=true
+content.js:4693 DEBUG2: Entry 3504214 - Final detected states: auditoorne=true, iseseisev=true
+content.js:4694 DEBUG2: Entry 3504214 - Method used for detection: Array.includes()
+content.js:4701 DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========
+content.js:4702 DEBUG2: Entry 3504214 - Business logic validation starting
+content.js:4703 DEBUG2: Business rule: ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked
+content.js:4704 DEBUG2: Source of requirement: HARDCODED ASSUMPTION (needs verification)
+content.js:4705 DEBUG2: Question: Is this assumption correct for ALL entries of these types?
+content.js:4711 DEBUG2: Entry 3504214 - Expected checkbox state: {auditoorne: true, reasoning: 'Entry type "SISSEKANNE_T" requires auditoorne õpe checkbox'}
+content.js:4712 DEBUG2: Entry 3504214 - Actual checkbox state: {auditoorne: true, iseseisev: true}
+content.js:4715 DEBUG2: Entry 3504214 - ERROR CONDITION: Both auditoorne and iseseisev checkboxes are selected
+content.js:4716 DEBUG2: Error message: "Korraga ei saa auditoorne õpe ja individuaalne õpe aktiivsed olla"
+content.js:4627 DEBUG2: Fetching detailed data for entry ID=3517716, date=2025-04-24T00:00:00Z
+content.js:4630 DEBUG2: API call URL: https://tahvel.edu.ee/hois_back/journals/348987/journalEntry/3517716
+content.js:4632 DEBUG2: Complete API response for entry 3517716: {
+  "version": 4,
+  "id": 3517716,
+  "inserted": "2025-04-24T07:54:58.489Z",
+  "entryType": "SISSEKANNE_T",
+  "nameEt": "Tund",
+  "entryDate": "2025-04-24T00:00:00Z",
+  "startLessonNr": 4,
+  "lessons": 1,
+  "content": null,
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    18737
+  ],
+  "journalEntryStudents": [
+    {
+      "id": 21968455,
+      "journalStudent": 4909906,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21968454,
+      "journalStudent": 4909901,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 21968453,
+      "journalStudent": 4909899,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    }
+  ],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}
+content.js:4634 DEBUG2: Entry 3517716 journalEntryCapacityTypes: ["MAHT_a"]
+content.js:4635 DEBUG2: Entry 3517716 capacityTypes type: object
+content.js:4636 DEBUG2: Entry 3517716 capacityTypes isArray: true
+content.js:4653 DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========
+content.js:4654 DEBUG2: Validating entry ID=3517716, date=2025-04-24T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4677 DEBUG2: Entry 3517716 - Raw journalEntryCapacityTypes array: ["MAHT_a"]
+content.js:4680 DEBUG2: Entry 3517716 - Detection via includes(): auditoorne=true, iseseisev=false
+content.js:4685 DEBUG2: Entry 3517716 - Detection via indexOf(): auditoorne=true (index=0), iseseisev=false (index=-1)
+content.js:4690 DEBUG2: Entry 3517716 - Detection via find(): auditoorne=true, iseseisev=false
+content.js:4693 DEBUG2: Entry 3517716 - Final detected states: auditoorne=true, iseseisev=false
+content.js:4694 DEBUG2: Entry 3517716 - Method used for detection: Array.includes()
+content.js:4701 DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========
+content.js:4702 DEBUG2: Entry 3517716 - Business logic validation starting
+content.js:4703 DEBUG2: Business rule: ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked
+content.js:4704 DEBUG2: Source of requirement: HARDCODED ASSUMPTION (needs verification)
+content.js:4705 DEBUG2: Question: Is this assumption correct for ALL entries of these types?
+content.js:4711 DEBUG2: Entry 3517716 - Expected checkbox state: {auditoorne: true, reasoning: 'Entry type "SISSEKANNE_T" requires auditoorne õpe checkbox'}
+content.js:4712 DEBUG2: Entry 3517716 - Actual checkbox state: {auditoorne: true, iseseisev: false}
+content.js:4730 DEBUG2: Entry 3517716 - Validation result: pass
+content.js:4627 DEBUG2: Fetching detailed data for entry ID=3526389, date=2025-04-30T00:00:00Z
+content.js:4630 DEBUG2: API call URL: https://tahvel.edu.ee/hois_back/journals/348987/journalEntry/3526389
+content.js:4632 DEBUG2: Complete API response for entry 3526389: {
+  "version": 10,
+  "id": 3526389,
+  "inserted": "2025-04-30T06:57:09.010Z",
+  "entryType": "SISSEKANNE_T",
+  "nameEt": "Tund",
+  "entryDate": "2025-04-30T00:00:00Z",
+  "startLessonNr": 3,
+  "lessons": 1,
+  "content": "Tund",
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    18737
+  ],
+  "journalEntryStudents": [
+    {
+      "id": 22493255,
+      "journalStudent": 4909888,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": null,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": null,
+      "isRemark": null,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030500,
+      "journalStudent": 4909902,
+      "absence": "PUUDUMINE_V",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030501,
+      "journalStudent": 4909891,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030502,
+      "journalStudent": 4909893,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030503,
+      "journalStudent": 4909894,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030504,
+      "journalStudent": 4909898,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030505,
+      "journalStudent": 4909899,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030506,
+      "journalStudent": 4909900,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22564930,
+      "journalStudent": 4909908,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030507,
+      "journalStudent": 4909901,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030508,
+      "journalStudent": 4909906,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22030509,
+      "journalStudent": 5215950,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22493256,
+      "journalStudent": 4909909,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": null,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    }
+  ],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}
+content.js:4634 DEBUG2: Entry 3526389 journalEntryCapacityTypes: ["MAHT_a"]
+content.js:4635 DEBUG2: Entry 3526389 capacityTypes type: object
+content.js:4636 DEBUG2: Entry 3526389 capacityTypes isArray: true
+content.js:4653 DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========
+content.js:4654 DEBUG2: Validating entry ID=3526389, date=2025-04-30T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4677 DEBUG2: Entry 3526389 - Raw journalEntryCapacityTypes array: ["MAHT_a"]
+content.js:4680 DEBUG2: Entry 3526389 - Detection via includes(): auditoorne=true, iseseisev=false
+content.js:4685 DEBUG2: Entry 3526389 - Detection via indexOf(): auditoorne=true (index=0), iseseisev=false (index=-1)
+content.js:4690 DEBUG2: Entry 3526389 - Detection via find(): auditoorne=true, iseseisev=false
+content.js:4693 DEBUG2: Entry 3526389 - Final detected states: auditoorne=true, iseseisev=false
+content.js:4694 DEBUG2: Entry 3526389 - Method used for detection: Array.includes()
+content.js:4701 DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========
+content.js:4702 DEBUG2: Entry 3526389 - Business logic validation starting
+content.js:4703 DEBUG2: Business rule: ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked
+content.js:4704 DEBUG2: Source of requirement: HARDCODED ASSUMPTION (needs verification)
+content.js:4705 DEBUG2: Question: Is this assumption correct for ALL entries of these types?
+content.js:4711 DEBUG2: Entry 3526389 - Expected checkbox state: {auditoorne: true, reasoning: 'Entry type "SISSEKANNE_T" requires auditoorne õpe checkbox'}
+content.js:4712 DEBUG2: Entry 3526389 - Actual checkbox state: {auditoorne: true, iseseisev: false}
+content.js:4730 DEBUG2: Entry 3526389 - Validation result: pass
+content.js:4627 DEBUG2: Fetching detailed data for entry ID=3601463, date=2025-05-12T00:00:00Z
+content.js:4630 DEBUG2: API call URL: https://tahvel.edu.ee/hois_back/journals/348987/journalEntry/3601463
+content.js:4632 DEBUG2: Complete API response for entry 3601463: {
+  "version": 16,
+  "id": 3601463,
+  "inserted": "2025-06-19T14:13:59.957Z",
+  "entryType": "SISSEKANNE_T",
+  "nameEt": "Tund",
+  "entryDate": "2025-05-12T00:00:00Z",
+  "startLessonNr": 10,
+  "lessons": 2,
+  "content": null,
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    18737
+  ],
+  "journalEntryStudents": [],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}
+content.js:4634 DEBUG2: Entry 3601463 journalEntryCapacityTypes: ["MAHT_a"]
+content.js:4635 DEBUG2: Entry 3601463 capacityTypes type: object
+content.js:4636 DEBUG2: Entry 3601463 capacityTypes isArray: true
+content.js:4653 DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========
+content.js:4654 DEBUG2: Validating entry ID=3601463, date=2025-05-12T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4677 DEBUG2: Entry 3601463 - Raw journalEntryCapacityTypes array: ["MAHT_a"]
+content.js:4680 DEBUG2: Entry 3601463 - Detection via includes(): auditoorne=true, iseseisev=false
+content.js:4685 DEBUG2: Entry 3601463 - Detection via indexOf(): auditoorne=true (index=0), iseseisev=false (index=-1)
+content.js:4690 DEBUG2: Entry 3601463 - Detection via find(): auditoorne=true, iseseisev=false
+content.js:4693 DEBUG2: Entry 3601463 - Final detected states: auditoorne=true, iseseisev=false
+content.js:4694 DEBUG2: Entry 3601463 - Method used for detection: Array.includes()
+content.js:4701 DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========
+content.js:4702 DEBUG2: Entry 3601463 - Business logic validation starting
+content.js:4703 DEBUG2: Business rule: ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked
+content.js:4704 DEBUG2: Source of requirement: HARDCODED ASSUMPTION (needs verification)
+content.js:4705 DEBUG2: Question: Is this assumption correct for ALL entries of these types?
+content.js:4711 DEBUG2: Entry 3601463 - Expected checkbox state: {auditoorne: true, reasoning: 'Entry type "SISSEKANNE_T" requires auditoorne õpe checkbox'}
+content.js:4712 DEBUG2: Entry 3601463 - Actual checkbox state: {auditoorne: true, iseseisev: false}
+content.js:4730 DEBUG2: Entry 3601463 - Validation result: pass
+content.js:4627 DEBUG2: Fetching detailed data for entry ID=3543782, date=2025-05-13T00:00:00Z
+content.js:4630 DEBUG2: API call URL: https://tahvel.edu.ee/hois_back/journals/348987/journalEntry/3543782
+content.js:4632 DEBUG2: Complete API response for entry 3543782: {
+  "version": 1,
+  "id": 3543782,
+  "inserted": "2025-05-13T06:14:35.123Z",
+  "entryType": "SISSEKANNE_T",
+  "nameEt": "Tund",
+  "entryDate": "2025-05-13T00:00:00Z",
+  "startLessonNr": 2,
+  "lessons": 1,
+  "content": "Projektiarendus",
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    18737
+  ],
+  "journalEntryStudents": [
+    {
+      "id": 22159939,
+      "journalStudent": 4909899,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22159942,
+      "journalStudent": 4909906,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22159943,
+      "journalStudent": 5215950,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22159940,
+      "journalStudent": 4909901,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22159941,
+      "journalStudent": 4909902,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22159944,
+      "journalStudent": 4909908,
+      "absence": null,
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    }
+  ],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}
+content.js:4634 DEBUG2: Entry 3543782 journalEntryCapacityTypes: ["MAHT_a"]
+content.js:4635 DEBUG2: Entry 3543782 capacityTypes type: object
+content.js:4636 DEBUG2: Entry 3543782 capacityTypes isArray: true
+content.js:4653 DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========
+content.js:4654 DEBUG2: Validating entry ID=3543782, date=2025-05-13T00:00:00Z, entryType="SISSEKANNE_T"
+content.js:4677 DEBUG2: Entry 3543782 - Raw journalEntryCapacityTypes array: ["MAHT_a"]
+content.js:4680 DEBUG2: Entry 3543782 - Detection via includes(): auditoorne=true, iseseisev=false
+content.js:4685 DEBUG2: Entry 3543782 - Detection via indexOf(): auditoorne=true (index=0), iseseisev=false (index=-1)
+content.js:4690 DEBUG2: Entry 3543782 - Detection via find(): auditoorne=true, iseseisev=false
+content.js:4693 DEBUG2: Entry 3543782 - Final detected states: auditoorne=true, iseseisev=false
+content.js:4694 DEBUG2: Entry 3543782 - Method used for detection: Array.includes()
+content.js:4701 DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========
+content.js:4702 DEBUG2: Entry 3543782 - Business logic validation starting
+content.js:4703 DEBUG2: Business rule: ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked
+content.js:4704 DEBUG2: Source of requirement: HARDCODED ASSUMPTION (needs verification)
+content.js:4705 DEBUG2: Question: Is this assumption correct for ALL entries of these types?
+content.js:4711 DEBUG2: Entry 3543782 - Expected checkbox state: {auditoorne: true, reasoning: 'Entry type "SISSEKANNE_T" requires auditoorne õpe checkbox'}
+content.js:4712 DEBUG2: Entry 3543782 - Actual checkbox state: {auditoorne: true, iseseisev: false}
+content.js:4730 DEBUG2: Entry 3543782 - Validation result: pass
+content.js:4747 DEBUG2: ========== VALIDATION RESULTS AND COMPARISON ==========
+content.js:4755 DEBUG2: Summary statistics:
+content.js:4756 DEBUG2: - Total entries checked: 5
+content.js:4757 DEBUG2: - Passed validation: 4
+content.js:4758 DEBUG2: - Failed validation: 1
+content.js:4759 DEBUG2: - Error conditions (both checkboxes): 1
+content.js:4760 DEBUG2: - Missing auditoorne checkbox: 0
+content.js:4761 DEBUG2: - API fetch errors: 0
+content.js:4762 DEBUG2: - Data format errors: 0
+content.js:4763 DEBUG2: Detailed validation results:
+content.js:4765 DEBUG2: Entry 1:
+content.js:4766 DEBUG2:   - ID: 3504214
+content.js:4767 DEBUG2:   - Date: 2025-04-14T00:00:00Z
+content.js:4768 DEBUG2:   - Entry Type: SISSEKANNE_T
+content.js:4769 DEBUG2:   - Expected auditoorne: true
+content.js:4770 DEBUG2:   - Actual auditoorne: true
+content.js:4771 DEBUG2:   - Validation result: error
+content.js:4772 DEBUG2:   - Error type: both_checkboxes_selected
+content.js:4773 DEBUG2:   - Capacity types: ["MAHT_i","MAHT_a"]
+content.js:4765 DEBUG2: Entry 2:
+content.js:4766 DEBUG2:   - ID: 3517716
+content.js:4767 DEBUG2:   - Date: 2025-04-24T00:00:00Z
+content.js:4768 DEBUG2:   - Entry Type: SISSEKANNE_T
+content.js:4769 DEBUG2:   - Expected auditoorne: true
+content.js:4770 DEBUG2:   - Actual auditoorne: true
+content.js:4771 DEBUG2:   - Validation result: pass
+content.js:4772 DEBUG2:   - Error type: none
+content.js:4773 DEBUG2:   - Capacity types: ["MAHT_a"]
+content.js:4765 DEBUG2: Entry 3:
+content.js:4766 DEBUG2:   - ID: 3526389
+content.js:4767 DEBUG2:   - Date: 2025-04-30T00:00:00Z
+content.js:4768 DEBUG2:   - Entry Type: SISSEKANNE_T
+content.js:4769 DEBUG2:   - Expected auditoorne: true
+content.js:4770 DEBUG2:   - Actual auditoorne: true
+content.js:4771 DEBUG2:   - Validation result: pass
+content.js:4772 DEBUG2:   - Error type: none
+content.js:4773 DEBUG2:   - Capacity types: ["MAHT_a"]
+content.js:4765 DEBUG2: Entry 4:
+content.js:4766 DEBUG2:   - ID: 3601463
+content.js:4767 DEBUG2:   - Date: 2025-05-12T00:00:00Z
+content.js:4768 DEBUG2:   - Entry Type: SISSEKANNE_T
+content.js:4769 DEBUG2:   - Expected auditoorne: true
+content.js:4770 DEBUG2:   - Actual auditoorne: true
+content.js:4771 DEBUG2:   - Validation result: pass
+content.js:4772 DEBUG2:   - Error type: none
+content.js:4773 DEBUG2:   - Capacity types: ["MAHT_a"]
+content.js:4765 DEBUG2: Entry 5:
+content.js:4766 DEBUG2:   - ID: 3543782
+content.js:4767 DEBUG2:   - Date: 2025-05-13T00:00:00Z
+content.js:4768 DEBUG2:   - Entry Type: SISSEKANNE_T
+content.js:4769 DEBUG2:   - Expected auditoorne: true
+content.js:4770 DEBUG2:   - Actual auditoorne: true
+content.js:4771 DEBUG2:   - Validation result: pass
+content.js:4772 DEBUG2:   - Error type: none
+content.js:4773 DEBUG2:   - Capacity types: ["MAHT_a"]
+content.js:4775 DEBUG2: Failed entry IDs by error type:
+content.js:4776 DEBUG2: - Missing auditoorne: []
+content.js:4777 DEBUG2: - Both checkboxes: [3504214]
+content.js:4778 DEBUG2: - API errors: []
+content.js:4779 DEBUG2: - Format errors: []
+content.js:4783 DEBUG2: ========== ROOT CAUSE ANALYSIS LOGGING ==========
+content.js:4784 DEBUG2: Investigating potential root causes:
+content.js:4824 DEBUG2: e) Case sensitivity analysis:
+content.js:4825 DEBUG2:    - All unique capacity type codes found: (2) ['MAHT_i', 'MAHT_a']
+content.js:4826 DEBUG2:    - Looking for variations of "MAHT_a": case differences, extra spaces, etc.
+content.js:4827 DEBUG2: Hardcoded assumptions that might be incorrect:
+content.js:4828 DEBUG2: - Assumption 1: ALL SISSEKANNE_T entries must have auditoorne õpe
+content.js:4829 DEBUG2: - Assumption 2: ALL SISSEKANNE_P entries must have auditoorne õpe
+content.js:4830 DEBUG2: - Assumption 3: "MAHT_a" is the correct code for auditoorne õpe
+content.js:4831 DEBUG2: - Assumption 4: Empty array means no checkboxes selected
+content.js:4832 DEBUG2: - Assumption 5: Both checkboxes selected is always an error
+content.js:4833 DEBUG2: Edge cases analysis:
+content.js:4837 DEBUG2: - Null/undefined capacity types: 0
+content.js:4838 DEBUG2: - Empty arrays: 0
+content.js:4839 DEBUG2: - Non-array capacity types: 0
+content.js:4840 DEBUG2: FINAL RECOMMENDATIONS:
+content.js:4841 DEBUG2: 1. Verify business requirements: Do ALL SISSEKANNE_T/P entries really need auditoorne õpe?
+content.js:4842 DEBUG2: 2. Confirm capacity type codes: Is "MAHT_a" definitely correct for auditoorne õpe?
+content.js:4843 DEBUG2: 3. Check API data structure: Are we fetching the right endpoint and parsing correctly?
+content.js:4844 DEBUG2: 4. Review validation logic: Are our boolean operations and comparisons correct?
+content.js:4845 DEBUG2: 5. Test with known good data: Find entries that definitely should pass validation
+content.js:4621 DEBUG2: ========== DETAILED CAPACITY VALIDATION END ==========
+content.js:4585 DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION END ==========

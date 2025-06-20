@@ -23,6 +23,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #tableObserver = null
   #isRefreshing = false
   #lastJournalData = null
+  #originalFetch = null
 
   static SCHOOL_ID_FALLBACK = 9
   static JOURNAL_ENTRY_LESSON_TYPE = 'SISSEKANNE_T'
@@ -113,6 +114,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (!discrepancies.length) {
         existingTable?.remove()
         this.#insertSuccessMessage()
+        // Check for capacity type problems after confirming no timetable discrepancies
+        await this.#checkCapacityTypeProblems(journalData)
         this.#tableCreated = true
         this.#currentJournalId = journalId
         return
@@ -1189,6 +1192,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     if (this.#saveMonitoringSetup) return
 
     this.#setupJournalTableMonitoring()
+    this.#setupJournalDialogSaveMonitoring()
     this.#saveMonitoringSetup = true
   }
 
@@ -1225,9 +1229,717 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  #setupJournalDialogSaveMonitoring() {
+    // Only set up monitoring once and store original fetch
+    if (!this.#originalFetch) {
+      this.#originalFetch = window.fetch
+
+      // Monitor for journal entry dialog saves by watching for PUT requests to journal entry endpoints
+      window.fetch = async (...args) => {
+        const response = await this.#originalFetch.apply(window, args)
+
+        // Check if this is a PUT request to a journal entry endpoint
+        const url = args[0]
+        if (typeof url === 'string' && url.includes('/journalEntry/') && args[1]?.method === 'PUT') {
+          console.log(`[${this.name}] Detected journal entry save via PUT request:`, url)
+
+          // Extract journal ID from URL
+          const journalIdMatch = url.match(/\/journals\/(\d+)\/journalEntry\//)
+          if (journalIdMatch && parseInt(journalIdMatch[1]) === this.#currentJournalId) {
+            console.log(`[${this.name}] Journal entry save detected for current journal ${this.#currentJournalId}`)
+
+            // Wait a bit for the save to complete, then refresh validation
+            setTimeout(async () => {
+              console.log(`[${this.name}] Refreshing capacity validation after journal entry save`)
+              await this.#refreshCapacityValidationAfterSave()
+            }, 1500)
+          }
+        }
+
+        return response
+      }
+    }
+  }
+
+  async #refreshCapacityValidationAfterSave() {
+    try {
+      console.log(`[${this.name}] Starting capacity validation refresh after manual save`)
+
+      // Check if we have a current journal ID
+      if (!this.#currentJournalId) {
+        console.log(`[${this.name}] No current journal ID - skipping refresh`)
+        return
+      }
+
+      // Clear journal cache to get fresh data
+      console.log(`[${this.name}] Clearing cache for journal ${this.#currentJournalId}`)
+      await this.api.cache.clearJournalCache(this.#currentJournalId)
+
+      // Fetch fresh journal data
+      console.log(`[${this.name}] Fetching fresh journal data`)
+      const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
+
+      // Re-run capacity validation
+      console.log(`[${this.name}] Re-running capacity validation`)
+      await this.#checkCapacityTypeProblems(journalData)
+
+      console.log(`[${this.name}] Capacity validation refresh completed successfully`)
+    } catch (error) {
+      console.error(`[${this.name}] Error refreshing capacity validation:`, error)
+    }
+  }
+
   #cleanupMonitoring() {
     this.#tableObserver?.disconnect()
     this.#tableObserver = null
+
+    // Restore original fetch if we modified it
+    if (this.#originalFetch) {
+      window.fetch = this.#originalFetch
+      this.#originalFetch = null
+    }
+
     this.#saveMonitoringSetup = false
+  }
+
+  async #checkCapacityTypeProblems(journalData) {
+    try {
+      console.log('DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION START ==========')
+      console.log('DEBUG2: Starting comprehensive debugging for auditoorne õpe checkbox validation')
+
+      // Log journal data structure
+      console.log('DEBUG2: Journal data structure:', {
+        journalId: journalData.info?.id,
+        totalEntries: journalData.entries?.length || 0,
+        capacityHours: journalData.info?.lessonHours?.capacityHours || []
+      })
+
+      // First check if there's a discrepancy between planned and used hours for "MAHT_a"
+      const capacityHours = journalData.info?.lessonHours?.capacityHours || []
+      const auditoorneCapacity = capacityHours.find(c => c.capacity === 'MAHT_a')
+
+      console.log('DEBUG2: Capacity hours analysis:', {
+        totalCapacityTypes: capacityHours.length,
+        auditoorneCapacity: auditoorneCapacity,
+        capacityHours: JSON.stringify(capacityHours)
+      })
+
+      // Log capacity type code mappings
+      console.log('DEBUG2: Capacity type code mappings:')
+      console.log('DEBUG2: - "MAHT_a" = "Auditoorne õpe" (auditory learning)')
+      console.log('DEBUG2: - "MAHT_i" = "Iseseisev õpe" (independent learning)')
+      console.log('DEBUG2: Checkbox state interpretations:')
+      console.log('DEBUG2: - Unchecked: "journalEntryCapacityTypes": []')
+      console.log('DEBUG2: - "Auditoorne õpe" only: ["MAHT_a"]')
+      console.log('DEBUG2: - "Iseseisev õpe" only: ["MAHT_i"]')
+      console.log('DEBUG2: - Both checked: ["MAHT_a", "MAHT_i"] (ERROR CONDITION)')
+
+      // Proceed with detailed entry checks regardless of capacity hours mismatch
+      await this.#performDetailedCapacityValidation(journalData, auditoorneCapacity)
+
+      console.log('DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION END ==========')
+    } catch (error) {
+      console.log('DEBUG2: ERROR in capacity check:', error)
+      Logger.error(`[${this.name}] capacity check error`, error)
+    }
+  }
+
+  async #performDetailedCapacityValidation(journalData, auditoorneCapacity) {
+    console.log('DEBUG2: ========== DETAILED CAPACITY VALIDATION START ==========')
+
+    const entries = journalData.entries || []
+    const journalId = journalData.info?.id
+
+    console.log('DEBUG2: Entry type filtering and validation logic:')
+    console.log('DEBUG2: Total journal entries before filtering:', entries.length)
+
+    // Log each entry's type during processing
+    entries.forEach((entry, index) => {
+      console.log(`DEBUG2: Entry ${index + 1}: ID=${entry.id}, date=${entry.entryDate}, entryType="${entry.entryType}"`)
+    })
+
+    // Filter entries by type with detailed logging
+    const targetEntries = entries.filter(entry => {
+      const isTarget = entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P' || entry.entryType === 'SISSEKANNE_I'
+      console.log(`DEBUG2: Entry ID=${entry.id} type="${entry.entryType}" - Target for validation: ${isTarget}`)
+      return isTarget
+    })
+
+    console.log('DEBUG2: Entries matching SISSEKANNE_T, SISSEKANNE_P, or SISSEKANNE_I after filtering:', targetEntries.length)
+    console.log('DEBUG2: Target entry IDs:', targetEntries.map(e => e.id))
+
+    // Verify string comparison logic
+    console.log('DEBUG2: String comparison verification:')
+    console.log('DEBUG2: - Case sensitivity: exact match required')
+    console.log('DEBUG2: - Whitespace handling: no trimming applied')
+    console.log('DEBUG2: - Comparison method: === (strict equality)')
+
+    if (targetEntries.length === 0) {
+      console.log('DEBUG2: No target entries found for validation - exiting')
+      return
+    }
+
+    // Fetch detailed data for each target entry
+    const validationResults = await this.#validateEntriesWithDetailedData(journalId, targetEntries)
+
+    // Log validation summary
+    this.#logValidationSummary(validationResults, auditoorneCapacity)
+
+    // Show problematic entries if any, or remove table if no problems
+    const problematicEntries = validationResults.filter(result => !result.isValid)
+    if (problematicEntries.length > 0) {
+      // Attach validation results to entries for proper error message display
+      const entriesWithValidation = problematicEntries.map(r => ({
+        ...r.entry,
+        validationResult: r
+      }))
+      this.#insertCapacityProblemsTable(entriesWithValidation, auditoorneCapacity)
+    } else {
+      // No problems found - remove any existing capacity problems table
+      console.log('DEBUG2: No capacity validation problems found - removing table if it exists')
+      document.querySelector('[data-capacity-problems-table]')?.remove()
+    }
+
+    console.log('DEBUG2: ========== DETAILED CAPACITY VALIDATION END ==========')
+  }
+
+  async #validateEntriesWithDetailedData(journalId, targetEntries) {
+    console.log('DEBUG2: ========== API RESPONSE DATA STRUCTURE ANALYSIS ==========')
+
+    const validationResults = []
+
+    for (const entry of targetEntries) {
+      console.log(`DEBUG2: Fetching detailed data for entry ID=${entry.id}, date=${entry.entryDate}`)
+
+      try {
+        // Fetch detailed entry data from API
+        const detailUrl = `/journals/${journalId}/journalEntry/${entry.id}`
+        console.log(`DEBUG2: API call URL: https://tahvel.edu.ee/hois_back${detailUrl}`)
+
+        const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false })
+
+        console.log(`DEBUG2: Complete API response for entry ${entry.id}:`, JSON.stringify(detailedEntry, null, 2))
+
+        // Analyze journalEntryCapacityTypes structure
+        const capacityTypes = detailedEntry.journalEntryCapacityTypes
+        console.log(`DEBUG2: Entry ${entry.id} journalEntryCapacityTypes:`, JSON.stringify(capacityTypes))
+        console.log(`DEBUG2: Entry ${entry.id} capacityTypes type:`, typeof capacityTypes)
+        console.log(`DEBUG2: Entry ${entry.id} capacityTypes isArray:`, Array.isArray(capacityTypes))
+
+        // Validate the entry
+        const validationResult = this.#validateSingleEntry(entry, detailedEntry, capacityTypes)
+        validationResults.push(validationResult)
+
+      } catch (error) {
+        console.log(`DEBUG2: ERROR fetching detailed data for entry ${entry.id}:`, error)
+        validationResults.push({
+          entry,
+          isValid: false,
+          errorType: 'api_fetch_error',
+          error: error.message,
+          detailedData: null
+        })
+      }
+    }
+
+    return validationResults
+  }
+
+  #validateSingleEntry(entry, detailedEntry, capacityTypes) {
+    console.log('DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========')
+    console.log(`DEBUG2: Validating entry ID=${entry.id}, date=${entry.entryDate}, entryType="${entry.entryType}"`)
+
+    // Handle edge cases
+    if (capacityTypes === null || capacityTypes === undefined) {
+      console.log(`DEBUG2: Entry ${entry.id} - capacityTypes is null/undefined`)
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'null_capacity_types',
+        actualState: { auditoorne: false, iseseisev: false },
+        expectedState: { auditoorne: true, reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe' }
+      }
+    }
+
+    if (!Array.isArray(capacityTypes)) {
+      console.log(`DEBUG2: Entry ${entry.id} - capacityTypes is not an array:`, typeof capacityTypes)
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'invalid_capacity_types_format',
+        actualState: { auditoorne: false, iseseisev: false },
+        expectedState: { auditoorne: true, reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe' }
+      }
+    }
+
+    // Detect checkbox states using different methods
+    console.log(`DEBUG2: Entry ${entry.id} - Raw journalEntryCapacityTypes array:`, JSON.stringify(capacityTypes))
+
+    // Method 1: Array.includes()
+    const hasAuditoorneIncludes = capacityTypes.includes('MAHT_a')
+    const hasIseseisvIncludes = capacityTypes.includes('MAHT_i')
+    console.log(`DEBUG2: Entry ${entry.id} - Detection via includes(): auditoorne=${hasAuditoorneIncludes}, iseseisev=${hasIseseisvIncludes}`)
+
+    // Method 2: Array.indexOf()
+    const auditoorneIndex = capacityTypes.indexOf('MAHT_a')
+    const iseseisvIndex = capacityTypes.indexOf('MAHT_i')
+    const hasAuditoorneIndexOf = auditoorneIndex !== -1
+    const hasIseseisvIndexOf = iseseisvIndex !== -1
+    console.log(`DEBUG2: Entry ${entry.id} - Detection via indexOf(): auditoorne=${hasAuditoorneIndexOf} (index=${auditoorneIndex}), iseseisev=${hasIseseisvIndexOf} (index=${iseseisvIndex})`)
+
+    // Method 3: Array.find()
+    const auditoorneFind = capacityTypes.find(type => type === 'MAHT_a')
+    const iseseisvFind = capacityTypes.find(type => type === 'MAHT_i')
+    const hasAuditoorneFind = !!auditoorneFind
+    const hasIseseisvFind = !!iseseisvFind
+    console.log(`DEBUG2: Entry ${entry.id} - Detection via find(): auditoorne=${hasAuditoorneFind}, iseseisev=${hasIseseisvFind}`)
+
+    // Use includes() as the primary method
+    const actualAuditoorne = hasAuditoorneIncludes
+    const actualIseseisev = hasIseseisvIncludes
+
+    console.log(`DEBUG2: Entry ${entry.id} - Final detected states: auditoorne=${actualAuditoorne}, iseseisev=${actualIseseisev}`)
+    console.log(`DEBUG2: Entry ${entry.id} - Method used for detection: Array.includes()`)
+
+    return this.#performBusinessLogicValidation(entry, detailedEntry, {
+      auditoorne: actualAuditoorne,
+      iseseisev: actualIseseisev
+    }, capacityTypes)
+  }
+
+  #performBusinessLogicValidation(entry, detailedEntry, actualState, capacityTypes) {
+    console.log('DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========')
+    console.log(`DEBUG2: Entry ${entry.id} - Business logic validation starting`)
+
+    // Log the business rules
+    console.log('DEBUG2: Business rules:')
+    console.log('DEBUG2: 1. ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked')
+    console.log('DEBUG2: 2. SISSEKANNE_T (lesson) entries should NOT have "iseseisev õpe" checkbox checked')
+    console.log('DEBUG2: 3. SISSEKANNE_I (independent work) entries should NOT have "auditoorne õpe" checkbox checked')
+    console.log('DEBUG2: 4. Both checkboxes cannot be selected simultaneously for ANY entry type')
+    console.log('DEBUG2: Source of requirements: HARDCODED ASSUMPTIONS (needs verification)')
+    console.log('DEBUG2: Question: Are these assumptions correct for ALL entries of these types?')
+
+    // Determine expected state based on entry type
+    const shouldHaveAuditoorne = entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P'
+    const shouldHaveIseseisev = entry.entryType === 'SISSEKANNE_I'
+    const expectedState = {
+      auditoorne: shouldHaveAuditoorne,
+      iseseisev: shouldHaveIseseisev,
+      reasoning: shouldHaveAuditoorne ?
+        `Entry type "${entry.entryType}" requires auditoorne õpe checkbox` :
+        shouldHaveIseseisev ?
+        `Entry type "${entry.entryType}" requires iseseisev õpe checkbox` :
+        `Entry type "${entry.entryType}" has specific checkbox requirements`
+    }
+
+    console.log(`DEBUG2: Entry ${entry.id} - Expected checkbox state:`, expectedState)
+    console.log(`DEBUG2: Entry ${entry.id} - Actual checkbox state:`, actualState)
+
+    // Check for error condition: both checkboxes selected
+    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseisev
+    if (hasBothCheckboxes) {
+      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Both auditoorne and iseseisev checkboxes are selected`)
+      console.log('DEBUG2: Error message: "Korraga ei saa auditoorne õpe ja individuaalne õpe aktiivsed olla"')
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'both_checkboxes_selected',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error'
+      }
+    }
+
+    // Check for error condition: SISSEKANNE_T (lesson) with MAHT_i (independent work)
+    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseisev && !actualState.auditoorne
+    if (isLessonWithIndependentWork) {
+      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Entry type is SISSEKANNE_T (lesson) but has MAHT_i (independent work) checkbox`)
+      console.log('DEBUG2: Error message: "Sissekande liik on tund, aga iseseisva õppe linnuke on sees"')
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'lesson_with_independent_work',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error'
+      }
+    }
+
+    // Check for error condition: SISSEKANNE_I (independent work) with MAHT_a (auditory learning)
+    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseisev
+    if (isIndependentWorkWithAuditory) {
+      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Entry type is SISSEKANNE_I (independent work) but has MAHT_a (auditory learning) checkbox`)
+      console.log('DEBUG2: Error message: "Iseseisval tööl ei saa olla auditoorne õpe linnuke sees"')
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'independent_work_with_auditory',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error'
+      }
+    }
+
+    // Validate against expected state
+    const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
+    const iseseisvValid = actualState.iseseisev === expectedState.iseseisev
+    const isValid = auditoorneValid && iseseisvValid
+    const validationResult = isValid ? 'pass' : 'fail'
+
+    console.log(`DEBUG2: Entry ${entry.id} - Validation result: ${validationResult}`)
+    if (!isValid) {
+      if (!auditoorneValid) {
+        console.log(`DEBUG2: Entry ${entry.id} - VALIDATION FAILED: Expected auditoorne=${expectedState.auditoorne}, got ${actualState.auditoorne}`)
+      }
+      if (!iseseisvValid) {
+        console.log(`DEBUG2: Entry ${entry.id} - VALIDATION FAILED: Expected iseseisev=${expectedState.iseseisev}, got ${actualState.iseseisev}`)
+      }
+
+      // Determine specific error type
+      let errorType = 'missing_required_checkbox'
+      if (entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P') {
+        errorType = 'missing_auditoorne_checkbox'
+      } else if (entry.entryType === 'SISSEKANNE_I') {
+        errorType = 'missing_iseseisev_checkbox'
+      }
+      console.log(`DEBUG2: Entry ${entry.id} - Error type: ${errorType}`)
+    }
+
+    return {
+      entry,
+      detailedData: detailedEntry,
+      isValid,
+      errorType: isValid ? null : (entry.entryType === 'SISSEKANNE_I' ? 'missing_iseseisev_checkbox' : 'missing_auditoorne_checkbox'),
+      actualState,
+      expectedState,
+      capacityTypes,
+      validationResult
+    }
+  }
+
+  #logValidationSummary(validationResults, auditoorneCapacity) {
+    console.log('DEBUG2: ========== VALIDATION RESULTS AND COMPARISON ==========')
+
+    const totalEntries = validationResults.length
+    const passedEntries = validationResults.filter(r => r.isValid).length
+    const failedEntries = validationResults.filter(r => !r.isValid).length
+    const errorConditions = validationResults.filter(r => r.errorType === 'both_checkboxes_selected').length
+    const lessonWithIndependentWork = validationResults.filter(r => r.errorType === 'lesson_with_independent_work').length
+    const independentWorkWithAuditory = validationResults.filter(r => r.errorType === 'independent_work_with_auditory').length
+    const missingAuditoorne = validationResults.filter(r => r.errorType === 'missing_auditoorne_checkbox').length
+    const missingIseseisev = validationResults.filter(r => r.errorType === 'missing_iseseisev_checkbox').length
+    const apiErrors = validationResults.filter(r => r.errorType === 'api_fetch_error').length
+    const formatErrors = validationResults.filter(r => r.errorType === 'invalid_capacity_types_format' || r.errorType === 'null_capacity_types').length
+
+    console.log('DEBUG2: Summary statistics:')
+    console.log(`DEBUG2: - Total entries checked: ${totalEntries}`)
+    console.log(`DEBUG2: - Passed validation: ${passedEntries}`)
+    console.log(`DEBUG2: - Failed validation: ${failedEntries}`)
+    console.log(`DEBUG2: - Error conditions (both checkboxes): ${errorConditions}`)
+    console.log(`DEBUG2: - Lesson with independent work error: ${lessonWithIndependentWork}`)
+    console.log(`DEBUG2: - Independent work with auditory error: ${independentWorkWithAuditory}`)
+    console.log(`DEBUG2: - Missing auditoorne checkbox: ${missingAuditoorne}`)
+    console.log(`DEBUG2: - Missing iseseisev checkbox: ${missingIseseisev}`)
+    console.log(`DEBUG2: - API fetch errors: ${apiErrors}`)
+    console.log(`DEBUG2: - Data format errors: ${formatErrors}`)
+
+    // Log detailed results for each entry
+    console.log('DEBUG2: Detailed validation results:')
+    validationResults.forEach((result, index) => {
+      console.log(`DEBUG2: Entry ${index + 1}:`)
+      console.log(`DEBUG2:   - ID: ${result.entry.id}`)
+      console.log(`DEBUG2:   - Date: ${result.entry.entryDate}`)
+      console.log(`DEBUG2:   - Entry Type: ${result.entry.entryType}`)
+      console.log(`DEBUG2:   - Expected auditoorne: ${result.expectedState?.auditoorne}`)
+      console.log(`DEBUG2:   - Actual auditoorne: ${result.actualState?.auditoorne}`)
+      console.log(`DEBUG2:   - Validation result: ${result.validationResult}`)
+      console.log(`DEBUG2:   - Error type: ${result.errorType || 'none'}`)
+      console.log(`DEBUG2:   - Capacity types: ${JSON.stringify(result.capacityTypes)}`)
+    })
+
+    // Log specific entry IDs that are failing each type of validation
+    console.log('DEBUG2: Failed entry IDs by error type:')
+    console.log(`DEBUG2: - Missing auditoorne: [${validationResults.filter(r => r.errorType === 'missing_auditoorne_checkbox').map(r => r.entry.id).join(', ')}]`)
+    console.log(`DEBUG2: - Missing iseseisev: [${validationResults.filter(r => r.errorType === 'missing_iseseisev_checkbox').map(r => r.entry.id).join(', ')}]`)
+    console.log(`DEBUG2: - Both checkboxes: [${validationResults.filter(r => r.errorType === 'both_checkboxes_selected').map(r => r.entry.id).join(', ')}]`)
+    console.log(`DEBUG2: - Lesson with independent work: [${validationResults.filter(r => r.errorType === 'lesson_with_independent_work').map(r => r.entry.id).join(', ')}]`)
+    console.log(`DEBUG2: - Independent work with auditory: [${validationResults.filter(r => r.errorType === 'independent_work_with_auditory').map(r => r.entry.id).join(', ')}]`)
+    console.log(`DEBUG2: - API errors: [${validationResults.filter(r => r.errorType === 'api_fetch_error').map(r => r.entry.id).join(', ')}]`)
+    console.log(`DEBUG2: - Format errors: [${validationResults.filter(r => r.errorType === 'invalid_capacity_types_format' || r.errorType === 'null_capacity_types').map(r => r.entry.id).join(', ')}]`)
+
+    // Root cause analysis logging
+    this.#logRootCauseAnalysis(validationResults, auditoorneCapacity)
+  }
+
+  #logRootCauseAnalysis(validationResults, auditoorneCapacity) {
+    console.log('DEBUG2: ========== ROOT CAUSE ANALYSIS LOGGING ==========')
+
+    // Investigate potential causes
+    console.log('DEBUG2: Investigating potential root causes:')
+
+    // a) Incorrect business logic
+    const allEntriesFailed = validationResults.every(r => !r.isValid)
+    if (allEntriesFailed && validationResults.length > 0) {
+      console.log('DEBUG2: a) POTENTIAL CAUSE: Incorrect business logic')
+      console.log('DEBUG2:    - ALL entries are failing validation')
+      console.log('DEBUG2:    - This suggests the assumption that ALL SISSEKANNE_T/P entries need auditoorne õpe may be wrong')
+      console.log('DEBUG2:    - RECOMMENDATION: Verify business requirements with domain experts')
+    }
+
+    // b) Faulty API data parsing
+    const hasValidCapacityTypes = validationResults.some(r => Array.isArray(r.capacityTypes) && r.capacityTypes.length > 0)
+    if (!hasValidCapacityTypes) {
+      console.log('DEBUG2: b) POTENTIAL CAUSE: Faulty API data parsing')
+      console.log('DEBUG2:    - No entries have valid capacity types arrays')
+      console.log('DEBUG2:    - This suggests API data structure may be different than expected')
+      console.log('DEBUG2:    - RECOMMENDATION: Examine actual API response structure')
+    }
+
+    // c) Wrong capacity type code
+    const hasMAHT_a = validationResults.some(r => Array.isArray(r.capacityTypes) && r.capacityTypes.includes('MAHT_a'))
+    if (!hasMAHT_a && hasValidCapacityTypes) {
+      console.log('DEBUG2: c) POTENTIAL CAUSE: Wrong capacity type code')
+      console.log('DEBUG2:    - No entries contain "MAHT_a" in their capacity types')
+      console.log('DEBUG2:    - The code "MAHT_a" may not be correct for auditoorne õpe')
+      console.log('DEBUG2:    - RECOMMENDATION: Verify correct capacity type codes from API documentation')
+    }
+
+    // d) Logic errors in boolean comparison
+    const hasInconsistentDetection = validationResults.some(r => {
+      if (!Array.isArray(r.capacityTypes)) return false
+      const includesResult = r.capacityTypes.includes('MAHT_a')
+      const indexOfResult = r.capacityTypes.indexOf('MAHT_a') !== -1
+      return includesResult !== indexOfResult
+    })
+    if (hasInconsistentDetection) {
+      console.log('DEBUG2: d) POTENTIAL CAUSE: Logic errors in boolean comparison')
+      console.log('DEBUG2:    - Inconsistent results between different detection methods')
+      console.log('DEBUG2:    - RECOMMENDATION: Review array operation logic')
+    }
+
+    // e) Case sensitivity issues
+    const uniqueCapacityTypes = new Set()
+    validationResults.forEach(r => {
+      if (Array.isArray(r.capacityTypes)) {
+        r.capacityTypes.forEach(type => uniqueCapacityTypes.add(type))
+      }
+    })
+    console.log('DEBUG2: e) Case sensitivity analysis:')
+    console.log('DEBUG2:    - All unique capacity type codes found:', Array.from(uniqueCapacityTypes))
+    console.log('DEBUG2:    - Looking for variations of "MAHT_a": case differences, extra spaces, etc.')
+
+    // Log hardcoded assumptions
+    console.log('DEBUG2: Hardcoded assumptions that might be incorrect:')
+    console.log('DEBUG2: - Assumption 1: ALL SISSEKANNE_T entries must have auditoorne õpe')
+    console.log('DEBUG2: - Assumption 2: ALL SISSEKANNE_P entries must have auditoorne õpe')
+    console.log('DEBUG2: - Assumption 3: "MAHT_a" is the correct code for auditoorne õpe')
+    console.log('DEBUG2: - Assumption 4: Empty array means no checkboxes selected')
+    console.log('DEBUG2: - Assumption 5: Both checkboxes selected is always an error')
+
+    // Log edge cases
+    console.log('DEBUG2: Edge cases analysis:')
+    const nullCapacityTypes = validationResults.filter(r => r.capacityTypes === null || r.capacityTypes === undefined).length
+    const emptyArrays = validationResults.filter(r => Array.isArray(r.capacityTypes) && r.capacityTypes.length === 0).length
+    const nonArrayTypes = validationResults.filter(r => r.capacityTypes !== null && r.capacityTypes !== undefined && !Array.isArray(r.capacityTypes)).length
+
+    console.log(`DEBUG2: - Null/undefined capacity types: ${nullCapacityTypes}`)
+    console.log(`DEBUG2: - Empty arrays: ${emptyArrays}`)
+    console.log(`DEBUG2: - Non-array capacity types: ${nonArrayTypes}`)
+
+    // Final recommendations
+    console.log('DEBUG2: FINAL RECOMMENDATIONS:')
+    console.log('DEBUG2: 1. Verify business requirements: Do ALL SISSEKANNE_T/P entries really need auditoorne õpe?')
+    console.log('DEBUG2: 2. Confirm capacity type codes: Is "MAHT_a" definitely correct for auditoorne õpe?')
+    console.log('DEBUG2: 3. Check API data structure: Are we fetching the right endpoint and parsing correctly?')
+    console.log('DEBUG2: 4. Review validation logic: Are our boolean operations and comparisons correct?')
+    console.log('DEBUG2: 5. Test with known good data: Find entries that definitely should pass validation')
+  }
+
+  #insertCapacityProblemsTable(problematicEntries, capacityData) {
+    try {
+      document.querySelector('[data-capacity-problems-table]')?.remove()
+      const insertionPoint = this.#findInsertionPoint()
+      if (!insertionPoint) return false
+
+      insertionPoint.insertBefore(
+        this.#createCapacityProblemsTableElement(problematicEntries, capacityData),
+        document.querySelector('[data-discrepancies-table]')?.nextSibling || insertionPoint.firstChild
+      )
+      this.#addCapacityProblemButtonListeners()
+      return true
+    } catch (error) {
+      Logger.error(`[${this.name}] insert capacity problems table`, error)
+      return false
+    }
+  }
+
+  #createCapacityProblemsTableElement(problematicEntries, capacityData) {
+    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
+    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
+
+    const sortedEntries = [...problematicEntries].sort((a, b) =>
+      new Date(a.entryDate) - new Date(b.entryDate)
+    )
+
+    const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
+    const boxStyle = 'background:#ffebee;border:1px solid #ffcdd2;border-radius:4px;padding:15px;' +
+      'margin:20px 0;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
+
+    // Add summary information about the capacity hours
+    const plannedHours = capacityData?.plannedHours || 0
+    const usedHours = capacityData?.usedHours || 0
+    const hoursDiff = Math.abs(plannedHours - usedHours)
+
+    const header = `
+      <div style="display:flex;align-items:center;margin-bottom:15px;">
+        <span style="font-size:20px;margin-right:10px;">⚠️</span>
+        <h3 style="margin:0;color:#c62828;">Probleemid auditoorse õppe linnukesega (${problematicEntries.length})</h3>
+      </div>`
+
+    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
+
+    const element = document.createElement('div')
+    element.dataset.capacityProblemsTable = 'true'
+    element.style.cssText = boxStyle
+    element.innerHTML = `${header}<table style="width:100%;border-collapse:collapse;background:white;">${tableHead}<tbody>${rows}</tbody></table>`
+    return element
+  }
+
+  #createCapacityProblemRow(entry) {
+    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
+    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
+
+    // Format date without year (DD.MM)
+    const dateObj = new Date(entry.entryDate)
+    const shortDate = `${dateObj.getDate().toString().padStart(2, '0')}.${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`
+    const startLesson = entry.startLessonNr || entry.lessons?.[0]?.lessonNr || ''
+    const dateWithLesson = startLesson ? `${shortDate} (${startLesson}.)` : shortDate
+
+    // Determine badge color based on entry type
+    let badgeColor = '#e0e0e0' // light gray default for SISSEKANNE_T
+    if (entry.entryType === 'SISSEKANNE_I') {
+      badgeColor = '#f0f4c3' // light yellow-green for independent work
+    } else if (entry.entryType === 'SISSEKANNE_P') {
+      badgeColor = '#b2dfdb' // light teal for practical work
+    }
+
+    const dateWithBadge = `<span style="background-color:${badgeColor};padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid #ccc;">${dateWithLesson}</span>`
+
+    // Determine the correct message based on the validation result
+    let message = "Auditoorne õpe puudub"
+    if (entry.validationResult) {
+      if (entry.validationResult.errorType === 'both_checkboxes_selected') {
+        message = "Auditoorne õpe ja iseseisva õppe linnukesed on samaaegselt sees"
+      } else if (entry.validationResult.errorType === 'lesson_with_independent_work') {
+        message = "Sissekande liik on tund, aga iseseisva õppe linnuke on sees"
+      } else if (entry.validationResult.errorType === 'independent_work_with_auditory') {
+        message = "Iseseisval tööl ei saa olla auditoorne õpe linnuke sees"
+      } else if (entry.validationResult.errorType === 'missing_auditoorne_checkbox') {
+        message = "Auditoorne õpe puudub"
+      } else if (entry.validationResult.errorType === 'missing_iseseisev_checkbox') {
+        message = "Iseseisev õpe puudub"
+      }
+    }
+
+    const action = this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+      handler: 'fixCapacity',
+      entryId: entry.id,
+      date: this.#formatDate(entry.entryDate)
+    })
+
+    return `<tr style="background-color:white">
+      <td style="${CENTER_STYLE}">${dateWithBadge}</td>
+      <td style="${CENTER_STYLE}">${message}</td>
+      <td style="${CENTER_STYLE}">${action}</td>
+    </tr>`
+  }
+
+  #addCapacityProblemButtonListeners() {
+    document.querySelectorAll('[data-capacity-problems-table] button').forEach(button => {
+      if (button.dataset.handler === 'fixCapacity') {
+        button.addEventListener('click', () => {
+          this.#handleFixCapacity(button.dataset.date, button.dataset.entryId)
+        })
+      }
+    })
+  }
+
+  async #handleFixCapacity(date, entryId) {
+    try {
+      const element = await this.#findJournalEntryElement(entryId, date)
+      if (!element) {
+        Logger.error(`[${this.name}] Entry element not found for ID=${entryId}, date=${date}`)
+        throw new Error('entry element not found')
+      }
+
+      await this.#clickJournalEntry(element)
+      await this.#waitForDialogContentLoaded()
+
+      // Find capacity type checkboxes
+      const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="capacityType"]')
+      const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+        checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') ||
+        checkbox.textContent.includes('Auditoorne õpe')
+      )
+      const iseseisvCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+        checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
+        checkbox.getAttribute('aria-label')?.includes('Individuaalne õpe') ||
+        checkbox.textContent.includes('Iseseisev õpe') ||
+        checkbox.textContent.includes('Individuaalne õpe')
+      )
+
+      let needsSave = false
+
+      // Get the entry to determine its type for proper fixing
+      const entryElement = await this.#findJournalEntryElement(entryId, date)
+      const entryData = this.#lastJournalData?.entries?.find(e => e.id == entryId)
+      const entryType = entryData?.entryType
+
+      console.log(`[${this.name}] Fixing capacity for entry ${entryId} of type ${entryType}`)
+
+      if (entryType === 'SISSEKANNE_I') {
+        // For independent work entries: ensure iseseisev õpe is checked, auditoorne õpe is unchecked
+        if (iseseisvCheckbox && iseseisvCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(iseseisvCheckbox)
+          needsSave = true
+        }
+        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(auditoorneCheckbox)
+          needsSave = true
+        }
+      } else {
+        // For lesson entries (SISSEKANNE_T/P): ensure auditoorne õpe is checked, iseseisev õpe is unchecked
+        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(auditoorneCheckbox)
+          needsSave = true
+        }
+        if (iseseisvCheckbox && iseseisvCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisvCheckbox)
+          needsSave = true
+        }
+      }
+
+      if (needsSave) {
+        // Find and click the save button
+        const saveButton = document.querySelector('button[ng-click*="save"]')
+        if (saveButton) {
+          await this.#clickElement(saveButton)
+
+          // Refresh the table after saving
+          setTimeout(() => this.#refreshTableWithRetry(), 1000)
+        }
+      }
+    } catch (error) {
+      Logger.error(`[${this.name}] fix capacity error`, error)
+    }
   }
 }

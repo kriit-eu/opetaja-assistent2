@@ -1,0 +1,104 @@
+GET /hois_back/journals/348988/journalEntry/3584648
+
+HTTP/1.1 200
+Date: Fri, 20 Jun 2025 12:12:20 GMT
+Content-Type: application/json
+
+{
+  "version": 3,
+  "id": 3584648,
+  "inserted": "2025-06-05T11:37:09.774Z",
+  "entryType": "SISSEKANNE_T",
+  "nameEt": "Tund",
+  "entryDate": "2025-06-05T00:00:00Z",
+  "startLessonNr": 1,
+  "lessons": 1,
+  "content": "Tund",
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    18737
+  ],
+  "journalEntryStudents": [
+    {
+      "id": 22480587,
+      "journalStudent": 5215951,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22480586,
+      "journalStudent": 4910061,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    },
+    {
+      "id": 22480585,
+      "journalStudent": 4910059,
+      "absence": "PUUDUMINE_P",
+      "grade": null,
+      "verbalGrade": null,
+      "removeStudentHistory": false,
+      "addInfo": null,
+      "isLessonAbsence": false,
+      "hasOverlappingLessonAbsence": null,
+      "isPraise": false,
+      "isRemark": false,
+      "lessonAbsences": {},
+      "studentName": null,
+      "studentGroup": null,
+      "journalEntryStudentHistories": []
+    }
+  ],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}

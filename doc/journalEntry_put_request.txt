@@ -1,0 +1,47 @@
+PUT /hois_back/journals/348988/journalEntry/3505360
+{
+  "startLessonNr": 8,
+  "lessons": 4,
+  "version": 10,
+  "id": 3505360,
+  "inserted": "2025-04-15T08:03:20.563Z",
+  "entryType": "SISSEKANNE_P",
+  "nameEt": "Praktiline töö",
+  "entryDate": "2025-04-15T00:00:00Z",
+  "content": null,
+  "homework": null,
+  "homeworkDuedate": null,
+  "moodleGradeItemId": null,
+  "journalStudent": null,
+  "isTest": false,
+  "isSubstitute": false,
+  "journalEntryCapacityTypes": [
+    "MAHT_a"
+  ],
+  "journalEntryTeachers": [
+    "18737"
+  ],
+  "journalEntryStudents": [],
+  "journalOmoduleTheme": null,
+  "studyPeriodEvent": null,
+  "teacherSelection": [
+    {
+      "id": 18737,
+      "nameEt": "Henno Täht",
+      "nameEn": "Henno Täht",
+      "firstname": "Henno",
+      "lastname": "Täht",
+      "idCode": null,
+      "uniqueCode": null,
+      "personUuid": null,
+      "color": null,
+      "isSubstitute": null,
+      "isOccupied": null,
+      "addCode": null,
+      "untisCode": null,
+      "teacherUuid": null,
+      "fullname": "Henno Täht",
+      "nameRu": "Henno Täht"
+    }
+  ]
+}
