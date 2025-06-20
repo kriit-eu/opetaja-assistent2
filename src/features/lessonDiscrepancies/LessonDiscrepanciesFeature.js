@@ -513,7 +513,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
 
     const boxStyle = `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
-      'margin:20px 0;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
+      'margin:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
 
     // Title bar
     const titleBar = `<div style="display:flex;align-items:center;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
@@ -1595,8 +1595,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       reasoning: shouldHaveAuditoorne ?
         `Entry type "${entry.entryType}" requires auditoorne õpe checkbox` :
         shouldHaveIseseisev ?
-        `Entry type "${entry.entryType}" requires iseseisev õpe checkbox` :
-        `Entry type "${entry.entryType}" has specific checkbox requirements`
+          `Entry type "${entry.entryType}" requires iseseisev õpe checkbox` :
+          `Entry type "${entry.entryType}" has specific checkbox requirements`
     }
 
     console.log(`DEBUG2: Entry ${entry.id} - Expected checkbox state:`, expectedState)
