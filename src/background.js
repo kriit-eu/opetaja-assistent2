@@ -68,4 +68,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Return true to indicate we will send a response asynchronously
     return true
   }
+
+  // Handle lesson times loading request
+  if (message.action === 'loadLessonTimes') {
+    const jsonUrl = chrome.runtime.getURL('src/features/lessonDiscrepancies/TahvelLessonTimes.json')
+
+    fetch(jsonUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+        return response.json()
+      })
+      .then(data => {
+        Logger.debug('Lesson times loaded successfully:', data)
+        sendResponse({ status: 'success', data })
+      })
+      .catch(error => {
+        Logger.error('Error loading lesson times:', error)
+        sendResponse({ status: 'error', error: error.message })
+      })
+
+    // Return true to indicate we will send a response asynchronously
+    return true
+  }
 })

@@ -41,7 +41,17 @@ export async function loadFeatures () {
     Logger.debug('Skipping feature journalListSync because it requires Kriit and Kriit is disabled')
   }
 
-  // TODO: Import non-Kriit features here (they should always be loaded)
+  // Load non-Kriit features here (they should always be loaded)
+
+  // Load lesson discrepancies feature (always enabled)
+  try {
+    const LessonDiscrepanciesFeature = (await import('../features/lessonDiscrepancies/LessonDiscrepanciesFeature.js')).default
+    const lessonDiscrepanciesFeature = new LessonDiscrepanciesFeature()
+    allAvailableFeatures.singleJournal.push(lessonDiscrepanciesFeature)
+    Logger.debug('Feature "LessonDiscrepanciesFeature" created')
+  } catch (error) {
+    Logger.error('Error loading LessonDiscrepanciesFeature:', error)
+  }
 
   // Create a copy of the features structure for returning
   const featureGroups = {

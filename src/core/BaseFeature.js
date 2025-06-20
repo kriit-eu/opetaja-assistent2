@@ -193,7 +193,6 @@ export class BaseFeature {
         // Set base URL from storage - no default fallback
         if (savedBaseUrl) {
           this.api.kriit.setBaseUrl(savedBaseUrl)
-          Logger.debug(`Initialized Kriit API with saved base URL: ${savedBaseUrl}`)
         } else {
           Logger.debug('No Kriit API base URL found in settings')
         }
@@ -201,7 +200,6 @@ export class BaseFeature {
         // Set auth token if available
         if (savedToken) {
           this.api.kriit.setAuthToken(savedToken)
-          Logger.debug('Initialized Kriit API with saved auth token')
         } else {
           Logger.debug('No Kriit API token found, Kriit features will be disabled')
         }
