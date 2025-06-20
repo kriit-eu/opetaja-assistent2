@@ -47,7 +47,7 @@ const CONFIG = {
 }
 
 // Main build function
-async function build () {
+async function build() {
   console.log(`🚀 Starting ${CONFIG.isProd ? 'PRODUCTION' : 'DEVELOPMENT'} build process...`)
 
   try {
@@ -71,7 +71,7 @@ async function build () {
 }
 
 // Clean dist directory
-async function cleanDist () {
+async function cleanDist() {
   console.log('🧹 Cleaning dist directory...')
 
   if (fs.existsSync(CONFIG.distDir)) {
@@ -82,7 +82,7 @@ async function cleanDist () {
 }
 
 // Bundle JavaScript files using Bun
-async function bundleJavaScript () {
+async function bundleJavaScript() {
   console.log('📦 Bundling JavaScript files...')
 
   const files = CONFIG.bundleFiles.map(file => path.join(CONFIG.srcDir, file))
@@ -114,7 +114,7 @@ async function bundleJavaScript () {
 }
 
 // Convert SVG icons to PNG
-async function convertIcons () {
+async function convertIcons() {
   console.log('🖼️  Converting SVG icons to PNG...')
 
   try {
@@ -139,7 +139,7 @@ async function convertIcons () {
 }
 
 // Copy static assets to dist
-async function copyStaticAssets () {
+async function copyStaticAssets() {
   console.log('📋 Copying static assets...')
 
   // Copy manifest.json
@@ -169,6 +169,18 @@ async function copyStaticAssets () {
   const cssDestPath = path.join(stylesDestDir, 'JournalSyncBannerService.css')
   fs.copyFileSync(cssSourcePath, cssDestPath)
   console.log('  Copied JournalSyncBannerService.css')
+
+  // Copy TahvelLessonTimes.json
+  const lessonTimesSourceDir = path.join(CONFIG.srcDir, 'features', 'lessonDiscrepancies')
+  const lessonTimesDestDir = path.join(CONFIG.distDir, 'src', 'features', 'lessonDiscrepancies')
+
+  // Create the destination directory structure
+  fs.mkdirSync(lessonTimesDestDir, { recursive: true })
+
+  const lessonTimesSourcePath = path.join(lessonTimesSourceDir, 'TahvelLessonTimes.json')
+  const lessonTimesDestPath = path.join(lessonTimesDestDir, 'TahvelLessonTimes.json')
+  fs.copyFileSync(lessonTimesSourcePath, lessonTimesDestPath)
+  console.log('  Copied TahvelLessonTimes.json')
 }
 
 // Run the build process
