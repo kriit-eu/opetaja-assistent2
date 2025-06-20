@@ -111,20 +111,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       const discrepancies = await this.#findLessonDiscrepancies(journalData, timetableData)
 
-      if (!discrepancies.length) {
-        existingTable?.remove()
-        this.#insertSuccessMessage()
-        // Check for capacity type problems after confirming no timetable discrepancies
-        await this.#checkCapacityTypeProblems(journalData)
-        this.#tableCreated = true
-        this.#currentJournalId = journalId
-        return
-      }
+      // Always check for capacity type problems
+      const capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
-      if (this.#insertDiscrepanciesTable(discrepancies)) {
-        this.#tableCreated = true
-        this.#currentJournalId = journalId
-      }
+      // Create unified display
+      existingTable?.remove()
+      this.#insertUnifiedTable(discrepancies, capacityProblems)
+      this.#tableCreated = true
+      this.#currentJournalId = journalId
     } catch (error) {
       Logger.error(`[${this.name}] table error`, error)
     }
@@ -495,30 +489,98 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #insertSuccessMessage() {
+  #insertUnifiedTable(discrepancies, capacityProblems) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
+      document.querySelector('[data-capacity-problems-table]')?.remove()
       const insertionPoint = this.#findInsertionPoint()
       if (!insertionPoint) return false
 
-      insertionPoint.insertBefore(this.#createSuccessMessageElement(), insertionPoint.firstChild)
+      insertionPoint.insertBefore(this.#createUnifiedTableElement(discrepancies, capacityProblems), insertionPoint.firstChild)
+      this.#addDiscrepancyButtonListeners()
+      this.#addCapacityProblemButtonListeners()
       return true
     } catch (error) {
-      Logger.error(`[${this.name}] insert success message`, error)
+      Logger.error(`[${this.name}] insert unified table`, error)
       return false
     }
   }
 
-  #createSuccessMessageElement() {
-    const boxStyle = 'background:#d1edcc;border:1px solid #c3e6cb;border-radius:4px;padding:15px;' +
+  #createUnifiedTableElement(discrepancies, capacityProblems) {
+    // Determine background color based on whether there are any problems
+    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0
+    const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc' // yellow if problems, green if none
+    const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
+
+    const boxStyle = `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
       'margin:20px 0;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
-    const header = `<div style="display:flex;align-items:center;margin-bottom:0;"><span style="font-size:20px;margin-right:10px;">✅</span><h3 style="margin:0;color:#155724;">Tunnisissekannete probleeme ei tuvastatud</h3></div>`
+
+    // Title bar
+    const titleBar = `<div style="display:flex;align-items:center;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
+      <span style="font-size:20px;margin-right:10px;">🎓</span>
+      <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
+    </div>`
+
+    // Timetable discrepancies section
+    const timetableSection = this.#createTimetableSection(discrepancies)
+
+    // Capacity problems section
+    const capacitySection = this.#createCapacitySection(capacityProblems)
 
     const element = document.createElement('div')
     element.dataset.discrepanciesTable = 'true'
     element.style.cssText = boxStyle
-    element.innerHTML = header
+    element.innerHTML = titleBar + timetableSection + capacitySection
     return element
+  }
+
+  #createTimetableSection(discrepancies) {
+    if (!discrepancies.length) {
+      return `<p style="color:#28a745;margin:0 0 20px 0;">Erinevusi tunniplaaniga pole.</p>`
+    }
+
+    const sectionHeader = `<div style="margin-bottom:15px;">
+      <h4 style="margin:0 0 10px 0;color:#495057;">Erinevused tunniplaaniga</h4>
+    </div>`
+
+    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
+    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
+
+    const sortedDiscrepancies = [...discrepancies].sort((a, b) => {
+      const dateComparison = new Date(a.date) - new Date(b.date)
+      if (dateComparison !== 0) return dateComparison
+
+      const aLessonNumber = a.lessonNumber ?? a.timetableStart ?? 0
+      const bLessonNumber = b.lessonNumber ?? b.timetableStart ?? 0
+      return aLessonNumber - bLessonNumber
+    })
+
+    const rows = sortedDiscrepancies.map(discrepancy => this.#createDiscrepancyRow(discrepancy)).join('')
+    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:25%">Algustund</th><th style="${CENTER_STYLE}width:25%">Tundide arv</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
+
+    return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
+  }
+
+  #createCapacitySection(capacityProblems) {
+    if (!capacityProblems.length) {
+      return `<p style="color:#28a745;margin:0;">Ebaloogilisi sissekande liigi ja tüüpi kombinatsioone ei leitud.</p>`
+    }
+
+    const sectionHeader = `<div style="margin-bottom:15px;">
+      <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
+    </div>`
+
+    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
+    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
+
+    const sortedEntries = [...capacityProblems].sort((a, b) =>
+      new Date(a.entryDate) - new Date(b.entryDate)
+    )
+
+    const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
+    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
+
+    return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
   }
 
   #addDiscrepancyButtonListeners() {
@@ -1279,9 +1341,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       console.log(`[${this.name}] Fetching fresh journal data`)
       const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
 
-      // Re-run capacity validation
-      console.log(`[${this.name}] Re-running capacity validation`)
-      await this.#checkCapacityTypeProblems(journalData)
+      // Re-run unified validation
+      console.log(`[${this.name}] Re-running unified validation`)
+      const capacityProblems = await this.#getCapacityTypeProblems(journalData)
+
+      // Get current discrepancies (empty since we're only refreshing capacity)
+      const discrepancies = []
+
+      // Update unified display
+      this.#insertUnifiedTable(discrepancies, capacityProblems)
 
       console.log(`[${this.name}] Capacity validation refresh completed successfully`)
     } catch (error) {
@@ -1302,7 +1370,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#saveMonitoringSetup = false
   }
 
-  async #checkCapacityTypeProblems(journalData) {
+  async #getCapacityTypeProblems(journalData) {
     try {
       console.log('DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION START ==========')
       console.log('DEBUG2: Starting comprehensive debugging for auditoorne õpe checkbox validation')
@@ -1334,13 +1402,21 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       console.log('DEBUG2: - "Iseseisev õpe" only: ["MAHT_i"]')
       console.log('DEBUG2: - Both checked: ["MAHT_a", "MAHT_i"] (ERROR CONDITION)')
 
-      // Proceed with detailed entry checks regardless of capacity hours mismatch
-      await this.#performDetailedCapacityValidation(journalData, auditoorneCapacity)
+      // Get detailed capacity validation results
+      const validationResults = await this.#performDetailedCapacityValidation(journalData, auditoorneCapacity)
 
       console.log('DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION END ==========')
+
+      // Return problematic entries
+      const problematicEntries = validationResults.filter(result => !result.isValid)
+      return problematicEntries.map(r => ({
+        ...r.entry,
+        validationResult: r
+      }))
     } catch (error) {
       console.log('DEBUG2: ERROR in capacity check:', error)
       Logger.error(`[${this.name}] capacity check error`, error)
+      return []
     }
   }
 
@@ -1385,22 +1461,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Log validation summary
     this.#logValidationSummary(validationResults, auditoorneCapacity)
 
-    // Show problematic entries if any, or remove table if no problems
-    const problematicEntries = validationResults.filter(result => !result.isValid)
-    if (problematicEntries.length > 0) {
-      // Attach validation results to entries for proper error message display
-      const entriesWithValidation = problematicEntries.map(r => ({
-        ...r.entry,
-        validationResult: r
-      }))
-      this.#insertCapacityProblemsTable(entriesWithValidation, auditoorneCapacity)
-    } else {
-      // No problems found - remove any existing capacity problems table
-      console.log('DEBUG2: No capacity validation problems found - removing table if it exists')
-      document.querySelector('[data-capacity-problems-table]')?.remove()
-    }
-
     console.log('DEBUG2: ========== DETAILED CAPACITY VALIDATION END ==========')
+
+    // Return validation results
+    return validationResults
   }
 
   async #validateEntriesWithDetailedData(journalId, targetEntries) {
@@ -1864,7 +1928,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #addCapacityProblemButtonListeners() {
-    document.querySelectorAll('[data-capacity-problems-table] button').forEach(button => {
+    document.querySelectorAll('[data-discrepancies-table] button').forEach(button => {
       if (button.dataset.handler === 'fixCapacity') {
         button.addEventListener('click', () => {
           this.#handleFixCapacity(button.dataset.date, button.dataset.entryId)
