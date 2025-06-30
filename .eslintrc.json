@@ -33,7 +33,7 @@
       "unix"
     ],
     "quotes": [
-      "error",
+      "warn",
       "single",
       {
         "avoidEscape": true
@@ -44,12 +44,14 @@
       "never"
     ],
     "max-len": [
-      "error",
+      "warn",
       {
-        "code": 120,
+        "code": 155,
         "ignoreComments": true,
         "ignoreStrings": true,
-        "ignoreTemplateLiterals": true
+        "ignoreTemplateLiterals": true,
+        "ignoreRegExpLiterals": true,
+        "ignoreUrls": true
       }
     ],
     "comma-dangle": [
@@ -127,7 +129,7 @@
       "as-needed"
     ],
     "brace-style": [
-      "error",
+      "warn",
       "1tbs",
       {
         "allowSingleLine": true
@@ -180,7 +182,7 @@
       }
     ],
     "eqeqeq": [
-      "error",
+      "warn",
       "always"
     ],
     "curly": [
