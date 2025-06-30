@@ -174,6 +174,12 @@ export class BaseFeature {
    * Initialize Kriit API with settings from chrome.storage.sync
    */
   initializeKriitApi () {
+    // Check if API is properly initialized
+    if (!this.api || !this.api.kriit) {
+      Logger.error('API not properly initialized', { api: this.api })
+      return
+    }
+
     // Set Kriit API base URL if not already set
     if (!this.api.kriit.baseUrl) {
       // Try to load from storage

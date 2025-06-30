@@ -17,9 +17,22 @@
       "rules": {
         "no-console": "off"
       }
+    },
+    {
+      "files": [
+        "**/build.js",
+        "**/watch.js"
+      ],
+      "env": {
+        "node": true
+      },
+      "rules": {
+        "no-console": "off"
+      }
     }
   ],
   "rules": {
+    "no-useless-catch": "off",
     /* Formatting Rules */
     "indent": [
       "error",
@@ -32,13 +45,7 @@
       "error",
       "unix"
     ],
-    "quotes": [
-      "warn",
-      "single",
-      {
-        "avoidEscape": true
-      }
-    ],
+    "quotes": "off",
     "semi": [
       "error",
       "never"
@@ -54,10 +61,7 @@
         "ignoreUrls": true
       }
     ],
-    "comma-dangle": [
-      "error",
-      "always-multiline"
-    ],
+    "comma-dangle": "off",
     "comma-spacing": [
       "error",
       {
@@ -128,21 +132,9 @@
       "error",
       "as-needed"
     ],
-    "brace-style": [
-      "warn",
-      "1tbs",
-      {
-        "allowSingleLine": true
-      }
-    ],
-    "function-call-argument-newline": [
-      "error",
-      "consistent"
-    ],
-    "function-paren-newline": [
-      "error",
-      "multiline"
-    ],
+    "brace-style": "off",
+    "function-call-argument-newline": "off",
+    "function-paren-newline": "off",
     "object-property-newline": [
       "error",
       {
@@ -159,36 +151,30 @@
     ],
     "operator-linebreak": [
       "error",
-      "after"
-    ],
-    /* Code Quality Rules */
-    "no-unused-vars": [
-      "warn"
-    ],
-    "camelcase": [
-      "warn"
-    ],
-    "no-var": "error",
-    "prefer-const": "error",
-    "no-console": [
-      "warn",
+      "after",
       {
-        "allow": [
-          "warn",
-          "error",
-          "info",
-          "debug"
-        ]
+        "overrides": {
+          "?": "before",
+          ":": "before"
+        }
       }
     ],
-    "eqeqeq": [
+    /* Code Quality Rules - LLM Friendly */
+    "no-unused-vars": [
       "warn",
-      "always"
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
     ],
-    "curly": [
-      "error",
-      "multi-line"
-    ],
-    "no-else-return": "error"
+    "camelcase": "off",
+    "no-var": "warn",
+    "prefer-const": "warn", 
+    "no-console": "off",
+    "eqeqeq": "off",
+    "curly": "off",
+    "no-else-return": "off",
+    "no-empty": "warn",
+    "no-undef": "error"
   }
 }

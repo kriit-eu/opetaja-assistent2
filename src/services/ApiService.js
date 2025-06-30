@@ -133,7 +133,8 @@ class ApiService {
       }
 
       // Log request details for debugging
-      Logger.debug(`[${this.name}] ${method} ${urlString}`)
+      const shortUrl = urlString.replace(/^https?:\/\/[^/]+\/hois_back/, '')
+      Logger.debug(`[${this.name}] ${method} ${shortUrl}`)
 
       // Log credentials mode for debugging CORS issues
       if (this.name === 'kriit') {
@@ -187,9 +188,6 @@ class ApiService {
         )
       }
 
-      // Make a direct request without caching
-      Logger.debug(`[${this.name}] Executing fetch for ${method} ${urlString}`)
-
       const response = await fetch(urlString, requestOptions)
 
       if (!response.ok) {
@@ -231,9 +229,7 @@ class ApiService {
 
       // Try to parse as JSON, fall back to text if that fails
       try {
-        const jsonResponse = JSON.parse(responseText)
-        Logger.debug(`[${this.name}] Successfully parsed JSON response`)
-        return jsonResponse
+        return JSON.parse(responseText)
       } catch (error) {
         Logger.debug(`[${this.name}] Response is not JSON, returning as text`)
         return responseText || { success: true, status: response.status }

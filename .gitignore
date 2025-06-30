@@ -34,6 +34,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # IntelliJ based IDEs
 .idea
+!.idea/inspectionProfiles/**
 
 # Editor settings
 .windsurf/
@@ -44,3 +45,4 @@ node_modules/
 dist/
 .bun/
 .aider*
+/old-code/opetaja-assistent/
