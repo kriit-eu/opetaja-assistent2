@@ -15,7 +15,7 @@
     "eslint": "^8.56.0"
   },
   "scripts": {
-    "start": "bun install && bun run lint:fix && bun run dev",
+    "start": "bun install && find src -name '*.js' -print0 | xargs -0 ./node_modules/.bin/eslint --fix && bun run dev",
     "dev": "bun run build:dev && bun run watch",
     "build": "bun run build:prod",
     "build:dev": "bun src/assets/scripts/build.js",

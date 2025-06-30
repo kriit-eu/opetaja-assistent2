@@ -47,7 +47,7 @@ const CONFIG = {
 }
 
 // Main build function
-async function build() {
+async function build () {
   console.log(`🚀 Starting ${CONFIG.isProd ? 'PRODUCTION' : 'DEVELOPMENT'} build process...`)
 
   try {
@@ -71,7 +71,7 @@ async function build() {
 }
 
 // Clean dist directory
-async function cleanDist() {
+async function cleanDist () {
   console.log('🧹 Cleaning dist directory...')
 
   if (fs.existsSync(CONFIG.distDir)) {
@@ -82,7 +82,7 @@ async function cleanDist() {
 }
 
 // Bundle JavaScript files using Bun
-async function bundleJavaScript() {
+async function bundleJavaScript () {
   console.log('📦 Bundling JavaScript files...')
 
   const files = CONFIG.bundleFiles.map(file => path.join(CONFIG.srcDir, file))
@@ -91,19 +91,20 @@ async function bundleJavaScript() {
     const bunBuild = spawn('bun', [
       'build',
       ...files,
-      '--outdir', CONFIG.distDir,
+      '--outdir',
+      CONFIG.distDir,
       ...CONFIG.bundleOptions
     ])
 
-    bunBuild.stdout.on('data', (data) => {
+    bunBuild.stdout.on('data', data => {
       console.log(`  ${data.toString().trim()}`)
     })
 
-    bunBuild.stderr.on('data', (data) => {
+    bunBuild.stderr.on('data', data => {
       console.error(`  ${data.toString().trim()}`)
     })
 
-    bunBuild.on('close', (code) => {
+    bunBuild.on('close', code => {
       if (code === 0) {
         resolve()
       } else {
@@ -114,7 +115,7 @@ async function bundleJavaScript() {
 }
 
 // Convert SVG icons to PNG
-async function convertIcons() {
+async function convertIcons () {
   console.log('🖼️  Converting SVG icons to PNG...')
 
   try {
@@ -139,7 +140,7 @@ async function convertIcons() {
 }
 
 // Copy static assets to dist
-async function copyStaticAssets() {
+async function copyStaticAssets () {
   console.log('📋 Copying static assets...')
 
   // Copy manifest.json

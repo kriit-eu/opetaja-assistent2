@@ -68,18 +68,18 @@ const cacheService = {
 
           // Calculate age in days for better logging
           const ageInDays = (now - timestamp) / (24 * 60 * 60 * 1000)
-          const ageText = ageInDays < 0.001 ?
-            'just now' :
-            ageInDays < 0.04 ?
-              `${Math.round(ageInDays * 24 * 60)} minutes` :
-              `${ageInDays.toFixed(1)} days`
+          const ageText = ageInDays < 0.001
+            ? 'just now'
+            : ageInDays < 0.04
+              ? `${Math.round(ageInDays * 24 * 60)} minutes`
+              : `${ageInDays.toFixed(1)} days`
 
           // Extract item description from key for better logging
-          const itemDescription = key.includes('journalEntriesByDate') ?
-            `journal entries for journal ${key.match(/journals\/(\d+)\/journalEntriesByDate/)?.[1] || 'unknown'}` :
-            key.includes('journalStudents') ?
-              `journal students for journal ${key.match(/journals\/(\d+)\/journalStudents/)?.[1] || 'unknown'}` :
-              `data for ${key}`
+          const itemDescription = key.includes('journalEntriesByDate')
+            ? `journal entries for journal ${key.match(/journals\/(\d+)\/journalEntriesByDate/)?.[1] || 'unknown'}`
+            : key.includes('journalStudents')
+              ? `journal students for journal ${key.match(/journals\/(\d+)\/journalStudents/)?.[1] || 'unknown'}`
+              : `data for ${key}`
 
           Logger.debug(`Using cached ${itemDescription} (${ageText} old)`)
           return storageData.data

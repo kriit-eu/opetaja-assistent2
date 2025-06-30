@@ -16,8 +16,3 @@ trim_trailing_whitespace = true
 # Markdown files
 [*.md]
 trim_trailing_whitespace = false
-
-# JSON files
-[*.json]
-indent_style = space
-indent_size = 2

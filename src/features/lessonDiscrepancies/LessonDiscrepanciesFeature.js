@@ -16,7 +16,35 @@ const createButtonStyle = ([bg, hover, color]) =>
 const CELL_STYLE = 'padding:6px 8px;border:1px solid #dee2e6;font-size:14px;'
 const CENTER_STYLE = CELL_STYLE + 'text-align:center;'
 
+/**
+ * @typedef {Object} JournalInfo
+ * @property {Array} journalTeachers - Array of teacher objects
+ * @property {Object} school - School information
+ * @property {string} school.id - School ID
+ * @property {string} [studyYearStartDate] - Study year's start date
+ * @property {string} [studyYearEndDate] - Study year's end date
+ * @property {string} id - Journal ID
+ */
+
+/**
+ * @typedef {Object} TimetableEvent
+ * @property {string} journalId - Journal ID
+ * @property {string} date - Event date
+ * @property {string} timeStart - Start time
+ */
+
+/**
+ * @typedef {Object} ButtonData
+ * @property {string} [entryid] - Entry ID
+ * @property {number} [duplicateindex] - Duplicate index
+ * @property {number} [currentstart] - Current start lesson
+ * @property {number} [timetablestart] - Timetable start lesson
+ * @property {number} [currentcount] - Current lesson count
+ * @property {number} [timetablecount] - Timetable lesson count
+ */
+
 export default class LessonDiscrepanciesFeature extends BaseFeature {
+
   #tableCreated = false
   #currentJournalId = null
   #saveMonitoringSetup = false
@@ -32,7 +60,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   constructor () {
     super('lessonDiscrepancies', /\/journal\/\d+\/edit/)
     this.name = 'LessonDiscrepanciesFeature'
-    this.api.cache = cacheService
   }
 
   async activate () {
@@ -94,7 +121,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   async #clearStaleCache () {
     const journalId = this.#extractJournalId()
     if (journalId) {
-      await this.api.cache.clearJournalCache(journalId)
+      await cacheService.clearJournalCache(journalId)
     }
   }
 
@@ -131,8 +158,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const params = cacheBuster ? { _t: cacheBuster } : {}
     const entriesParams = { allStudents: true, ...params }
 
-    const info = await this.api.tahvel.get(`/journals/${journalId}`, params, { cacheExpiration: 864e5 })
-    const entries = await this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, entriesParams, { cacheExpiration })
+    const info = await this.api.tahvel.get(`/journals/${journalId}`, params, {
+      cache: true,
+      cacheExpiration: 864e5
+    })
+    const entries = await this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, entriesParams, {
+      cache: true,
+      cacheExpiration
+    })
     const timetable = await this.#fetchTimetableData(info, forceRefresh)
     return {
       journalData: { info, entries: entries ?? [] },
@@ -149,6 +182,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  /**
+   * @param {JournalInfo} info - Journal info object
+   * @param {boolean} forceRefresh - Whether to force refresh cache
+   * @returns {Promise<Array<TimetableEvent>>} Timetable events
+   */
   async #fetchTimetableData (info, forceRefresh = false) {
     try {
       const teacherId = info.journalTeachers?.[0]?.id
@@ -164,7 +202,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const cacheExpiration = forceRefresh ? 0 : baseCacheExpiration
 
       const params = forceRefresh ? { _t: Date.now() } : {}
-      const data = await this.api.tahvel.get(endpoint, params, { cacheExpiration })
+      /** @type {{timetableEvents?: Array<TimetableEvent>}} */
+      const data = await this.api.tahvel.get(endpoint, params, {
+        cache: true,
+        cacheExpiration
+      })
       return data?.timetableEvents?.filter(event => event.journalId === info.id) ?? []
     } catch (error) {
       Logger.warning(`[${this.name}] timetable`, error.message)
@@ -175,7 +217,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   async #fetchLessonTimes (schoolId = LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK) {
     try {
       return await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ action: 'loadLessonTimes' }, response => {
+        /** @type {any} */
+        const message = { action: 'loadLessonTimes' }
+        chrome.runtime.sendMessage(message, response => {
           if (chrome.runtime.lastError) {
             return reject(new Error(chrome.runtime.lastError.message))
           }
@@ -296,6 +340,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #createMissingLessonDiscrepancies ({ date, tEntries }, journal, discrepancies) {
     const schoolId = journal.info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
+    /** @type {Array<{date: string, timeStart: string, timeEnd: string, name: string, rooms: Array, lessonNumber: number, type: string}>} */
     const missingLessons = await Promise.all(tEntries.map(async entry => ({
       date,
       timeStart: entry.timeStart,
@@ -303,7 +348,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       name: entry.nameEt || journal.info.nameEt,
       rooms: entry.rooms ?? [],
       lessonNumber: await this.#calculateLessonNumber(entry.timeStart, schoolId),
-      type: 'missing_journal_entry',
+      type: 'missingJournalEntry',
     })))
 
     if (missingLessons.length > 0) {
@@ -317,7 +362,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         lessonCount: missingLessons.length,
         lessonNumbers: lessonNumbers,
         rooms: allRooms,
-        type: 'missing_journal_entry',
+        type: 'missingJournalEntry',
       })
     }
   }
@@ -341,14 +386,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     if (data.entries.length === 1) {
       discrepancies.push({
         ...baseDiscrepancy,
-        type: 'single_entry_fix',
+        type: 'singleEntryFix',
         entryId: data.entries[0].id,
         entries: data.entries,
       })
     } else {
       discrepancies.push({
         ...baseDiscrepancy,
-        type: 'multi_entry_fix',
+        type: 'multiEntryFix',
         entries: data.entries,
       })
     }
@@ -372,78 +417,39 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #findDuplicateMatches (entryId, date) {
     if (!this.#lastJournalData?.entries) {
-      console.log(`[${this.name}] No journal data for findDuplicateMatches`)
+      Logger.warning(`No journal data available for findDuplicateMatches`)
       return { exactMatches: [], targetIndex: 0 }
     }
 
     const targetEntry = this.#lastJournalData.entries.find(entry => entry.id == entryId)
     if (!targetEntry) {
-      console.log(`[${this.name}] Target entry ${entryId} not found in findDuplicateMatches`)
+      Logger.warning(`Target entry ${entryId} not found in journal data`)
       return { exactMatches: [], targetIndex: 0 }
     }
-
-    console.log(`[${this.name}] Target entry for ${entryId}:`, {
-      id: targetEntry.id,
-      lessons: targetEntry.lessons,
-      entryType: targetEntry.entryType,
-      date: this.#formatDate(targetEntry.entryDate),
-    })
 
     // Get all rows that match the date
     const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
     const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
     const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
 
-    console.log(`[${this.name}] Found ${dateMatchingRows.length} date matching rows for ${datePrefix}`)
-
     // Filter by lesson count and type to get the exact matches in DOM order
     const exactMatches = dateMatchingRows.filter(row => {
-      const cells = row.querySelectorAll('td')
-      let lessonCount = null
-      let entryType = null
-
-      for (const cell of cells) {
-        const text = cell.textContent.trim()
-        if (/^\d+$/.test(text)) {
-          lessonCount = parseInt(text)
-        }
-        if (text.includes('Tund')) {
-          entryType = 'SISSEKANNE_T'
-        } else if (text.includes('Iseseisev töö')) {
-          entryType = 'SISSEKANNE_I'
-        } else if (text.includes('E-õpe')) {
-          entryType = 'SISSEKANNE_E'
-        }
-      }
-
-      const matches = lessonCount === targetEntry.lessons && entryType === targetEntry.entryType
-      if (matches) {
-        console.log(`[${this.name}] Row matches: lessonCount=${lessonCount}, entryType=${entryType}`)
-      }
-      return matches
+      const { lessonCount, entryType } = this.#parseRowLessonInfo(row)
+      return lessonCount === targetEntry.lessons && entryType === targetEntry.entryType
     })
-
-    console.log(`[${this.name}] Found ${exactMatches.length} exact matches`)
 
     // For single matches, index is always 0
     if (exactMatches.length <= 1) {
-      console.log(`[${this.name}] Single or no matches, returning index 0`)
       return { exactMatches, targetIndex: 0 }
     }
 
     // Find all duplicate entries in API data, sorted by ID (for consistent ordering)
     const duplicateEntries = this.#lastJournalData.entries.filter(entry => this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate) &&
-             entry.lessons === targetEntry.lessons &&
-             entry.entryType === targetEntry.entryType).sort((a, b) => a.id - b.id)
-
-    console.log(`[${this.name}] Found ${duplicateEntries.length} duplicate entries in API data (sorted by ID)`)
-    duplicateEntries.forEach((entry, i) => {
-      console.log(`[${this.name}] Duplicate ${i}: ID=${entry.id}`)
-    })
+      entry.lessons === targetEntry.lessons &&
+      entry.entryType === targetEntry.entryType).sort((a, b) => a.id - b.id)
 
     // Simple position-based matching: assume DOM order matches API order
     const targetIndex = duplicateEntries.findIndex(entry => entry.id == entryId)
-    console.log(`[${this.name}] Target entry ${entryId} found at position ${targetIndex} in sorted duplicates`)
 
     return { exactMatches, targetIndex: Math.max(0, targetIndex) }
   }
@@ -451,9 +457,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #createSmartDisplay = (currentValue, correctValue) => {
     const current = Number(currentValue)
     const correct = Number(correctValue)
-    return current === correct ?
-      `<span style="font-size:14px;font-weight:bold;">${current}</span>` :
-      this.#createDiffPill(current, correct)
+    return current === correct
+      ? `<span style="font-size:14px;font-weight:bold;">${current}</span>`
+      : this.#createDiffPill(current, correct)
   }
 
   #createButton (id, text, colorKey, data = {}, tooltip = '') {
@@ -495,7 +501,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       count: this.#createSmartDisplay(discrepancy.journalCount, discrepancy.timetableCount),
       action: this.#createButton(`edit-single-${discrepancy.date}-${discrepancy.entryId}`, buttonText, 'amber', {
         handler: 'editEntry',
-        type: 'single_entry_fix',
+        type: 'singleEntryFix',
         date: discrepancy.date,
         entryId: discrepancy.entryId,
         timetableStart: discrepancy.timetableStart,
@@ -510,19 +516,31 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #renderMultiEntryFix (discrepancy) {
     // Check if there are duplicates by looking at the first entry
     const firstEntry = discrepancy.entries?.[0]
-    const firstEntryDiscrepancy = firstEntry ? { ...discrepancy, entryId: firstEntry.id, journalStart: firstEntry.startLessonNr, journalCount: firstEntry.lessons } : null
-    const duplicateInfo = firstEntryDiscrepancy ? this.#findDuplicateMatches(firstEntryDiscrepancy.entryId, firstEntryDiscrepancy.date) : { exactMatches: [] }
+    const firstEntryDiscrepancy = firstEntry ? {
+      ...discrepancy,
+      entryId: firstEntry.id,
+      journalStart: firstEntry.startLessonNr,
+      journalCount: firstEntry.lessons,
+    } : null
+    const duplicateInfo = firstEntryDiscrepancy
+      ? this.#findDuplicateMatches(firstEntryDiscrepancy.entryId, firstEntryDiscrepancy.date)
+      : { exactMatches: [] }
     const hasDuplicates = duplicateInfo.exactMatches.length > 1
 
     const buttons = (discrepancy.entries ?? []).map(entry => {
-      const entryDiscrepancy = { ...discrepancy, entryId: entry.id, journalStart: entry.startLessonNr, journalCount: entry.lessons }
+      const entryDiscrepancy = {
+        ...discrepancy,
+        entryId: entry.id,
+        journalStart: entry.startLessonNr,
+        journalCount: entry.lessons
+      }
       const duplicateIndex = this.#calculateDuplicateIndex(entryDiscrepancy)
       const humanIndex = duplicateIndex + 1
       const buttonText = hasDuplicates ? `Muuda ${entry.startLessonNr}. (${entry.lessons}t) #${humanIndex}` : `Muuda ${entry.startLessonNr}. (${entry.lessons}t)`
       const tooltip = `Entry ID: ${entry.id}, Duplicate Index: ${duplicateIndex}`
       return this.#createButton(`edit-entry-${discrepancy.date}-${entry.id}`, buttonText, 'amber', {
         handler: 'editEntry',
-        type: 'multi_entry_fix',
+        type: 'multiEntryFix',
         date: discrepancy.date,
         entryId: entry.id,
         duplicateIndex: duplicateIndex,
@@ -538,36 +556,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #createDiscrepancyRow (discrepancy) {
     const renderers = {
-      missing_journal_entry: this.#renderMissingEntry,
-      single_entry_fix: this.#renderSingleEntryFix,
-      multi_entry_fix: this.#renderMultiEntryFix,
+      missingJournalEntry: this.#renderMissingEntry,
+      singleEntryFix: this.#renderSingleEntryFix,
+      multiEntryFix: this.#renderMultiEntryFix,
     }
     const renderer = renderers[discrepancy.type] || this.#renderSingleEntryFix
     const { start, count, action } = renderer.call(this, discrepancy)
     return `<tr style="background-color:white"><td style="${CELL_STYLE}">${this.#formatDisplayDate(discrepancy.date)}</td><td style="${CENTER_STYLE}">${start}</td><td style="${CENTER_STYLE}">${count}</td><td style="${CENTER_STYLE}">${action}</td></tr>`
-  }
-
-  #createDiscrepanciesTableElement (discrepancies) {
-    const sortedDiscrepancies = [...discrepancies].sort((a, b) => {
-      const dateComparison = new Date(a.date) - new Date(b.date)
-      if (dateComparison !== 0) return dateComparison
-
-      const aLessonNumber = a.lessonNumber ?? a.timetableStart ?? 0
-      const bLessonNumber = b.lessonNumber ?? b.timetableStart ?? 0
-      return aLessonNumber - bLessonNumber
-    })
-
-    const rows = sortedDiscrepancies.map(discrepancy => this.#createDiscrepancyRow(discrepancy)).join('')
-    const boxStyle = 'background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;' +
-      'margin:20px 0;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
-    const header = `<div style="display:flex;align-items:center;margin-bottom:15px;"><span style="font-size:20px;margin-right:10px;">⚠️</span><h3 style="margin:0;color:#856404;">Tunnisissekannete probleemid (${discrepancies.length})</h3></div>`
-    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:25%">Algustund</th><th style="${CENTER_STYLE}width:25%">Tundide arv</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
-
-    const element = document.createElement('div')
-    element.dataset.discrepanciesTable = 'true'
-    element.style.cssText = boxStyle
-    element.innerHTML = `${header}<table style="width:100%;border-collapse:collapse;background:white;">${tableHead}<tbody>${rows}</tbody></table>`
-    return element
   }
 
   #findInsertionPoint () {
@@ -575,21 +570,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return selectors
       .map(selector => document.querySelector(selector))
       .find(element => element && element.getBoundingClientRect().width > 100) || document.body
-  }
-
-  #insertDiscrepanciesTable (discrepancies) {
-    try {
-      document.querySelector('[data-discrepancies-table]')?.remove()
-      const insertionPoint = this.#findInsertionPoint()
-      if (!insertionPoint) return false
-
-      insertionPoint.insertBefore(this.#createDiscrepanciesTableElement(discrepancies), insertionPoint.firstChild)
-      this.#addDiscrepancyButtonListeners()
-      return true
-    } catch (error) {
-      Logger.error(`[${this.name}] insert`, error)
-      return false
-    }
   }
 
   #insertUnifiedTable (discrepancies, capacityProblems) {
@@ -659,6 +639,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
 
     const rows = sortedDiscrepancies.map(discrepancy => this.#createDiscrepancyRow(discrepancy)).join('')
+    // noinspection CssUnknownProperty
     const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:25%">Algustund</th><th style="${CENTER_STYLE}width:25%">Tundide arv</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
 
     return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
@@ -680,6 +661,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       new Date(a.entryDate) - new Date(b.entryDate))
 
     const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
+    // noinspection CssUnknownProperty
     const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
 
     return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
@@ -687,7 +669,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #addDiscrepancyButtonListeners () {
     const buttons = document.querySelectorAll('[data-discrepancies-table] button')
-    buttons.forEach(button => {
+    buttons.forEach(/** @param {HTMLElement} button */ button => {
       if (button.dataset.handler) {
         button.addEventListener('click', event => this.#handleDiscrepancyButtonClick(event, button))
       }
@@ -729,10 +711,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #parseButtonData (button) {
-    console.log(`[${this.name}] Raw button dataset:`, button.dataset)
-    const parsed = Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
-    console.log(`[${this.name}] Parsed button data:`, parsed)
-    return parsed
+    return Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
   }
 
   async #executeButtonAction (data) {
@@ -772,12 +751,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  /**
+   * @param {string} date - Entry date
+   * @param {string} entryId - Entry ID
+   * @param {string} type - Entry type
+   * @param {ButtonData} data - Button data object
+   */
   async #handleEditEntry (date, entryId, type, data) {
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
 
-      console.log(`[${this.name}] handleEditEntry: entryId=${actualEntryId}, duplicateIndex=${duplicateIndex}`)
 
       const element = await this.#findJournalEntryElement(actualEntryId, date, duplicateIndex)
       if (!element) {
@@ -788,8 +772,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       await this.#clickJournalEntry(element)
       await this.#waitForDialogContentLoaded()
 
-      const algustundField = document.querySelector('md-select[aria-label="Algustund"]')
-      const lessonsField = document.querySelector('input[aria-label="lessons"]')
 
       await this.#fillEditForm(type, data)
     } catch (error) {
@@ -825,22 +807,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return null
   }
 
-  async #waitForFormOpen (isEditForm = false, maxAttempts = 20, interval = 250) {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (isEditForm) {
-        if (await this.#isEditFormOpen()) return
-      } else {
-        const entryTypeField = document.querySelector('md-select[ng-model*="entryType"]')
-        const startLessonField = document.querySelector('md-select[ng-model*="startLessonNr"]')
-        if (entryTypeField && startLessonField &&
-          this.#isElementVisible(entryTypeField) && this.#isElementVisible(startLessonField)) {
-          return
-        }
-      }
-      await this.#delay(interval)
-    }
-    throw new Error('Form did not open')
-  }
 
   async #fillAddForm (date, start, count, timetableData) {
     const formattedDate = this.#formatDisplayDate(date)
@@ -861,10 +827,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #fillEditForm (type, data) {
     try {
-      if (type === 'single_entry_fix') {
+      if (type === 'singleEntryFix' || type === 'multiEntryFix') {
+        // Both single and multi-entry fixes use the same form filling logic
+        // Multi-entry just means multiple buttons are shown, but each operates on a single entry
         await this.#fillSingleEntryForm(data)
-      } else if (type === 'multi_entry_fix') {
-        return
       } else {
         Logger.warning(`[${this.name}] Unknown edit form type: ${type}`)
       }
@@ -873,6 +839,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  /**
+   * @param {ButtonData} data - Form data object
+   */
   async #fillSingleEntryForm (data) {
     const currentStart = data.currentstart
     const timetableStart = data.timetablestart
@@ -909,9 +878,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     this.#setFieldState(field, 'processing')
-    const success = field.tagName.toLowerCase() === 'md-select' ?
-      await this.#selectMdSelectOption(field, value) :
-      await this.#fillInputField(field, value)
+    const success = field.tagName.toLowerCase() === 'md-select'
+      ? await this.#selectMdSelectOption(field, value)
+      : await this.#fillInputField(field, value)
     this.#setFieldState(field, success ? 'success' : 'error')
     return success
   }
@@ -1024,10 +993,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     await this.#delay(delay)
   }
 
-  async #clickElementWithScrollPreservation (element) {
+  #createScrollPreservation () {
     const originalPosition = {
-      x: window.pageXOffset || document.documentElement.scrollLeft,
-      y: window.pageYOffset || document.documentElement.scrollTop,
+      x: window.scrollX || document.documentElement.scrollLeft,
+      y: window.scrollY || document.documentElement.scrollTop,
     }
 
     const restoreScroll = () => window.scrollTo(originalPosition.x, originalPosition.y)
@@ -1035,8 +1004,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const startScrollMonitoring = () => {
       scrollMonitorInterval = setInterval(() => {
-        const currentX = window.pageXOffset || document.documentElement.scrollLeft
-        const currentY = window.pageYOffset || document.documentElement.scrollTop
+        const currentX = window.scrollX || document.documentElement.scrollLeft
+        const currentY = window.scrollY || document.documentElement.scrollTop
         if (currentX !== originalPosition.x || currentY !== originalPosition.y) {
           restoreScroll()
         }
@@ -1049,6 +1018,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         scrollMonitorInterval = null
       }
     }
+
+    return { restoreScroll, startScrollMonitoring, stopScrollMonitoring }
+  }
+
+  async #clickElementWithScrollPreservation (element) {
+    const { restoreScroll, startScrollMonitoring, stopScrollMonitoring } = this.#createScrollPreservation()
 
     try {
       startScrollMonitoring()
@@ -1076,248 +1051,56 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #findJournalEntryElement (entryId, date, duplicateIndex = 0) {
-    console.log(`[${this.name}] Looking for entry ${entryId} on date ${date} with duplicate index ${duplicateIndex}`)
 
-    const duplicateInfo = this.#findDuplicateMatches(entryId, date)
-    const { exactMatches } = duplicateInfo
+    const { exactMatches } = this.#findDuplicateMatches(entryId, date)
 
-    console.log(`[${this.name}] Found ${exactMatches.length} exact matches for entry ${entryId}`)
 
     if (exactMatches.length === 0) {
-      console.log(`[${this.name}] No exact matches found`)
       return null
     }
 
     if (exactMatches.length === 1) {
-      console.log(`[${this.name}] Single exact match found`)
       return exactMatches[0]
     }
 
     // Multiple matches - use the provided duplicate index
-    console.log(`[${this.name}] Multiple exact matches found, using duplicate index ${duplicateIndex}`)
     if (duplicateIndex < exactMatches.length) {
-      console.log(`[${this.name}] Returning match at index ${duplicateIndex}`)
       return exactMatches[duplicateIndex]
     }
-    console.log(`[${this.name}] Duplicate index ${duplicateIndex} out of range, using first match`)
     return exactMatches[0]
 
   }
 
-  async #findJournalEntryElementRobust (entryId, date) {
-    console.log(`[${this.name}] Using robust method to find entry ${entryId} on ${date}`)
+  #parseRowLessonInfo (row) {
+    const cells = row.querySelectorAll('td')
+    let lessonCount = null
+    let entryType = null
 
-    // Format the date in various formats to match what might be displayed
-    const formattedDate = this.#formatDisplayDate(date)
-    const datePrefix = formattedDate.slice(0, 5) // DD.MM format
-    const fullDate = formattedDate // DD.MM.YYYY format
-
-    console.log(`[${this.name}] Looking for date formats: ${datePrefix} or ${fullDate}`)
-
-    // Method 1: Find all clickable table rows and check their content
-    const clickableRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"]')
-    console.log(`[${this.name}] Found ${clickableRows.length} clickable rows with editJournalEntry`)
-
-    for (const row of clickableRows) {
-      const rowText = row.textContent
-      console.log(`[${this.name}] Checking row: ${rowText.slice(0, 100)}...`)
-
-      // Check if this row contains the date we're looking for
-      if (rowText.includes(datePrefix) || rowText.includes(fullDate)) {
-        console.log(`[${this.name}] Found row with matching date: ${datePrefix}`)
-
-        // Try to extract entry ID from ng-click attribute
-        const ngClick = row.getAttribute('ng-click')
-        if (ngClick) {
-          // Pattern like: editJournalEntry(12345, ...)
-          const idMatch = ngClick.match(/editJournalEntry\s*\(\s*(\d+)/)
-          if (idMatch && idMatch[1] == entryId) {
-            console.log(`[${this.name}] Found matching entry ID ${entryId} in ng-click`)
-            return row
-          }
-        }
-
-        // If we can't match by ID, and there's only one row for this date, use it
-        const sameeDateRows = [...clickableRows].filter(r =>
-          r.textContent.includes(datePrefix) || r.textContent.includes(fullDate))
-        if (sameeDateRows.length === 1) {
-          console.log(`[${this.name}] Only one row for this date, using it`)
-          return row
-        }
+    for (const cell of cells) {
+      const text = cell.textContent.trim()
+      if (/^\d+$/.test(text)) {
+        lessonCount = parseInt(text)
+      }
+      if (text.includes('Tund')) {
+        entryType = 'SISSEKANNE_T'
+      } else if (text.includes('Iseseisev töö')) {
+        entryType = 'SISSEKANNE_I'
+      } else if (text.includes('E-õpe')) {
+        entryType = 'SISSEKANNE_E'
       }
     }
 
-    // Method 2: Find all table rows and check for clickable elements within them
-    const allTableRows = document.querySelectorAll('tr')
-    console.log(`[${this.name}] Checking ${allTableRows.length} total table rows`)
-
-    for (const row of allTableRows) {
-      const rowText = row.textContent
-
-      // Check if this row contains the date we're looking for
-      if (rowText.includes(datePrefix) || rowText.includes(fullDate)) {
-        console.log(`[${this.name}] Found row with matching date: ${datePrefix}`)
-
-        // First, try to find the most specific clickable element within the row
-        const specificClickable = row.querySelector('[ng-click*="editJournalEntry"], [onclick*="editJournalEntry"]')
-        if (specificClickable) {
-          console.log(`[${this.name}] Found specific clickable element within row`)
-          return specificClickable
-        }
-
-        // Otherwise check if the row itself has click handlers
-        const hasClickHandler = row.getAttribute('ng-click') ||
-          row.onclick ||
-          row.style.cursor === 'pointer'
-
-        if (hasClickHandler) {
-          console.log(`[${this.name}] Row itself appears to be clickable`)
-          return row
-        }
-
-        // As a fallback, look for any clickable element within the row
-        const anyClickable = row.querySelector('[ng-click], [onclick], td[style*="cursor"], a')
-        if (anyClickable) {
-          console.log(`[${this.name}] Found fallback clickable element within row`)
-          return anyClickable
-        }
-      }
-    }
-
-    // Method 3: Try finding by entry ID in data attributes or other attributes
-    const elementsWithId = document.querySelectorAll(`[data-entry-id="${entryId}"], [entry-id="${entryId}"], [id*="${entryId}"]`)
-    if (elementsWithId.length > 0) {
-      console.log(`[${this.name}] Found element by ID attribute`)
-      return elementsWithId[0]
-    }
-
-    // Method 4: Look for any element that contains both the date and entryId
-    console.log(`[${this.name}] Method 4: Searching for elements containing both date and entryId`)
-    const allElements = document.querySelectorAll('*')
-    for (const element of allElements) {
-      const elementText = element.textContent || ''
-      const attributes = Array.from(element.attributes).map(attr => `${attr.name}="${attr.value}"`).join(' ')
-
-      if ((elementText.includes(datePrefix) || elementText.includes(fullDate)) &&
-        (attributes.includes(entryId) || (element.id && element.id.includes(entryId)))) {
-        console.log(`[${this.name}] Found element containing both date and entryId`)
-
-        // Find the closest clickable parent
-        let clickableParent = element
-        while (clickableParent && clickableParent !== document.body) {
-          if (clickableParent.getAttribute('ng-click') ||
-            clickableParent.onclick ||
-            clickableParent.style.cursor === 'pointer') {
-            return clickableParent
-          }
-          clickableParent = clickableParent.parentElement
-        }
-      }
-    }
-
-    // Method 5: Last resort - find all entries for this date and try to match by position or content
-    console.log(`[${this.name}] Method 5: Last resort - matching by position or content`)
-    const dateRows = [...document.querySelectorAll('tr')].filter(row => {
-      const text = row.textContent
-      return text.includes(datePrefix) || text.includes(fullDate)
-    })
-
-    if (dateRows.length === 1) {
-      console.log(`[${this.name}] Only one entry found for this date, using it`)
-      // Check if it's clickable or has clickable children
-      const clickableElement = dateRows[0].querySelector('[ng-click], [onclick]') || dateRows[0]
-      if (clickableElement.getAttribute('ng-click') || clickableElement.onclick) {
-        return clickableElement
-      }
-    }
-
-    // Log all available rows for debugging
-    console.log(`[${this.name}] Available clickable rows with editJournalEntry:`)
-    clickableRows.forEach((row, index) => {
-      console.log(`[${this.name}] Row ${index + 1}: ${row.textContent.slice(0, 50)}...`)
-      console.log(`[${this.name}] ng-click: ${row.getAttribute('ng-click')}`)
-    })
-
-    console.log(`[${this.name}] All date-matching rows:`)
-    dateRows.forEach((row, index) => {
-      console.log(`[${this.name}] Date row ${index + 1}: ${row.textContent.slice(0, 50)}...`)
-    })
-
-    console.log(`[${this.name}] Robust method failed to find element`)
-    return null
+    return { lessonCount, entryType }
   }
 
-  async #findJournalEntryElementAlternative (entryId, date) {
-    // This method is now just an alias for the robust method
-    return this.#findJournalEntryElementRobust(entryId, date)
-  }
-
-  #findRowByLessonCountAndType (rows, targetEntry) {
-    return rows.find(row => {
-      const cells = row.querySelectorAll('td')
-      let lessonCount = null
-      let entryType = null
-
-      for (const cell of cells) {
-        const text = cell.textContent.trim()
-        if (/^\d+$/.test(text)) {
-          lessonCount = parseInt(text)
-        }
-        if (text.includes('Tund')) {
-          entryType = 'SISSEKANNE_T'
-        } else if (text.includes('Iseseisev töö')) {
-          entryType = 'SISSEKANNE_I'
-        } else if (text.includes('E-õpe')) {
-          entryType = 'SISSEKANNE_E'
-        }
-      }
-
-      return lessonCount === targetEntry.lessons && entryType === targetEntry.entryType
-    })
-  }
-
-  #findRowByIndexFallback (entryId, date, rows) {
-    const sortedEntries = (this.#lastJournalData?.entries ?? [])
-      .filter(entry => this.#formatDate(entry.entryDate) === date && entry.entryType === LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE)
-      .sort((a, b) => a.startLessonNr - b.startLessonNr)
-
-    const entryIndex = sortedEntries.findIndex(entry => entry.id == entryId)
-    const selectedRow = entryIndex !== -1 && entryIndex < rows.length ? rows[entryIndex] : rows[0]
-
-    return selectedRow
-  }
 
   async #clickJournalEntry (element) {
-    const originalPosition = {
-      x: window.pageXOffset || document.documentElement.scrollLeft,
-      y: window.pageYOffset || document.documentElement.scrollTop,
-    }
-
-    let intervalId = null
-    const restoreScroll = () => window.scrollTo(originalPosition.x, originalPosition.y)
-
-    const startScrollMonitoring = () => {
-      intervalId = setInterval(() => {
-        const currentX = window.pageXOffset || document.documentElement.scrollLeft
-        const currentY = window.pageYOffset || document.documentElement.scrollTop
-        if (currentX !== originalPosition.x || currentY !== originalPosition.y) {
-          restoreScroll()
-        }
-      }, 10)
-    }
-
-    const stopScrollMonitoring = () => {
-      if (intervalId) {
-        clearInterval(intervalId)
-        intervalId = null
-      }
-    }
+    const { restoreScroll, startScrollMonitoring, stopScrollMonitoring } = this.#createScrollPreservation()
 
     try {
       startScrollMonitoring()
       const dialogPromise = this.#waitForDialogToOpen()
 
-      console.log(`[${this.name}] Attempting to click journal entry element`)
 
       // First try: click the element directly
       await this.#clickElementWithScrollPreservation(element)
@@ -1326,7 +1109,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Check if dialog opened
       let isFormOpen = await this.#isEditFormOpen()
       if (!isFormOpen) {
-        console.log(`[${this.name}] First click failed, trying double click`)
         await this.#performDoubleClick(element)
         await this.#delay(300)
         isFormOpen = await this.#isEditFormOpen()
@@ -1334,10 +1116,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // If still not open, try clicking a specific child element
       if (!isFormOpen) {
-        console.log(`[${this.name}] Double click failed, trying to find specific clickable child`)
         const clickableChild = element.querySelector('[ng-click*="editJournalEntry"], [onclick*="editJournalEntry"], td, a')
         if (clickableChild && clickableChild !== element) {
-          console.log(`[${this.name}] Found clickable child, attempting click`)
           await this.#clickElementWithScrollPreservation(clickableChild)
           await this.#delay(300)
           isFormOpen = await this.#isEditFormOpen()
@@ -1346,10 +1126,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Final check and error handling
       if (!isFormOpen) {
-        console.log(`[${this.name}] All click attempts failed, checking for existing dialog`)
-        // Sometimes the dialog opens but we don't detect it immediately
+        // Sometimes the dialog opens, but we don't detect it immediately
         await this.#delay(500)
         isFormOpen = await this.#isEditFormOpen()
+      }
+
+      if (!isFormOpen) {
+        throw new Error('Edit form failed to open after all attempts')
       }
 
       try {
@@ -1358,7 +1141,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Logger.error(`[${this.name}] Dialog failed to open:`, error.message)
 
         if (await this.#isEditFormOpen()) {
-          console.log(`[${this.name}] Dialog is actually open despite timeout`)
           return
         }
 
@@ -1393,7 +1175,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         reject(new Error('Dialog open timeout'))
       }, timeout)
 
-      observer = new MutationObserver(mutations => {
+      observer = new MutationObserver(_mutations => {
         const algustundField = document.querySelector('md-select[aria-label*="Algustund"]')
 
         if (algustundField && this.#isElementVisible(algustundField)) {
@@ -1403,7 +1185,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             clearTimeout(timeoutId)
             observer.disconnect()
             resolve(dialog)
-            return
           }
         }
       })
@@ -1498,6 +1279,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #checkAuditoriumLearningCheckbox () {
+    /** @type {HTMLElement} */
     const checkbox = document.querySelector('md-checkbox[aria-label="Auditoorne õpe"]')
 
     if (checkbox && this.#isElementVisible(checkbox)) {
@@ -1544,8 +1326,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #performRefreshAttempt (journalId) {
-    await this.api.cache.clearJournalCache(journalId)
-    await this.api.cache.clearCache()
+    await cacheService.clearJournalCache(journalId)
+    await cacheService.clearCache()
     this.#tableCreated = false
     this.#currentJournalId = null
     await this.#delay(300)
@@ -1611,16 +1393,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Check if this is a PUT request to a journal entry endpoint
         const url = args[0]
         if (typeof url === 'string' && url.includes('/journalEntry/') && args[1]?.method === 'PUT') {
-          console.log(`[${this.name}] Detected journal entry save via PUT request:`, url)
 
           // Extract journal ID from URL
           const journalIdMatch = url.match(/\/journals\/(\d+)\/journalEntry\//)
           if (journalIdMatch && parseInt(journalIdMatch[1]) === this.#currentJournalId) {
-            console.log(`[${this.name}] Journal entry save detected for current journal ${this.#currentJournalId}`)
 
             // Wait a bit for the save to complete, then refresh validation
             setTimeout(async () => {
-              console.log(`[${this.name}] Refreshing capacity validation after journal entry save`)
               await this.#refreshCapacityValidationAfterSave()
             }, 1500)
           }
@@ -1633,24 +1412,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #refreshCapacityValidationAfterSave () {
     try {
-      console.log(`[${this.name}] Starting capacity validation refresh after manual save`)
 
       // Check if we have a current journal ID
       if (!this.#currentJournalId) {
-        console.log(`[${this.name}] No current journal ID - skipping refresh`)
         return
       }
 
       // Clear journal cache to get fresh data
-      console.log(`[${this.name}] Clearing cache for journal ${this.#currentJournalId}`)
-      await this.api.cache.clearJournalCache(this.#currentJournalId)
+      await cacheService.clearJournalCache(this.#currentJournalId)
 
       // Fetch fresh journal data
-      console.log(`[${this.name}] Fetching fresh journal data`)
       const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
 
       // Re-run unified validation
-      console.log(`[${this.name}] Re-running unified validation`)
       const capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
       // Get current discrepancies (empty since we're only refreshing capacity)
@@ -1659,7 +1433,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Update unified display
       this.#insertUnifiedTable(discrepancies, capacityProblems)
 
-      console.log(`[${this.name}] Capacity validation refresh completed successfully`)
     } catch (error) {
       console.error(`[${this.name}] Error refreshing capacity validation:`, error)
     }
@@ -1680,42 +1453,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #getCapacityTypeProblems (journalData) {
     try {
-      console.log('DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION START ==========')
-      console.log('DEBUG2: Starting comprehensive debugging for auditoorne õpe checkbox validation')
-
-      // Log journal data structure
-      console.log('DEBUG2: Journal data structure:', {
-        journalId: journalData.info?.id,
-        totalEntries: journalData.entries?.length || 0,
-        capacityHours: journalData.info?.lessonHours?.capacityHours || [],
-      })
 
       // First check if there's a discrepancy between planned and used hours for "MAHT_a"
       const capacityHours = journalData.info?.lessonHours?.capacityHours || []
       const auditoorneCapacity = capacityHours.find(c => c.capacity === 'MAHT_a')
 
-      console.log('DEBUG2: Capacity hours analysis:', {
-        totalCapacityTypes: capacityHours.length,
-        auditoorneCapacity: auditoorneCapacity,
-        capacityHours: JSON.stringify(capacityHours),
-      })
-
       // Log capacity type code mappings
-      console.log('DEBUG2: Capacity type code mappings:')
-      console.log('DEBUG2: - "MAHT_a" = "Auditoorne õpe" (auditory learning)')
-      console.log('DEBUG2: - "MAHT_i" = "Iseseisev õpe" (independent learning)')
-      console.log('DEBUG2: - "MAHT_p" = "Praktiline töö" (practical work)')
-      console.log('DEBUG2: Checkbox state interpretations:')
-      console.log('DEBUG2: - Unchecked: "journalEntryCapacityTypes": []')
-      console.log('DEBUG2: - "Auditoorne õpe" only: ["MAHT_a"]')
-      console.log('DEBUG2: - "Iseseisev õpe" only: ["MAHT_i"]')
-      console.log('DEBUG2: - "Praktiline töö" only: ["MAHT_p"]')
-      console.log('DEBUG2: - Multiple checked: ["MAHT_a", "MAHT_i"] or other combinations (ERROR CONDITION)')
 
       // Get detailed capacity validation results
       const validationResults = await this.#performDetailedCapacityValidation(journalData, auditoorneCapacity)
 
-      console.log('DEBUG2: ========== AUDITOORNE ÕPE CHECKBOX VALIDATION END ==========')
 
       // Return problematic entries
       const problematicEntries = validationResults.filter(result => !result.isValid)
@@ -1729,44 +1476,24 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       return enrichedProblematicEntries
     } catch (error) {
-      console.log('DEBUG2: ERROR in capacity check:', error)
       Logger.error(`[${this.name}] capacity check error`, error)
       return []
     }
   }
 
   async #performDetailedCapacityValidation (journalData, auditoorneCapacity) {
-    console.log('DEBUG2: ========== DETAILED CAPACITY VALIDATION START ==========')
 
     const entries = journalData.entries || []
     const journalId = journalData.info?.id
 
-    console.log('DEBUG2: Entry type filtering and validation logic:')
-    console.log('DEBUG2: Total journal entries before filtering:', entries.length)
-
-    // Log each entry's type during processing
-    entries.forEach((entry, index) => {
-      console.log(`DEBUG2: Entry ${index + 1}: ID=${entry.id}, date=${entry.entryDate}, entryType="${entry.entryType}"`)
-    })
 
     // Filter entries by type with detailed logging
-    const targetEntries = entries.filter(entry => {
-      const isTarget = entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P' || entry.entryType === 'SISSEKANNE_I'
-      console.log(`DEBUG2: Entry ID=${entry.id} type="${entry.entryType}" - Target for validation: ${isTarget}`)
-      return isTarget
-    })
+    const targetEntries = entries.filter(entry => entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P' || entry.entryType === 'SISSEKANNE_I')
 
-    console.log('DEBUG2: Entries matching SISSEKANNE_T, SISSEKANNE_P, or SISSEKANNE_I after filtering:', targetEntries.length)
-    console.log('DEBUG2: Target entry IDs:', targetEntries.map(e => e.id))
 
     // Verify string comparison logic
-    console.log('DEBUG2: String comparison verification:')
-    console.log('DEBUG2: - Case sensitivity: exact match required')
-    console.log('DEBUG2: - Whitespace handling: no trimming applied')
-    console.log('DEBUG2: - Comparison method: === (strict equality)')
 
     if (targetEntries.length === 0) {
-      console.log('DEBUG2: No target entries found for validation - exiting')
       return
     }
 
@@ -1776,41 +1503,35 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Log validation summary
     this.#logValidationSummary(validationResults, auditoorneCapacity)
 
-    console.log('DEBUG2: ========== DETAILED CAPACITY VALIDATION END ==========')
 
     // Return validation results
     return validationResults
   }
 
   async #validateEntriesWithDetailedData (journalId, targetEntries) {
-    console.log('DEBUG2: ========== API RESPONSE DATA STRUCTURE ANALYSIS ==========')
 
     const validationResults = []
 
     for (const entry of targetEntries) {
-      console.log(`DEBUG2: Fetching detailed data for entry ID=${entry.id}, date=${entry.entryDate}`)
 
       try {
         // Fetch detailed entry data from API
         const detailUrl = `/journals/${journalId}/journalEntry/${entry.id}`
-        console.log(`DEBUG2: API call URL: https://tahvel.edu.ee/hois_back${detailUrl}`)
 
-        const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false })
+        const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, {
+          cache: false,
+          cacheExpiration: 0
+        })
 
-        console.log(`DEBUG2: Complete API response for entry ${entry.id}:`, JSON.stringify(detailedEntry, null, 2))
 
         // Analyze journalEntryCapacityTypes structure
         const capacityTypes = detailedEntry.journalEntryCapacityTypes
-        console.log(`DEBUG2: Entry ${entry.id} journalEntryCapacityTypes:`, JSON.stringify(capacityTypes))
-        console.log(`DEBUG2: Entry ${entry.id} capacityTypes type:`, typeof capacityTypes)
-        console.log(`DEBUG2: Entry ${entry.id} capacityTypes isArray:`, Array.isArray(capacityTypes))
 
         // Validate the entry
         const validationResult = this.#validateSingleEntry(entry, detailedEntry, capacityTypes)
         validationResults.push(validationResult)
 
       } catch (error) {
-        console.log(`DEBUG2: ERROR fetching detailed data for entry ${entry.id}:`, error)
         validationResults.push({
           entry,
           isValid: false,
@@ -1825,115 +1546,83 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #validateSingleEntry (entry, detailedEntry, capacityTypes) {
-    console.log('DEBUG2: ========== CHECKBOX STATE DETECTION IMPLEMENTATION ==========')
-    console.log(`DEBUG2: Validating entry ID=${entry.id}, date=${entry.entryDate}, entryType="${entry.entryType}"`)
 
     // Handle edge cases
     if (capacityTypes === null || capacityTypes === undefined) {
-      console.log(`DEBUG2: Entry ${entry.id} - capacityTypes is null/undefined`)
       return {
         entry,
         detailedData: detailedEntry,
         isValid: false,
         errorType: 'null_capacity_types',
-        actualState: { auditoorne: false, iseseisev: false },
-        expectedState: { auditoorne: true, reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe' },
+        actualState: {
+          auditoorne: false,
+          iseseisev: false,
+        },
+        expectedState: {
+          auditoorne: true,
+          reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
+        },
       }
     }
 
     if (!Array.isArray(capacityTypes)) {
-      console.log(`DEBUG2: Entry ${entry.id} - capacityTypes is not an array:`, typeof capacityTypes)
       return {
         entry,
         detailedData: detailedEntry,
         isValid: false,
         errorType: 'invalid_capacity_types_format',
-        actualState: { auditoorne: false, iseseisev: false },
-        expectedState: { auditoorne: true, reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe' },
+        actualState: {
+          auditoorne: false,
+          iseseisev: false,
+        },
+        expectedState: {
+          auditoorne: true,
+          reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
+        },
       }
     }
 
     // Detect checkbox states using different methods
-    console.log(`DEBUG2: Entry ${entry.id} - Raw journalEntryCapacityTypes array:`, JSON.stringify(capacityTypes))
 
     // Method 1: Array.includes()
     const hasAuditoorneIncludes = capacityTypes.includes('MAHT_a')
     const hasIseseisvIncludes = capacityTypes.includes('MAHT_i')
     const hasPraktiliseIncludes = capacityTypes.includes('MAHT_p')
-    console.log(`DEBUG2: Entry ${entry.id} - Detection via includes(): auditoorne=${hasAuditoorneIncludes}, iseseisev=${hasIseseisvIncludes}, praktiline=${hasPraktiliseIncludes}`)
 
-    // Method 2: Array.indexOf()
-    const auditoorneIndex = capacityTypes.indexOf('MAHT_a')
-    const iseseisvIndex = capacityTypes.indexOf('MAHT_i')
-    const praktiliseIndex = capacityTypes.indexOf('MAHT_p')
-    const hasAuditoorneIndexOf = auditoorneIndex !== -1
-    const hasIseseisvIndexOf = iseseisvIndex !== -1
-    const hasPraktiliseIndexOf = praktiliseIndex !== -1
-    console.log(`DEBUG2: Entry ${entry.id} - Detection via indexOf(): auditoorne=${hasAuditoorneIndexOf} (index=${auditoorneIndex}), iseseisev=${hasIseseisvIndexOf} (index=${iseseisvIndex}), praktiline=${hasPraktiliseIndexOf} (index=${praktiliseIndex})`)
-
-    // Method 3: Array.find()
-    const auditoorneFind = capacityTypes.find(type => type === 'MAHT_a')
-    const iseseisvFind = capacityTypes.find(type => type === 'MAHT_i')
-    const praktiliseFind = capacityTypes.find(type => type === 'MAHT_p')
-    const hasAuditoorneFind = !!auditoorneFind
-    const hasIseseisvFind = !!iseseisvFind
-    const hasPraktiliseFind = !!praktiliseFind
-    console.log(`DEBUG2: Entry ${entry.id} - Detection via find(): auditoorne=${hasAuditoorneFind}, iseseisev=${hasIseseisvFind}, praktiline=${hasPraktiliseFind}`)
-
-    // Use includes() as the primary method
-    const actualAuditoorne = hasAuditoorneIncludes
-    const actualIseseisv = hasIseseisvIncludes
-    const actualPraktiline = hasPraktiliseIncludes
-
-    console.log(`DEBUG2: Entry ${entry.id} - Final detected states: auditoorne=${actualAuditoorne}, iseseisev=${actualIseseisv}, praktiline=${actualPraktiline}`)
-    console.log(`DEBUG2: Entry ${entry.id} - Method used for detection: Array.includes()`)
+    // Using includes() as the primary method
 
     return this.#performBusinessLogicValidation(entry, detailedEntry, {
-      auditoorne: actualAuditoorne,
-      iseseiv: actualIseseisv,
-      praktiline: actualPraktiline,
+      auditoorne: hasAuditoorneIncludes,
+      iseseisev: hasIseseisvIncludes,
+      praktiline: hasPraktiliseIncludes,
     }, capacityTypes)
   }
 
   #performBusinessLogicValidation (entry, detailedEntry, actualState, capacityTypes) {
-    console.log('DEBUG2: ========== BUSINESS LOGIC VALIDATION REQUIREMENTS ==========')
-    console.log(`DEBUG2: Entry ${entry.id} - Business logic validation starting`)
 
     // Log the business rules
-    console.log('DEBUG2: Business rules:')
-    console.log('DEBUG2: 1. ALL SISSEKANNE_T and SISSEKANNE_P entries must have "auditoorne õpe" checkbox checked')
-    console.log('DEBUG2: 2. SISSEKANNE_T (lesson) entries should NOT have "iseseisev õpe" checkbox checked')
-    console.log('DEBUG2: 3. SISSEKANNE_I (independent work) entries should NOT have "auditoorne õpe" checkbox checked')
-    console.log('DEBUG2: 4. SISSEKANNE_P (praktiline töö) entries must have "praktiline töö" checkbox checked')
-    console.log('DEBUG2: 5. Both checkboxes cannot be selected simultaneously for ANY entry type')
-    console.log('DEBUG2: Source of requirements: HARDCODED ASSUMPTIONS (needs verification)')
-    console.log('DEBUG2: Question: Are these assumptions correct for ALL entries of these types?')
 
     // Determine expected state based on entry type
     const shouldHaveAuditoorne = entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P'
-    const shouldHaveIseseiv = entry.entryType === 'SISSEKANNE_I'
+    const shouldHaveIseseisev = entry.entryType === 'SISSEKANNE_I'
     const shouldHavePraktiline = entry.entryType === 'SISSEKANNE_P'
     const expectedState = {
       auditoorne: shouldHaveAuditoorne,
-      iseseiv: shouldHaveIseseiv,
+      iseseisev: shouldHaveIseseisev,
       praktiline: shouldHavePraktiline,
-      reasoning: shouldHaveAuditoorne ?
-        `Entry type "${entry.entryType}" requires auditoorne õpe checkbox` :
-        shouldHaveIseseiv ?
-          `Entry type "${entry.entryType}" requires iseseisev õpe checkbox` :
-          shouldHavePraktiline ?
-            `Entry type "${entry.entryType}" requires praktiline töö checkbox` :
-            `Entry type "${entry.entryType}" has specific checkbox requirements`,
+      reasoning: shouldHaveAuditoorne
+        ? `Entry type "${entry.entryType}" requires auditoorne õpe checkbox`
+        : shouldHaveIseseisev
+          ? `Entry type "${entry.entryType}" requires iseseisev õpe checkbox`
+          : shouldHavePraktiline
+            ? `Entry type "${entry.entryType}" requires praktiline töö checkbox`
+            : `Entry type "${entry.entryType}" has specific checkbox requirements`,
     }
 
-    console.log(`DEBUG2: Entry ${entry.id} - Expected checkbox state:`, expectedState)
-    console.log(`DEBUG2: Entry ${entry.id} - Actual checkbox state:`, actualState)
 
     // Check for error condition: both checkboxes selected
-    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseiv
+    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseisev
     if (hasBothCheckboxes) {
-      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Both auditoorne and iseseive checkboxes are selected`)
-      console.log('DEBUG2: Error message: "Korraga ei saa auditoorne õpe ja individuaalne õpe aktiivsed olla"')
       return {
         entry,
         detailedData: detailedEntry,
@@ -1947,10 +1636,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_T (lesson) with MAHT_i (independent work)
-    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseiv && !actualState.auditoorne
+    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseisev && !actualState.auditoorne
     if (isLessonWithIndependentWork) {
-      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Entry type is SISSEKANNE_T (lesson) but has MAHT_i (independent work) checkbox`)
-      console.log('DEBUG2: Error message: "Sissekande liik on tund, aga iseseisva õppe linnuke on sees"')
       return {
         entry,
         detailedData: detailedEntry,
@@ -1964,10 +1651,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_I (independent work) with MAHT_a (auditory learning)
-    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseiv
+    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseisev
     if (isIndependentWorkWithAuditory) {
-      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Entry type is SISSEKANNE_I (independent work) but has MAHT_a (auditory learning) checkbox`)
-      console.log('DEBUG2: Error message: "Iseseisval tööl ei saa olla auditoorne õpe linnuke sees"')
       return {
         entry,
         detailedData: detailedEntry,
@@ -1983,8 +1668,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Check for error condition: SISSEKANNE_P (praktiline töö) without praktiline töö checkbox
     const isPraktiliseTooWithoutPraktiliseCheckbox = entry.entryType === 'SISSEKANNE_P' && !actualState.praktiline
     if (isPraktiliseTooWithoutPraktiliseCheckbox) {
-      console.log(`DEBUG2: Entry ${entry.id} - ERROR CONDITION: Entry type is SISSEKANNE_P (praktiline töö) but praktiline töö checkbox is not checked`)
-      console.log('DEBUG2: Error message: "Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees"')
       return {
         entry,
         detailedData: detailedEntry,
@@ -1999,25 +1682,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Validate against expected state
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
-    const iseseisvValid = actualState.iseseive === expectedState.iseseiv
+    const iseseisvValid = actualState.iseseisev === expectedState.iseseisev
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
     const isValid = auditoorneValid && iseseisvValid && praktiliseValid
     const validationResult = isValid ? 'pass' : 'fail'
 
-    console.log(`DEBUG2: Entry ${entry.id} - Validation result: ${validationResult}`)
+    // Determine specific error type
+    let errorType = null
     if (!isValid) {
-      if (!auditoorneValid) {
-        console.log(`DEBUG2: Entry ${entry.id} - VALIDATION FAILED: Expected auditoorne=${expectedState.auditoorne}, got ${actualState.auditoorne}`)
-      }
-      if (!iseseisvValid) {
-        console.log(`DEBUG2: Entry ${entry.id} - VALIDATION FAILED: Expected iseseisev=${expectedState.iseseiv}, got ${actualState.iseseive}`)
-      }
-      if (!praktiliseValid) {
-        console.log(`DEBUG2: Entry ${entry.id} - VALIDATION FAILED: Expected praktiline=${expectedState.praktiline}, got ${actualState.praktiline}`)
-      }
 
-      // Determine specific error type
-      let errorType = 'missing_required_checkbox'
+      errorType = 'missing_required_checkbox'
       if (entry.entryType === 'SISSEKANNE_T') {
         errorType = 'missing_auditoorne_checkbox'
       } else if (entry.entryType === 'SISSEKANNE_P') {
@@ -2029,14 +1703,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       } else if (entry.entryType === 'SISSEKANNE_I') {
         errorType = 'missing_iseseisev_checkbox'
       }
-      console.log(`DEBUG2: Entry ${entry.id} - Error type: ${errorType}`)
     }
 
     return {
       entry,
       detailedData: detailedEntry,
       isValid,
-      errorType: isValid ? null : errorType,
+      errorType,
       actualState,
       expectedState,
       capacityTypes,
@@ -2045,97 +1718,36 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #logValidationSummary (validationResults, auditoorneCapacity) {
-    console.log('DEBUG2: ========== VALIDATION RESULTS AND COMPARISON ==========')
-
-    const totalEntries = validationResults.length
-    const passedEntries = validationResults.filter(r => r.isValid).length
-    const failedEntries = validationResults.filter(r => !r.isValid).length
-    const errorConditions = validationResults.filter(r => r.errorType === 'both_checkboxes_selected').length
-    const lessonWithIndependentWork = validationResults.filter(r => r.errorType === 'lesson_with_independent_work').length
-    const independentWorkWithAuditory = validationResults.filter(r => r.errorType === 'independent_work_with_auditory').length
-    const praktiliseTooWithoutPraktiline = validationResults.filter(r => r.errorType === 'praktiline_too_without_praktiline_checkbox').length
-    const missingAuditoorne = validationResults.filter(r => r.errorType === 'missing_auditoorne_checkbox').length
-    const missingIseseisev = validationResults.filter(r => r.errorType === 'missing_iseseisev_checkbox').length
-    const missingPraktiline = validationResults.filter(r => r.errorType === 'missing_praktiline_checkbox').length
-    const apiErrors = validationResults.filter(r => r.errorType === 'api_fetch_error').length
-    const formatErrors = validationResults.filter(r => r.errorType === 'invalid_capacity_types_format' || r.errorType === 'null_capacity_types').length
-
-    console.log('DEBUG2: Summary statistics:')
-    console.log(`DEBUG2: - Total entries checked: ${totalEntries}`)
-    console.log(`DEBUG2: - Passed validation: ${passedEntries}`)
-    console.log(`DEBUG2: - Failed validation: ${failedEntries}`)
-    console.log(`DEBUG2: - Error conditions (both checkboxes): ${errorConditions}`)
-    console.log(`DEBUG2: - Lesson with independent work error: ${lessonWithIndependentWork}`)
-    console.log(`DEBUG2: - Independent work with auditory error: ${independentWorkWithAuditory}`)
-    console.log(`DEBUG2: - Praktiline töö without praktiline checkbox error: ${praktiliseTooWithoutPraktiline}`)
-    console.log(`DEBUG2: - Missing auditoorne checkbox: ${missingAuditoorne}`)
-    console.log(`DEBUG2: - Missing iseseisev checkbox: ${missingIseseisev}`)
-    console.log(`DEBUG2: - Missing praktiline checkbox: ${missingPraktiline}`)
-    console.log(`DEBUG2: - API fetch errors: ${apiErrors}`)
-    console.log(`DEBUG2: - Data format errors: ${formatErrors}`)
 
 
     // Log detailed results for each entry
-    console.log('DEBUG2: Detailed validation results:')
-    validationResults.forEach((result, index) => {
-      console.log(`DEBUG2: Entry ${index + 1}:`)
-      console.log(`DEBUG2:   - ID: ${result.entry.id}`)
-      console.log(`DEBUG2:   - Date: ${result.entry.entryDate}`)
-      console.log(`DEBUG2:   - Entry Type: ${result.entry.entryType}`)
-      console.log(`DEBUG2:   - Expected auditoorne: ${result.expectedState?.auditoorne}`)
-      console.log(`DEBUG2:   - Actual auditoorne: ${result.actualState?.auditoorne}`)
-      console.log(`DEBUG2:   - Validation result: ${result.validationResult}`)
-      console.log(`DEBUG2:   - Error type: ${result.errorType || 'none'}`)
-      console.log(`DEBUG2:   - Capacity types: ${JSON.stringify(result.capacityTypes)}`)
-    })
 
     // Log specific entry IDs that are failing each type of validation
-    console.log('DEBUG2: Failed entry IDs by error type:')
-    console.log(`DEBUG2: - Missing auditoorne: [${validationResults.filter(r => r.errorType === 'missing_auditoorne_checkbox').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Missing iseseisev: [${validationResults.filter(r => r.errorType === 'missing_iseseisev_checkbox').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Missing praktiline: [${validationResults.filter(r => r.errorType === 'missing_praktiline_checkbox').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Both checkboxes: [${validationResults.filter(r => r.errorType === 'both_checkboxes_selected').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Lesson with independent work: [${validationResults.filter(r => r.errorType === 'lesson_with_independent_work').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Independent work with auditory: [${validationResults.filter(r => r.errorType === 'independent_work_with_auditory').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Praktiline töö without praktiline: [${validationResults.filter(r => r.errorType === 'praktiline_too_without_praktiline_checkbox').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - API errors: [${validationResults.filter(r => r.errorType === 'api_fetch_error').map(r => r.entry.id).join(', ')}]`)
-    console.log(`DEBUG2: - Format errors: [${validationResults.filter(r => r.errorType === 'invalid_capacity_types_format' || r.errorType === 'null_capacity_types').map(r => r.entry.id).join(', ')}]`)
 
     // Root cause analysis logging
     this.#logRootCauseAnalysis(validationResults, auditoorneCapacity)
   }
 
-  #logRootCauseAnalysis (validationResults, auditoorneCapacity) {
-    console.log('DEBUG2: ========== ROOT CAUSE ANALYSIS LOGGING ==========')
+  #logRootCauseAnalysis (validationResults, _auditoorneCapacity) {
 
     // Investigate potential causes
-    console.log('DEBUG2: Investigating potential root causes:')
 
     // a) Incorrect business logic
     const allEntriesFailed = validationResults.every(r => !r.isValid)
     if (allEntriesFailed && validationResults.length > 0) {
-      console.log('DEBUG2: a) POTENTIAL CAUSE: Incorrect business logic')
-      console.log('DEBUG2:    - ALL entries are failing validation')
-      console.log('DEBUG2:    - This suggests the assumption that ALL SISSEKANNE_T/P entries need auditoorne õpe may be wrong')
-      console.log('DEBUG2:    - RECOMMENDATION: Verify business requirements with domain experts')
+      Logger.warning('All entries failed validation - possible business logic error')
     }
 
     // b) Faulty API data parsing
     const hasValidCapacityTypes = validationResults.some(r => Array.isArray(r.capacityTypes) && r.capacityTypes.length > 0)
     if (!hasValidCapacityTypes) {
-      console.log('DEBUG2: b) POTENTIAL CAUSE: Faulty API data parsing')
-      console.log('DEBUG2:    - No entries have valid capacity types arrays')
-      console.log('DEBUG2:    - This suggests API data structure may be different than expected')
-      console.log('DEBUG2:    - RECOMMENDATION: Examine actual API response structure')
+      Logger.warning('No valid capacity types found - possible API data parsing error')
     }
 
     // c) Wrong capacity type code
     const hasMAHT_a = validationResults.some(r => Array.isArray(r.capacityTypes) && r.capacityTypes.includes('MAHT_a'))
     if (!hasMAHT_a && hasValidCapacityTypes) {
-      console.log('DEBUG2: c) POTENTIAL CAUSE: Wrong capacity type code')
-      console.log('DEBUG2:    - No entries contain "MAHT_a" in their capacity types')
-      console.log('DEBUG2:    - The code "MAHT_a" may not be correct for auditoorne õpe')
-      console.log('DEBUG2:    - RECOMMENDATION: Verify correct capacity type codes from API documentation')
+      Logger.warning('No MAHT_a capacity type found - possible wrong capacity type code')
     }
 
     // d) Logic errors in boolean comparison
@@ -2146,9 +1758,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       return includesResult !== indexOfResult
     })
     if (hasInconsistentDetection) {
-      console.log('DEBUG2: d) POTENTIAL CAUSE: Logic errors in boolean comparison')
-      console.log('DEBUG2:    - Inconsistent results between different detection methods')
-      console.log('DEBUG2:    - RECOMMENDATION: Review array operation logic')
+      Logger.warning('Inconsistent capacity type detection - possible logic error')
     }
 
     // e) Case sensitivity issues
@@ -2158,86 +1768,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         r.capacityTypes.forEach(type => uniqueCapacityTypes.add(type))
       }
     })
-    console.log('DEBUG2: e) Case sensitivity analysis:')
-    console.log('DEBUG2:    - All unique capacity type codes found:', Array.from(uniqueCapacityTypes))
-    console.log('DEBUG2:    - Looking for variations of "MAHT_a": case differences, extra spaces, etc.')
-
-    // Log hardcoded assumptions
-    console.log('DEBUG2: Hardcoded assumptions that might be incorrect:')
-    console.log('DEBUG2: - Assumption 1: ALL SISSEKANNE_T entries must have auditoorne õpe')
-    console.log('DEBUG2: - Assumption 2: ALL SISSEKANNE_P entries must have auditoorne õpe')
-    console.log('DEBUG2: - Assumption 3: "MAHT_a" is the correct code for auditoorne õpe')
-    console.log('DEBUG2: - Assumption 4: Empty array means no checkboxes selected')
-    console.log('DEBUG2: - Assumption 5: Both checkboxes selected is always an error')
-
-    // Log edge cases
-    console.log('DEBUG2: Edge cases analysis:')
-    const nullCapacityTypes = validationResults.filter(r => r.capacityTypes === null || r.capacityTypes === undefined).length
-    const emptyArrays = validationResults.filter(r => Array.isArray(r.capacityTypes) && r.capacityTypes.length === 0).length
-    const nonArrayTypes = validationResults.filter(r => r.capacityTypes !== null && r.capacityTypes !== undefined && !Array.isArray(r.capacityTypes)).length
-
-    console.log(`DEBUG2: - Null/undefined capacity types: ${nullCapacityTypes}`)
-    console.log(`DEBUG2: - Empty arrays: ${emptyArrays}`)
-    console.log(`DEBUG2: - Non-array capacity types: ${nonArrayTypes}`)
-
-    // Final recommendations
-    console.log('DEBUG2: FINAL RECOMMENDATIONS:')
-    console.log('DEBUG2: 1. Verify business requirements: Do ALL SISSEKANNE_T/P entries really need auditoorne õpe?')
-    console.log('DEBUG2: 2. Confirm capacity type codes: Is "MAHT_a" definitely correct for auditoorne õpe?')
-    console.log('DEBUG2: 3. Check API data structure: Are we fetching the right endpoint and parsing correctly?')
-    console.log('DEBUG2: 4. Review validation logic: Are our boolean operations and comparisons correct?')
-    console.log('DEBUG2: 5. Test with known good data: Find entries that definitely should pass validation')
   }
 
-  #insertCapacityProblemsTable (problematicEntries, capacityData) {
-    try {
-      document.querySelector('[data-capacity-problems-table]')?.remove()
-      const insertionPoint = this.#findInsertionPoint()
-      if (!insertionPoint) return false
-
-      insertionPoint.insertBefore(
-        this.#createCapacityProblemsTableElement(problematicEntries, capacityData),
-        document.querySelector('[data-discrepancies-table]')?.nextSibling || insertionPoint.firstChild,
-      )
-      this.#addCapacityProblemButtonListeners()
-      return true
-    } catch (error) {
-      Logger.error(`[${this.name}] insert capacity problems table`, error)
-      return false
-    }
-  }
-
-  #createCapacityProblemsTableElement (problematicEntries, capacityData) {
-    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
-    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
-
-    const sortedEntries = [...problematicEntries].sort((a, b) =>
-      new Date(a.entryDate) - new Date(b.entryDate))
-
-    const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
-    const boxStyle = 'background:#ffebee;border:1px solid #ffcdd2;border-radius:4px;padding:15px;' +
-      'margin:20px 0;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
-
-    // Add summary information about the capacity hours
-    const plannedHours = capacityData?.plannedHours || 0
-    const usedHours = capacityData?.usedHours || 0
-    const hoursDiff = Math.abs(plannedHours - usedHours)
-
-    const header = `
-      <div style="display:flex;align-items:center;margin-bottom:15px;">
-        <span style="font-size:20px;margin-right:10px;">⚠️</span>
-        <h3 style="margin:0;color:#c62828;">Probleemid auditoorse õppe linnukesega (${problematicEntries.length})</h3>
-      </div>`
-
-    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
-
-    const element = document.createElement('div')
-    element.dataset.capacityProblemsTable = 'true'
-    element.style.cssText = boxStyle
-    element.innerHTML = `${header}<table style="width:100%;border-collapse:collapse;background:white;">${tableHead}<tbody>${rows}</tbody></table>`
-    return element
-  }
-
+  /**
+   * @param {Object} entry - Journal entry
+   * @param {string} entry.entryDate - Entry date
+   * @param {string} entry.entryType - Entry type (SISSEKANNE_T, SISSEKANNE_I, SISSEKANNE_P)
+   * @param {number} [entry.startLessonNr] - Start lesson number
+   * @param {Array} [entry.lessons] - Array of lesson objects
+   * @param {number} [entry.lessons[].lessonNr] - Lesson number
+   * @param {Object} [entry.validationResult] - Validation result object
+   * @param {string} [entry.validationResult.errorType] - Error type
+   * @param {number} entry.id - Entry ID
+   */
   #createCapacityProblemRow (entry) {
     const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
     const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
@@ -2292,7 +1835,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #addCapacityProblemButtonListeners () {
-    document.querySelectorAll('[data-capacity-problems-table] button').forEach(button => {
+    document.querySelectorAll('[data-capacity-problems-table] button').forEach(/** @param {HTMLElement} button */ button => {
       if (button.dataset.handler) {
         button.addEventListener('click', event => this.#handleDiscrepancyButtonClick(event, button))
       }
@@ -2352,7 +1895,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       document.body.appendChild(highlight)
       highlights.push(highlight)
 
-      console.log(`[${this.name}] Highlighted element ${index + 1}: ${element.tagName}.${element.className} with text "${element.textContent.slice(0, 50)}"`)
     })
 
     // Add scroll listener to update all highlight positions when user scrolls
@@ -2369,7 +1911,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       window.addEventListener('scroll', this.highlightScrollListener, true)
       document.addEventListener('scroll', this.highlightScrollListener, true)
 
-      console.log(`[${this.name}] Added scroll listeners for ${highlights.length} highlights`)
     }
 
     // Add a message tooltip if provided
@@ -2395,14 +1936,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       tooltip.textContent = message
       document.body.appendChild(tooltip)
 
-      console.log(`[${this.name}] Showing tooltip message: "${message}"`)
     }
 
-    console.log(`[${this.name}] Successfully highlighted ${highlights.length} elements`)
 
     // Auto-remove highlights after 15 seconds
     setTimeout(() => {
-      console.log(`[${this.name}] Auto-removing highlights after 15 second timeout`)
       this.#cleanupHighlights()
     }, 15000)
 
@@ -2415,22 +1953,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Find all checkbox elements specifically
     const allCheckboxes = document.querySelectorAll('md-checkbox')
 
-    console.log(`[${this.name}] Searching for elements to highlight. EntryType: ${entryType}, ErrorType: ${validationResult?.errorType}`)
-    console.log(`[${this.name}] Found ${allCheckboxes.length} md-checkbox elements`)
-
-    // Log all checkboxes for debugging
-    allCheckboxes.forEach((checkbox, index) => {
-      console.log(`[${this.name}] Checkbox ${index + 1}:`, {
-        ariaLabel: checkbox.getAttribute('aria-label'),
-        textContent: checkbox.textContent?.slice(0, 50),
-        ngModel: checkbox.getAttribute('ng-model'),
-        value: checkbox.value,
-      })
-    })
-
     // Handle specific error types first
     if (entryType === 'SISSEKANNE_T' && validationResult?.errorType === 'lesson_with_independent_work') {
-      console.log(`[${this.name}] Highlighting for lesson_with_independent_work error - looking for Iseseisev õpe and Praktiline töö`)
 
       // Find and highlight both "Iseseisev õpe" (incorrectly checked) and "Praktiline töö" checkboxes
       allCheckboxes.forEach(checkbox => {
@@ -2440,17 +1964,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if ((ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe')) ||
           (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö'))) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found target checkbox:`, {
-            type: ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe') ? 'Iseseisev õpe' : 'Praktiline töö',
-            ariaLabel,
-            textContent: textContent.slice(0, 50),
-            element: checkbox,
-          })
         }
       })
 
     } else if (entryType === 'SISSEKANNE_I' && validationResult?.errorType === 'independent_work_with_auditory') {
-      console.log(`[${this.name}] Highlighting for independent_work_with_auditory error - looking for Auditoorne õpe`)
 
       // Find and highlight only "Auditoorne õpe" checkbox
       allCheckboxes.forEach(checkbox => {
@@ -2459,27 +1976,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found auditoorne checkbox:`, checkbox)
         }
       })
 
     } else if (validationResult?.errorType === 'both_checkboxes_selected') {
-      console.log(`[${this.name}] Highlighting for both_checkboxes_selected error - looking for both Auditoorne õpe and Iseseiv õpe`)
 
-      // Highlight both "Auditoorne õpe" and "Iseseiv õpe" checkboxes only
+      // Highlight both "Auditoorne õpe" and "Iseseisev õpe" checkboxes only
       allCheckboxes.forEach(checkbox => {
         const ariaLabel = checkbox.getAttribute('aria-label') || ''
         const textContent = checkbox.textContent || ''
 
         if ((ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) ||
-          (ariaLabel.includes('Iseseive õpe') || textContent.includes('Iseseive õpe'))) {
+          (ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe'))) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found capacity checkbox:`, checkbox)
         }
       })
 
     } else if (validationResult?.errorType === 'missing_auditoorne_checkbox') {
-      console.log(`[${this.name}] Highlighting for missing_auditoorne_checkbox error - looking for Auditoorne õpe`)
 
       // Find and highlight only "Auditoorne õpe" checkbox
       allCheckboxes.forEach(checkbox => {
@@ -2488,12 +2001,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found auditoorne checkbox to highlight:`, checkbox)
         }
       })
 
     } else if (validationResult?.errorType === 'missing_iseseisev_checkbox') {
-      console.log(`[${this.name}] Highlighting for missing_iseseisev_checkbox error - looking for Iseseisev õpe`)
 
       // Find and highlight only "Iseseisev õpe" checkbox
       allCheckboxes.forEach(checkbox => {
@@ -2502,12 +2013,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe')) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found iseseisev checkbox to highlight:`, checkbox)
         }
       })
 
     } else if (validationResult?.errorType === 'praktiline_too_without_praktiline_checkbox') {
-      console.log(`[${this.name}] Highlighting for praktiline_too_without_praktiline_checkbox error - looking for Praktiline töö`)
 
       // Find and highlight only "Praktiline töö" checkbox
       allCheckboxes.forEach(checkbox => {
@@ -2516,12 +2025,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö')) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found praktiline checkbox to highlight:`, checkbox)
         }
       })
 
     } else if (validationResult?.errorType === 'missing_praktiline_checkbox') {
-      console.log(`[${this.name}] Highlighting for missing_praktiline_checkbox error - looking for Praktiline töö`)
 
       // Find and highlight only "Praktiline töö" checkbox
       allCheckboxes.forEach(checkbox => {
@@ -2530,38 +2037,32 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö')) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found praktiline checkbox to highlight:`, checkbox)
         }
       })
     }
 
     // Handle cases where we have entryType but no specific validation result
     else if (entryType && !validationResult?.errorType) {
-      console.log(`[${this.name}] No specific error type, using fallback highlighting based on entryType: ${entryType}`)
 
       if (entryType === 'SISSEKANNE_T' || entryType === 'SISSEKANNE_P') {
         // For lesson entries, highlight "Auditoorne õpe" as it's likely missing
-        console.log(`[${this.name}] Fallback highlighting for lesson entries - highlighting Auditoorne õpe`)
         allCheckboxes.forEach(checkbox => {
           const ariaLabel = checkbox.getAttribute('aria-label') || ''
           const textContent = checkbox.textContent || ''
 
           if (ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) {
             elements.push(checkbox)
-            console.log(`[${this.name}] Found auditoorne checkbox (fallback):`, checkbox)
           }
         })
 
       } else if (entryType === 'SISSEKANNE_I') {
-        // For independent work entries, highlight "Iseseive õpe" as it's likely missing
-        console.log(`[${this.name}] Fallback highlighting for independent work entries - highlighting Iseseive õpe`)
+        // For independent work entries, highlight "Iseseisev õpe" as it's likely missing
         allCheckboxes.forEach(checkbox => {
           const ariaLabel = checkbox.getAttribute('aria-label') || ''
           const textContent = checkbox.textContent || ''
 
-          if (ariaLabel.includes('Iseseive õpe') || textContent.includes('Iseseive õpe')) {
+          if (ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe')) {
             elements.push(checkbox)
-            console.log(`[${this.name}] Found iseseive checkbox (fallback):`, checkbox)
           }
         })
       }
@@ -2569,7 +2070,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // General fallback: if no elements found yet, highlight only the main capacity checkboxes
     if (elements.length === 0) {
-      console.log(`[${this.name}] No specific elements found, using general capacity checkbox highlighting`)
       allCheckboxes.forEach(checkbox => {
         const ariaLabel = checkbox.getAttribute('aria-label') || ''
         const textContent = checkbox.textContent || ''
@@ -2579,58 +2079,35 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           (ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe')) ||
           (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö'))) {
           elements.push(checkbox)
-          console.log(`[${this.name}] Found general capacity checkbox:`, {
-            type: ariaLabel + ' | ' + textContent.slice(0, 30),
-            checkbox,
-          })
         }
       })
 
       // If still no capacity checkboxes found, highlight ALL checkboxes in the dialog for debugging
       if (elements.length === 0) {
-        console.log(`[${this.name}] Still no capacity checkboxes found - highlighting ALL checkboxes for debugging`)
         allCheckboxes.forEach(checkbox => {
           elements.push(checkbox)
-          console.log(`[${this.name}] Adding checkbox for debugging:`, {
-            ariaLabel: checkbox.getAttribute('aria-label'),
-            textContent: checkbox.textContent?.slice(0, 30),
-            ngModel: checkbox.getAttribute('ng-model'),
-          })
         })
       }
     }
 
-    console.log(`[${this.name}] Total elements found for highlighting: ${elements.length}`)
-    elements.forEach((element, index) => {
-      console.log(`[${this.name}] Element ${index + 1}:`, {
-        tagName: element.tagName,
-        ariaLabel: element.getAttribute('aria-label'),
-        textContent: element.textContent?.slice(0, 50),
-      })
-    })
-
     return [...new Set(elements)] // Remove duplicates
   }
 
+  /**
+   * @param {string} date - Entry date
+   * @param {string} entryId - Entry ID
+   * @param {ButtonData} data - Button data object
+   */
   async #handleFixCapacity (date, entryId, data = {}) {
     try {
       const duplicateIndex = data.duplicateindex || 0
-      console.log(`[${this.name}] Starting capacity fix for entry ${entryId} on date ${date} with duplicate index ${duplicateIndex}`)
 
-      // Debug journal data availability
-      console.log(`[${this.name}] Journal data status:`, {
-        hasLastJournalData: !!this.#lastJournalData,
-        entriesCount: this.#lastJournalData?.entries?.length || 0,
-        currentJournalId: this.#currentJournalId,
-      })
 
       // Try to refresh journal data if it's missing
       if (!this.#lastJournalData && this.#currentJournalId) {
-        console.log(`[${this.name}] No cached journal data found, attempting to refresh...`)
         try {
           const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
           this.#lastJournalData = journalData
-          console.log(`[${this.name}] Successfully refreshed journal data`)
         } catch (refreshError) {
           console.error(`[${this.name}] Failed to refresh journal data:`, refreshError)
         }
@@ -2654,20 +2131,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
 
         Logger.error(`[${this.name}] Entry element not found for ID=${entryId}, date=${date}, duplicateIndex=${duplicateIndex}`, debugInfo)
-        console.log(`[${this.name}] Debug info for failed element search:`, debugInfo)
 
         throw new Error(`entry element not found - entryId: ${entryId}, date: ${date}, duplicateIndex: ${duplicateIndex}`)
       }
 
-      console.log(`[${this.name}] Found entry element:`, {
-        tagName: element.tagName,
-        id: element.id,
-        className: element.className,
-        ngClick: element.getAttribute('ng-click'),
-        onclick: !!element.onclick,
-        hasClickableChild: !!element.querySelector('[ng-click], [onclick]'),
-        textContent: element.textContent.slice(0, 100) + '...',
-      })
 
       return this.#continueFixCapacity(element, entryId, date)
     } catch (error) {
@@ -2675,9 +2142,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #continueFixCapacity (element, entryId, date) {
+  async #continueFixCapacity (element, entryId, _date) {
     try {
-      console.log(`[${this.name}] Starting continueFixCapacity with entryId: ${entryId}, date: ${date}`)
 
       // Get the entry to determine its type and validation result for highlighting
       let entryData = null
@@ -2689,11 +2155,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if (cachedEntry) {
           entryData = cachedEntry
           validationResult = cachedEntry.validationResult
-          console.log(`[${this.name}] Found entry data from problematic entries cache:`, {
-            entryId: entryData.id,
-            entryType: entryData.entryType,
-            errorType: validationResult?.errorType,
-          })
         }
       }
 
@@ -2701,30 +2162,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (!entryData && this.#lastJournalData?.entries) {
         entryData = this.#lastJournalData.entries.find(e => e.id == entryId)
         if (entryData) {
-          console.log(`[${this.name}] Found entry data from journal data:`, {
-            entryId: entryData.id,
-            entryType: entryData.entryType,
-          })
           // Note: validationResult will be null in this case
         }
       }
 
-      // Log what we found
       const entryType = entryData?.entryType
-      console.log(`[${this.name}] Entry data summary:`, {
-        entryId,
-        entryType,
-        hasEntryData: !!entryData,
-        hasValidationResult: !!validationResult,
-        errorType: validationResult?.errorType,
-        cacheEntriesCount: this.#problematicEntriesCache?.length || 0,
-        journalEntriesCount: this.#lastJournalData?.entries?.length || 0,
-      })
 
-      console.log(`[${this.name}] Fixing capacity for entry ${entryId} of type ${entryType}`)
 
       // Prepare highlight message
-      let highlightMessage = ''
+      let highlightMessage
       if (validationResult?.errorType === 'lesson_with_independent_work') {
         highlightMessage = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees. Palun eemalda iseseisev õpe ja märgi praktiline töö!'
       } else if (validationResult?.errorType === 'independent_work_with_auditory') {
@@ -2755,17 +2201,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Find and highlight problematic elements to guide the user
       const elementsToHighlight = this.#findProblematicElementsForHighlighting(entryType, validationResult)
 
-      console.log(`[${this.name}] Highlighting setup:`, {
-        entryType,
-        errorType: validationResult?.errorType,
-        elementsFound: elementsToHighlight.length,
-        entryId,
-        hasEntryData: !!entryData,
-        hasValidationResult: !!validationResult,
-      })
 
       if (elementsToHighlight.length > 0) {
-        console.log(`[${this.name}] Highlighting ${elementsToHighlight.length} elements with message: "${highlightMessage}"`)
         this.#highlightProblematicElements(elementsToHighlight, highlightMessage)
 
         // Add listeners to remove highlights when dialog is closed or saved
@@ -2800,6 +2237,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
 
       // Find capacity type checkboxes
+      // noinspection CssInvalidHtmlTagReference
       const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="capacityType"]')
       const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') ||
@@ -2813,7 +2251,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       let needsSave = false
 
       if (entryType === 'SISSEKANNE_I') {
-        // For independent work entries: ensure iseseive õpe is checked, auditoorne õpe is unchecked
+        // For independent work entries: ensure iseseisev õpe is checked, auditoorne õpe is unchecked
         if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(iseseivCheckbox)
           needsSave = true
@@ -2823,7 +2261,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           needsSave = true
         }
       } else {
-        // For lesson entries (SISSEKANNE_T/P): ensure auditoorne õpe is checked, iseseive õpe is unchecked
+        // For lesson entries (SISSEKANNE_T/P): ensure auditoorne õpe is checked, iseseisev õpe is unchecked
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(auditoorneCheckbox)
           needsSave = true
@@ -2850,7 +2288,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #addDialogCloseListeners () {
-    console.log(`[${this.name}] Adding dialog close listeners to clean up highlights`)
 
     // Remove any existing listeners to avoid duplicates
     if (this.dialogCloseListener) {
@@ -2863,17 +2300,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const target = event.target
 
       // Check if user clicked close button, cancel button, or save button
+      // noinspection HtmlUnknownTag
       const isCloseButton = target.matches('md-icon[aria-label*="close"], button[aria-label*="close"], .md-dialog-close, [ng-click*="close"], [ng-click*="cancel"]')
       const isSaveButton = target.matches('button[type="submit"], button[ng-click*="save"], .md-primary, [aria-label*="save"], [ng-click*="submit"]')
       const isDialogBackdrop = target.matches('md-backdrop, .md-backdrop') ||
         (target.classList.contains('md-dialog-container') && event.target === event.currentTarget)
 
       // Also check if clicked element is inside a close/save button
-      const closestCloseButton = target.closest('md-icon[aria-label*="close"], button[aria-label*="close"], .md-dialog-close, [ng-click*="close"], [ng-click*="cancel"]')
+      // noinspection HtmlUnknownTag
+      const closestCloseButton = target.closest('.md-icon[aria-label*="close"], button[aria-label*="close"], .md-dialog-close, [ng-click*="close"], [ng-click*="cancel"]')
       const closestSaveButton = target.closest('button[type="submit"], button[ng-click*="save"], .md-primary, [aria-label*="save"], [ng-click*="submit"]')
 
       if (isCloseButton || isSaveButton || isDialogBackdrop || closestCloseButton || closestSaveButton) {
-        console.log(`[${this.name}] Dialog close/save action detected, cleaning up highlights`)
 
         // Small delay to allow dialog close animation
         setTimeout(() => {
@@ -2889,11 +2327,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     if (!this.dialogMutationObserver) {
       this.dialogMutationObserver = new MutationObserver(mutations => {
         mutations.forEach(mutation => {
-          mutation.removedNodes.forEach(node => {
+          mutation.removedNodes.forEach(/** @param {Element} node */ node => {
             // Check if a dialog was removed
             if (node.nodeType === Node.ELEMENT_NODE &&
               (node.matches('md-dialog') || node.querySelector('md-dialog'))) {
-              console.log(`[${this.name}] Dialog removed from DOM, cleaning up highlights`)
               this.#cleanupHighlights()
             }
           })
@@ -2908,7 +2345,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #cleanupHighlights () {
-    console.log(`[${this.name}] Cleaning up highlights`)
 
     // Remove all highlight overlays
     const remainingHighlights = document.querySelectorAll('[data-capacity-highlight]')
@@ -2932,6 +2368,5 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.dialogMutationObserver = null
     }
 
-    console.log(`[${this.name}] Highlight cleanup completed`)
   }
 }

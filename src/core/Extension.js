@@ -85,9 +85,9 @@ const tahvelExtension = {
             padding: 2px;
             margin-left: 4px;
           `
-          indicator.title = isDevKriit ?
-            'Õpetaja Assistent 2 kasutab dev Kriiti' :
-            'Õpetaja Assistent 2 on aktiivne'
+          indicator.title = isDevKriit
+            ? 'Õpetaja Assistent 2 kasutab dev Kriiti'
+            : 'Õpetaja Assistent 2 on aktiivne'
           indicator.textContent = isDevKriit ? 'DEV' : 'ÕA2'
 
           // Append the indicator to the user menu button

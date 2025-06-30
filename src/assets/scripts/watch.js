@@ -9,11 +9,6 @@ import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
 
-// Configuration
-const CONFIG = {
-  srcDir: 'src',
-  distDir: 'dist'
-}
 
 console.log('👀 Watching for changes in src directory...')
 
