@@ -22,7 +22,7 @@
     "build:prod": "bun src/assets/scripts/build.js --prod",
     "watch": "bun src/assets/scripts/watch.js",
     "test": "bun test",
-    "lint": "./node_modules/.bin/eslint src/**/*.js",
+    "lint": "./node_modules/.bin/eslint src/**/*.js --max-warnings 1000",
     "lint:fix": "./node_modules/.bin/eslint src/**/*.js --fix",
     "format": "./node_modules/.bin/eslint src/**/*.js --fix"
   },
