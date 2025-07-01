@@ -1964,17 +1964,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
     }
 
-    const action = entry.validationResult?.errorType === 'no_teacher_selected' 
+    const action = entry.validationResult?.errorType === 'no_teacher_selected'
       ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-          handler: 'fixCapacity',
-          entryId: entry.id,
-          date: this.#formatDate(entry.entryDate),
-        })
+        handler: 'fixCapacity',
+        entryId: entry.id,
+        date: this.#formatDate(entry.entryDate),
+      })
       : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-          handler: 'fixCapacity',
-          entryId: entry.id,
-          date: this.#formatDate(entry.entryDate),
-        })
+        handler: 'fixCapacity',
+        entryId: entry.id,
+        date: this.#formatDate(entry.entryDate),
+      })
 
     return `<tr style="background-color:white">
       <td style="${CENTER_STYLE}">${dateWithBadge}</td>
@@ -2004,7 +2004,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       element.style.border = `2px solid ${color}`
       element.style.boxShadow = `0 0 8px ${color}`
       element.dataset.capacityHighlight = 'true'
-      
+
       highlights.push(element)
     })
 
@@ -2332,16 +2332,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (validationResult?.errorType === 'no_teacher_selected') {
         // Auto-check teacher checkbox and save immediately
         await this.#checkTeacherCheckbox()
-        
+
         // Highlight teacher checkboxes in green to show they were fixed
         const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
         const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
-        
+
         if (teacherElements.length > 0) {
-          // Use green highlight for successful fix
-          this.#highlightProblematicElements(teacherElements, 'Õpetaja on nüüd valitud! Salvestame automaatselt...', '#4CAF50')
+          // Use green highlight for successful fix - no message needed
+          this.#highlightProblematicElements(teacherElements, '', '#4CAF50')
         }
-        
+
         // Auto-save the entry
         const saveButton = document.querySelector('button[ng-click*="save"]')
         if (saveButton) {
@@ -2351,7 +2351,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             setTimeout(() => this.#refreshTableWithRetry(), 1000)
           }, 1500) // Give user time to see the green highlight
         }
-        
+
         return // Exit early for teacher validation
       }
 
