@@ -1717,7 +1717,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     return this.#performBusinessLogicValidation(entry, detailedEntry, {
       auditoorne: hasAuditoorneIncludes,
-      iseseisev: hasIseseisvIncludes,
+      iseseiv: hasIseseisvIncludes,
       praktiline: hasPraktiliseIncludes,
       teacher: hasTeacher,
     }, capacityTypes)
@@ -1734,7 +1734,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const expectedState = {
       auditoorne: shouldHaveAuditoorne,
-      iseseisev: shouldHaveIseseisev,
+      iseseiv: shouldHaveIseseisev,
       praktiline: shouldHavePraktiline,
       teacher: true, // All entries should have a teacher selected
       reasoning: shouldHaveAuditoorne
@@ -1836,7 +1836,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Validate against expected state
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
-    const iseseisvValid = actualState.iseseisev === expectedState.iseseisev
+    const iseseisvValid = actualState.iseseiv === expectedState.iseseiv
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
     const teacherValid = actualState.teacher === expectedState.teacher
     const isValid = auditoorneValid && iseseisvValid && praktiliseValid && teacherValid
@@ -1935,7 +1935,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {Object} [entry.validationResult] - Validation result object
    * @param {string} [entry.validationResult.errorType] - Error type
    * @param {number} entry.id - Entry ID
-   */
+    
+     */
   #createCapacityProblemRow(entry) {
     const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
     const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
@@ -2226,7 +2227,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       })
 
-      // If still no capacity checkboxes found, highlight ALL capacity checkboxes in the dialog for debugging
+      // If still no capacity checkboxes found, highlight ALL checkboxes for debugging
       if (elements.length === 0) {
         // Fall back to any checkbox with capacity-related ng-model or all checkboxes if none found
         const anyCapacityCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"], md-checkbox[ng-model*="capacityType"]')
@@ -2336,7 +2337,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       } else if (validationResult?.errorType === 'lesson_without_auditoorne') {
         highlightMessage = 'Sissekande liik on tund, aga auditoorne õpe linnuke pole sees. Palun lülita auditoorne õpe sisse!'
       } else if (validationResult?.errorType === 'independent_work_with_auditory') {
-        highlightMessage = 'Iseseisel tööl ei saa olla auditoorne õpe linnuke sees. Palun eemalda vale linnuke!'
+        highlightMessage = 'Iseseisev tööl ei saa olla auditoorne õpe linnuke sees. Palun eemalda vale linnuke!'
       } else if (validationResult?.errorType === 'both_checkboxes_selected') {
         highlightMessage = 'Korraga ei saa auditoorne õpe ja individuaalne õpe aktiivsed olla. Palun eemalda üks linnuke!'
       } else if (validationResult?.errorType === 'praktiline_too_without_praktiline_checkbox') {
@@ -2421,10 +2422,30 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Find and highlight problematic elements to guide the user
       const elementsToHighlight = this.#findProblematicElementsForHighlighting(entryType, validationResult)
 
+      // Special green highlight for praktiline töö missing checkbox error
+      if (validationResult?.errorType === 'praktiline_too_without_praktiline_checkbox') {
+        // Find the relevant checkboxes
+        const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"]')
+        const praktiliseCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+          checkbox.getAttribute('aria-label')?.includes('Praktiline töö') ||
+          checkbox.textContent.includes('Praktiline töö'))
+        const iseseisvCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+          checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
+          checkbox.textContent.includes('Iseseisev õpe'))
 
-      if (elementsToHighlight.length > 0) {
+        // Uncheck and highlight Iseseisev õpe in red if checked
+        if (iseseisvCheckbox && iseseisvCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisvCheckbox)
+          this.#highlightProblematicElements([iseseisvCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
+        }
+        // Check and highlight Praktiline töö in green if not checked
+        if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(praktiliseCheckbox)
+          this.#highlightProblematicElements([praktiliseCheckbox], highlightMessage, '#4CAF50')
+        }
+        this.#addDialogCloseListeners()
+      } else if (elementsToHighlight.length > 0) {
         this.#highlightProblematicElements(elementsToHighlight, highlightMessage)
-
         // Add listeners to remove highlights when dialog is closed or saved
         this.#addDialogCloseListeners()
       } else {
@@ -2465,7 +2486,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const iseseivCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
         checkbox.getAttribute('aria-label')?.includes('Individuaalne õpe') ||
-        checkbox.textContent.includes('Iseseisev õpe') ||
+        checkbox.textContent.includes('Iseseisv õpe') ||
         checkbox.textContent.includes('Individuaalne õpe'))
       const praktiliseCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Praktiline töö') ||
@@ -2478,14 +2499,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Auto-check the auditoorne checkbox but don't auto-save
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(auditoorneCheckbox)
-          
+
           // Highlight the checkbox in green to show it was automatically fixed
-          this.#highlightProblematicElements([auditoorneCheckbox], 'Auditoorne õpe on automaatselt sisse lülitatud! Palun salvestage muudatused käsitsi.', '#4CAF50')
+          this.#highlightProblematicElements(teacherCheckboxes, 'Auditoorne õpe on automaatselt sisse lülitatud! Palun salvestage muudatused käsitsi.', '#4CAF50')
           this.#addDialogCloseListeners()
         }
         return // Exit early - no auto-saving
       } else if (entryType === 'SISSEKANNE_I') {
-        // For independent work entries: ensure iseseisev õpe is checked, others are unchecked
+        // For independent work entries: ensure iseseivCheckbox is checked, others are unchecked
         if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(iseseivCheckbox)
           needsSave = true
