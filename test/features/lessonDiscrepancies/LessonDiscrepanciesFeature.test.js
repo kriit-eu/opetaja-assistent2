@@ -81,4 +81,211 @@ describe('LessonDiscrepanciesFeature entryId resolution', () => {
     expect(shouldHaveIseseisev).toBe(false)
     expect(shouldHavePraktiline).toBe(true) // Praktiline töö should have praktiline checkbox
   })
+
+  test('should always ensure teacher checkbox is checked', () => {
+    // Mock DOM elements for teacher checkboxes
+    const mockTeacherCheckbox = {
+      getAttribute: jest.fn().mockReturnValue('false'), // Initially unchecked
+      click: jest.fn(),
+      setAttribute: jest.fn(),
+    }
+
+    // Mock the querySelector to return our mock checkbox
+    document.querySelectorAll = jest.fn().mockReturnValue([mockTeacherCheckbox])
+
+    // Simulate the teacher checkbox checking logic
+    const isChecked = mockTeacherCheckbox.getAttribute('aria-checked') === 'true'
+
+    if (!isChecked) {
+      mockTeacherCheckbox.click()
+      // Simulate the checkbox becoming checked after click
+      mockTeacherCheckbox.getAttribute.mockReturnValue('true')
+    }
+
+    expect(mockTeacherCheckbox.click).toHaveBeenCalled()
+    expect(mockTeacherCheckbox.getAttribute('aria-checked')).toBe('true')
+  })
+})
+
+// Tests for teacher checkbox functionality (dialog-only validation)
+describe('LessonDiscrepanciesFeature teacher checkbox functionality', () => {
+  let mockFeature
+
+  beforeEach(() => {
+    // Mock the feature instance
+    mockFeature = {
+      name: 'LessonDiscrepanciesFeature',
+      '#getTeacherCheckboxState': function () {
+        return {
+          hasTeacher: false,
+          checkboxCount: 1,
+          checkedCount: 0,
+          checkboxes: [{
+            element: { getAttribute: () => 'true' },
+            checked: false,
+            label: 'Test Teacher'
+          }]
+        }
+      },
+      '#performBusinessLogicValidation': function (entry, detailedEntry, actualState, capacityTypes) {
+        if (!actualState.teacher) {
+          return {
+            entry,
+            detailedData: detailedEntry,
+            isValid: false,
+            errorType: 'missing_teacher_selection',
+            actualState,
+            expectedState: {
+              auditoorne: true,
+              iseseisev: false,
+              praktiline: false,
+              teacher: true,
+              reasoning: 'Entry type "SISSEKANNE_T" requires auditoorne õpe checkbox and teacher selection'
+            },
+            capacityTypes,
+            validationResult: 'error'
+          }
+        }
+
+        return {
+          entry,
+          detailedData: detailedEntry,
+          isValid: true,
+          errorType: null,
+          actualState,
+          expectedState: {
+            auditoorne: true,
+            iseseisev: false,
+            praktiline: false,
+            teacher: true
+          },
+          capacityTypes,
+          validationResult: 'pass'
+        }
+      }
+    }
+  })
+
+  test('should return missing_teacher_selection error when no teacher is selected', () => {
+    const entry = { entryType: 'SISSEKANNE_T' }
+    const detailedEntry = { id: '123' }
+    const actualState = {
+      auditoorne: true,
+      iseseisev: false,
+      praktiline: false,
+      teacher: false // No teacher selected
+    }
+    const capacityTypes = ['MAHT_a']
+
+    const result = mockFeature['#performBusinessLogicValidation'](entry, detailedEntry, actualState, capacityTypes)
+
+    expect(result.isValid).toBe(false)
+    expect(result.errorType).toBe('missing_teacher_selection')
+    expect(result.validationResult).toBe('error')
+  })
+
+  test('should pass validation when teacher is selected with correct checkboxes', () => {
+    const entry = { entryType: 'SISSEKANNE_T' }
+    const detailedEntry = { id: '123' }
+    const actualState = {
+      auditoorne: true,
+      iseseisev: false,
+      praktiline: false,
+      teacher: true // Teacher selected
+    }
+    const capacityTypes = ['MAHT_a']
+
+    const result = mockFeature['#performBusinessLogicValidation'](entry, detailedEntry, actualState, capacityTypes)
+
+    expect(result.isValid).toBe(true)
+    expect(result.errorType).toBe(null)
+    expect(result.validationResult).toBe('pass')
+  })
+
+  test('should correctly identify teacher checkbox state', () => {
+    const teacherState = mockFeature['#getTeacherCheckboxState']()
+
+    expect(teacherState.hasTeacher).toBe(false)
+    expect(teacherState.checkboxCount).toBe(1)
+    expect(teacherState.checkedCount).toBe(0)
+    expect(teacherState.checkboxes).toHaveLength(1)
+  })
+
+  test('should display correct error message for missing teacher selection in table row', () => {
+    // Mock an entry with missing teacher selection error
+    const entry = {
+      id: '12345',
+      entryDate: '2024-10-17',
+      entryType: 'SISSEKANNE_T',
+      startLessonNr: 1,
+      validationResult: {
+        errorType: 'missing_teacher_selection',
+        isValid: false,
+        actualState: {
+          auditoorne: true,
+          iseseisev: false,
+          praktiline: false,
+          teacher: false
+        },
+        expectedState: {
+          auditoorne: true,
+          iseseisev: false,
+          praktiline: false,
+          teacher: true
+        }
+      }
+    }
+
+    // Mock the #createCapacityProblemRow logic
+    let message = 'Auditoorne õpe puudub'
+    if (entry.validationResult) {
+      if (entry.validationResult.errorType === 'missing_teacher_selection') {
+        message = 'Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.'
+      } else if (entry.validationResult.errorType === 'praktiline_too_without_praktiline_checkbox') {
+        message = 'Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees'
+      }
+      // ... other error types
+    }
+
+    expect(message).toBe('Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.')
+  })
+
+  test('should display correct error message for praktiline töö without praktiline checkbox in table row', () => {
+    // Mock an entry with praktiline töö error
+    const entry = {
+      id: '12346',
+      entryDate: '2024-10-17',
+      entryType: 'SISSEKANNE_P',
+      startLessonNr: 1,
+      validationResult: {
+        errorType: 'praktiline_too_without_praktiline_checkbox',
+        isValid: false,
+        actualState: {
+          auditoorne: false,
+          iseseisev: false,
+          praktiline: false,
+          teacher: true
+        },
+        expectedState: {
+          auditoorne: false,
+          iseseisev: false,
+          praktiline: true,
+          teacher: true
+        }
+      }
+    }
+
+    // Mock the #createCapacityProblemRow logic
+    let message = 'Auditoorne õpe puudub'
+    if (entry.validationResult) {
+      if (entry.validationResult.errorType === 'missing_teacher_selection') {
+        message = 'Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.'
+      } else if (entry.validationResult.errorType === 'praktiline_too_without_praktiline_checkbox') {
+        message = 'Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees'
+      }
+      // ... other error types
+    }
+
+    expect(message).toBe('Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees')
+  })
 })

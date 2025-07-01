@@ -49,6 +49,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #currentJournalId = null
   #saveMonitoringSetup = false
   #tableObserver = null
+  #dialogObserver = null
   #isRefreshing = false
   #lastJournalData = null
   #originalFetch = null
@@ -68,6 +69,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     await this.#delay(1000)
     await this.#createLessonDiscrepanciesTable()
     this.#setupJournalSaveMonitoring()
+    this.#setupDialogObserver()
   }
 
   onDeactivate() {
@@ -802,7 +804,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       await this.#clickJournalEntry(element)
       await this.#waitForDialogContentLoaded()
 
-
       await this.#fillEditForm(type, data)
     } catch (error) {
       Logger.error(`[${this.name}] edit entry error`, error)
@@ -852,7 +853,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#fillStartLessonField(String(effectiveStart)),
       this.#fillLessonCountField(String(effectiveCount)),
       this.#checkAuditoriumLearningCheckbox(),
+      this.#checkTeacherCheckbox(),
     ])
+
+    // Add teacher checkbox change listeners for validation refresh
+    this.#addTeacherCheckboxListeners()
   }
 
   async #fillEditForm(type, data) {
@@ -1338,6 +1343,53 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  async #checkTeacherCheckbox() {
+    /** @type {HTMLElement} */
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+
+    for (const checkbox of teacherCheckboxes) {
+      if (checkbox && this.#isElementVisible(checkbox)) {
+        const isChecked = checkbox.getAttribute('aria-checked') === 'true'
+
+        if (!isChecked) {
+          this.#setFieldState(checkbox, 'processing')
+          checkbox.click()
+
+          // Verify it was checked
+          await this.#delay(200)
+          const nowChecked = checkbox.getAttribute('aria-checked') === 'true'
+          this.#setFieldState(checkbox, nowChecked ? 'success' : 'error')
+
+          Logger.debug(`[${this.name}] Teacher checkbox toggled: ${checkbox.getAttribute('aria-label')} - checked: ${nowChecked}`)
+        }
+      }
+    }
+  }
+
+  #getTeacherCheckboxState() {
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+    const checkboxes = []
+    let checkedCount = 0
+
+    teacherCheckboxes.forEach(checkbox => {
+      const checked = checkbox.getAttribute('aria-checked') === 'true'
+      if (checked) checkedCount++
+
+      checkboxes.push({
+        element: checkbox,
+        checked,
+        label: checkbox.getAttribute('aria-label') || checkbox.textContent.trim()
+      })
+    })
+
+    return {
+      hasTeacher: checkedCount > 0,
+      checkboxCount: teacherCheckboxes.length,
+      checkedCount,
+      checkboxes
+    }
+  }
+
   async #refreshTableWithRetry(maxRetries = 3) {
     if (this.#isRefreshing) return
 
@@ -1458,6 +1510,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  /**
+   * Setup observer to monitor for journal entry dialogs being opened and auto-check teacher checkboxes
+   */
+  #setupDialogObserver() {
+    // Dialog observer removed - no longer auto-checking teacher checkbox
+    // Teacher validation is now handled in table/background validation
+  }
+
   async #refreshCapacityValidationAfterSave() {
     try {
 
@@ -1489,6 +1549,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #cleanupMonitoring() {
     this.#tableObserver?.disconnect()
     this.#tableObserver = null
+
+    this.#dialogObserver?.disconnect()
+    this.#dialogObserver = null
 
     // Restore original fetch if we modified it
     if (this.#originalFetch) {
@@ -1605,9 +1668,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         actualState: {
           auditoorne: false,
           iseseisev: false,
+          praktiline: false,
+          teacher: true,
         },
         expectedState: {
           auditoorne: true,
+          iseseisev: false,
+          praktiline: false,
+          teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
         },
       }
@@ -1622,9 +1690,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         actualState: {
           auditoorne: false,
           iseseisev: false,
+          praktiline: false,
+          teacher: true,
         },
         expectedState: {
           auditoorne: true,
+          iseseisev: false,
+          praktiline: false,
+          teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
         },
       }
@@ -1637,12 +1710,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const hasIseseisvIncludes = capacityTypes.includes('MAHT_i')
     const hasPraktiliseIncludes = capacityTypes.includes('MAHT_p')
 
+    // Teacher validation - check if any teachers are selected
+    const hasTeacher = Array.isArray(detailedEntry?.journalEntryTeachers) && detailedEntry.journalEntryTeachers.length > 0
+
     // Using includes() as the primary method
 
     return this.#performBusinessLogicValidation(entry, detailedEntry, {
       auditoorne: hasAuditoorneIncludes,
       iseseisev: hasIseseisvIncludes,
       praktiline: hasPraktiliseIncludes,
+      teacher: hasTeacher,
     }, capacityTypes)
   }
 
@@ -1654,10 +1731,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const shouldHaveAuditoorne = entry.entryType === 'SISSEKANNE_T' // Only SISSEKANNE_T should have auditoorne
     const shouldHaveIseseisev = entry.entryType === 'SISSEKANNE_I'
     const shouldHavePraktiline = entry.entryType === 'SISSEKANNE_P'
+
     const expectedState = {
       auditoorne: shouldHaveAuditoorne,
       iseseisev: shouldHaveIseseisev,
       praktiline: shouldHavePraktiline,
+      teacher: true, // All entries should have a teacher selected
       reasoning: shouldHaveAuditoorne
         ? `Entry type "${entry.entryType}" requires auditoorne õpe checkbox`
         : shouldHaveIseseisev
@@ -1667,6 +1746,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             : `Entry type "${entry.entryType}" has specific checkbox requirements`,
     }
 
+    // Check for error condition: no teacher selected
+    if (!actualState.teacher) {
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'no_teacher_selected',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error',
+      }
+    }
 
     // Check for error condition: both checkboxes selected
     const hasBothCheckboxes = actualState.auditoorne && actualState.iseseisev
@@ -1732,13 +1824,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
     const iseseisvValid = actualState.iseseisev === expectedState.iseseisev
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
-    const isValid = auditoorneValid && iseseisvValid && praktiliseValid
+    const teacherValid = actualState.teacher === expectedState.teacher
+    const isValid = auditoorneValid && iseseisvValid && praktiliseValid && teacherValid
     const validationResult = isValid ? 'pass' : 'fail'
 
     // Determine specific error type
     let errorType = null
     if (!isValid) {
-
       errorType = 'missing_required_checkbox'
       if (entry.entryType === 'SISSEKANNE_T') {
         errorType = 'missing_auditoorne_checkbox'
@@ -1824,6 +1916,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {string} entry.entryType - Entry type (SISSEKANNE_T, SISSEKANNE_I, SISSEKANNE_P)
    * @param {number} [entry.startLessonNr] - Start lesson number
    * @param {Array} [entry.lessons] - Array of lesson objects
+
    * @param {number} [entry.lessons[].lessonNr] - Lesson number
    * @param {Object} [entry.validationResult] - Validation result object
    * @param {string} [entry.validationResult.errorType] - Error type
@@ -1852,7 +1945,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Determine the correct message based on the validation result
     let message = 'Auditoorne õpe puudub'
     if (entry.validationResult) {
-      if (entry.validationResult.errorType === 'both_checkboxes_selected') {
+      if (entry.validationResult.errorType === 'no_teacher_selected') {
+        message = 'Õpetaja pole valitud'
+      } else if (entry.validationResult.errorType === 'both_checkboxes_selected') {
         message = 'Auditoorne õpe ja iseseisva õppe linnukesed on samaaegselt sees'
       } else if (entry.validationResult.errorType === 'lesson_with_independent_work') {
         message = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees'
@@ -1869,11 +1964,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
     }
 
-    const action = this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-      handler: 'fixCapacity',
-      entryId: entry.id,
-      date: this.#formatDate(entry.entryDate),
-    })
+    const action = entry.validationResult?.errorType === 'no_teacher_selected' 
+      ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+          handler: 'fixCapacity',
+          entryId: entry.id,
+          date: this.#formatDate(entry.entryDate),
+        })
+      : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+          handler: 'fixCapacity',
+          entryId: entry.id,
+          date: this.#formatDate(entry.entryDate),
+        })
 
     return `<tr style="background-color:white">
       <td style="${CENTER_STYLE}">${dateWithBadge}</td>
@@ -1890,7 +1991,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  #highlightProblematicElements(elements, message = '') {
+  #highlightProblematicElements(elements, message = '', color = '#ff0000') {
     // Clean up any existing highlights first
     this.#cleanupHighlights()
 
@@ -1899,66 +2000,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     elements.forEach((element, index) => {
       if (!element) return
 
-      // Create fixed overlay div that follows the element when scrolling
-      const highlight = document.createElement('div')
-      highlight.dataset.capacityHighlight = 'true'
-      highlight.dataset.targetElement = index
-      highlight.style.cssText = `
-        position: fixed;
-        border: 2px solid #ff0000;
-        border-radius: 10px;
-        pointer-events: none;
-        z-index: 9998;
-        box-shadow: 0 0 15px rgba(255, 0, 0, 0.6);
-        background: rgba(255, 0, 0, 0.05);
-      `
-
-      // Function to update highlight position based on element's current position
-      const updatePosition = () => {
-        if (!element.isConnected) {
-          highlight.remove()
-          return
-        }
-
-        const rect = element.getBoundingClientRect()
-        // Only show highlight if element is visible in viewport
-        if (rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0) {
-          highlight.style.top = `${rect.top - 2}px`
-          highlight.style.left = `${rect.left - 2}px`
-          highlight.style.width = `${rect.width + 4}px`
-          highlight.style.height = `${rect.height + 4}px`
-          highlight.style.display = 'block'
-        } else {
-          highlight.style.display = 'none'
-        }
-      }
-
-      // Initial position
-      updatePosition()
-
-      // Store the update function and element reference
-      highlight.updatePosition = updatePosition
-      highlight.targetElement = element
-
-      document.body.appendChild(highlight)
-      highlights.push(highlight)
-
+      // Add border highlight directly to the element instead of creating an overlay
+      element.style.border = `2px solid ${color}`
+      element.style.boxShadow = `0 0 8px ${color}`
+      element.dataset.capacityHighlight = 'true'
+      
+      highlights.push(element)
     })
 
-    // Add scroll listener to update all highlight positions when user scrolls
+    // Store original styles for restoration
     if (highlights.length > 0) {
-      this.highlightScrollListener = () => {
-        highlights.forEach(highlight => {
-          if (highlight.updatePosition && highlight.targetElement && highlight.targetElement.isConnected) {
-            highlight.updatePosition()
-          }
-        })
-      }
-
-      // Listen to scroll events on window and all scrollable containers
-      window.addEventListener('scroll', this.highlightScrollListener, true)
-      document.addEventListener('scroll', this.highlightScrollListener, true)
-
+      highlights.forEach(element => {
+        if (!element.dataset.originalBorder) {
+          element.dataset.originalBorder = element.style.border || ''
+          element.dataset.originalBoxShadow = element.style.boxShadow || ''
+        }
+      })
     }
 
     // Add a message tooltip if provided
@@ -1969,7 +2026,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         position: fixed;
         top: 20px;
         right: 20px;
-        background: #ff0000;
+        background: ${color};
         color: white;
         padding: 12px 18px;
         border-radius: 8px;
@@ -2001,7 +2058,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Find all checkbox elements specifically
     const allCheckboxes = document.querySelectorAll('md-checkbox')
 
-    // Handle specific error types first
+    // Handle specific error types
     if (entryType === 'SISSEKANNE_T' && validationResult?.errorType === 'lesson_with_independent_work') {
 
       // Find and highlight both "Iseseisev õpe" (incorrectly checked) and "Praktiline töö" checkboxes
@@ -2235,7 +2292,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Prepare highlight message
       let highlightMessage
-      if (validationResult?.errorType === 'lesson_with_independent_work') {
+      if (validationResult?.errorType === 'no_teacher_selected') {
+        highlightMessage = 'Õpetaja pole valitud! Palun valige õpetaja.'
+      } else if (validationResult?.errorType === 'lesson_with_independent_work') {
         highlightMessage = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees. Palun eemalda iseseisev õpe ja märgi auditoorne õpe!'
       } else if (validationResult?.errorType === 'independent_work_with_auditory') {
         highlightMessage = 'Iseseisel tööl ei saa olla auditoorne õpe linnuke sees. Palun eemalda vale linnuke!'
@@ -2260,7 +2319,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         highlightMessage = 'Iseseisev õpe linnuke puudub. Palun lülita see sisse!'
       } else {
         // Fallback message
-        highlightMessage = 'Kontrollige auditoorse õppe ja iseseisva õppe linnukesi!'
+        highlightMessage = 'Kontrollige auditoorse õppe ja iseseiseva õppe linnukesi!'
       }
 
       await this.#clickJournalEntry(element)
@@ -2268,6 +2327,58 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Wait a bit for dialog content to fully render
       await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Special handling for teacher validation issues
+      if (validationResult?.errorType === 'no_teacher_selected') {
+        // Auto-check teacher checkbox and save immediately
+        await this.#checkTeacherCheckbox()
+        
+        // Highlight teacher checkboxes in green to show they were fixed
+        const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+        const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
+        
+        if (teacherElements.length > 0) {
+          // Use green highlight for successful fix
+          this.#highlightProblematicElements(teacherElements, 'Õpetaja on nüüd valitud! Salvestame automaatselt...', '#4CAF50')
+        }
+        
+        // Auto-save the entry
+        const saveButton = document.querySelector('button[ng-click*="save"]')
+        if (saveButton) {
+          setTimeout(async () => {
+            await this.#clickElement(saveButton)
+            // Refresh the table after saving
+            setTimeout(() => this.#refreshTableWithRetry(), 1000)
+          }, 1500) // Give user time to see the green highlight
+        }
+        
+        return // Exit early for teacher validation
+      }
+
+      // Ensure teacher checkbox is always checked for other validation types
+      await this.#checkTeacherCheckbox()
+
+      // Check if teacher is actually selected after auto-checking
+      const teacherState = this.#getTeacherCheckboxState()
+
+      // If no teacher is selected, show specific error and highlight teacher checkboxes
+      if (!teacherState.hasTeacher) {
+        const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+        const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
+
+        if (teacherElements.length > 0) {
+          this.#highlightProblematicElements(teacherElements, 'Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.')
+          this.#addDialogCloseListeners()
+
+          // Add event listeners to automatically clear the highlight when a teacher is selected
+          this.#addTeacherSelectionMonitoring()
+
+          return // Exit early - don't process capacity checkboxes until teacher is selected
+        }
+      }
+
+      // Add teacher checkbox change listeners for validation refresh
+      this.#addTeacherCheckboxListeners()
 
       // Find and highlight problematic elements to guide the user
       const elementsToHighlight = this.#findProblematicElementsForHighlighting(entryType, validationResult)
@@ -2383,6 +2494,53 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  #addTeacherSelectionMonitoring() {
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+
+    for (const checkbox of teacherCheckboxes) {
+      if (checkbox && this.#isElementVisible(checkbox) && !checkbox.dataset.teacherMonitoringAdded) {
+        const handleTeacherSelection = () => {
+          // Small delay to let the change propagate
+          setTimeout(() => {
+            const teacherState = this.#getTeacherCheckboxState()
+            if (teacherState.hasTeacher) {
+              // Teacher is now selected, clear highlights and continue with normal validation
+              this.#cleanupHighlights()
+              Logger.debug(`[${this.name}] Teacher selected, continuing with capacity validation...`)
+            }
+          }, 200)
+        }
+
+        checkbox.addEventListener('click', handleTeacherSelection)
+        checkbox.addEventListener('change', handleTeacherSelection)
+        checkbox.dataset.teacherMonitoringAdded = 'true'
+      }
+    }
+  }
+
+  #addTeacherCheckboxListeners() {
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]:not([data-teacher-listener-added])')
+
+    for (const checkbox of teacherCheckboxes) {
+      if (checkbox && this.#isElementVisible(checkbox)) {
+        const handleTeacherChange = async () => {
+          Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
+          // Small delay to let the change propagate
+          await this.#delay(300)
+          // Refresh the capacity validation table
+          await this.#refreshTableWithRetry()
+        }
+
+        // Listen for both click and change events
+        checkbox.addEventListener('click', handleTeacherChange)
+        checkbox.addEventListener('change', handleTeacherChange)
+
+        // Mark this checkbox as having listeners to avoid duplicates
+        checkbox.dataset.teacherListenerAdded = 'true'
+      }
+    }
+  }
+
   #addDialogCloseListeners() {
 
     // Remove any existing listeners to avoid duplicates
@@ -2442,16 +2600,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #cleanupHighlights() {
 
-    // Remove all highlight overlays
-    const remainingHighlights = document.querySelectorAll('[data-capacity-highlight]')
-    remainingHighlights.forEach(highlight => highlight.remove())
+    // Remove highlight styles from elements and restore original styles
+    const highlightedElements = document.querySelectorAll('[data-capacity-highlight="true"]')
+    highlightedElements.forEach(element => {
+      if (element.dataset.originalBorder !== undefined) {
+        element.style.border = element.dataset.originalBorder
+        delete element.dataset.originalBorder
+      }
+      if (element.dataset.originalBoxShadow !== undefined) {
+        element.style.boxShadow = element.dataset.originalBoxShadow
+        delete element.dataset.originalBoxShadow
+      }
+      delete element.dataset.capacityHighlight
+    })
 
-    // Remove scroll listeners
-    if (this.highlightScrollListener) {
-      window.removeEventListener('scroll', this.highlightScrollListener, true)
-      document.removeEventListener('scroll', this.highlightScrollListener, true)
-      this.highlightScrollListener = null
-    }
+    // Remove any remaining tooltip elements
+    const tooltips = document.querySelectorAll('[data-capacity-highlight]')
+    tooltips.forEach(tooltip => tooltip.remove())
 
     // Clean up dialog listeners
     if (this.dialogCloseListener) {
