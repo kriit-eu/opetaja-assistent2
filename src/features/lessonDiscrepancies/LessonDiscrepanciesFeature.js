@@ -54,6 +54,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #lastJournalData = null
   #originalFetch = null
   #problematicEntriesCache = null
+  #dialogCloseObserver = null;
+  #dialogWasPresent = false;
 
   static SCHOOL_ID_FALLBACK = 9
   static JOURNAL_ENTRY_LESSON_TYPE = 'SISSEKANNE_T'
@@ -2660,35 +2662,32 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #cleanupHighlights() {
-
-    // Remove highlight styles from elements and restore original styles
-    const highlightedElements = document.querySelectorAll('[data-capacity-highlight="true"]')
-    highlightedElements.forEach(element => {
-      if (element.dataset.originalBorder !== undefined) {
-        element.style.border = element.dataset.originalBorder
-        delete element.dataset.originalBorder
+    // Remove only tooltip popups (not checkboxes)
+    document.querySelectorAll('[data-capacity-highlight="true"]').forEach(el => {
+      if (el.tagName === 'MD-CHECKBOX') {
+        // Restore original styles and remove highlight attribute
+        if (el.dataset.originalBorder !== undefined) {
+          el.style.border = el.dataset.originalBorder;
+          delete el.dataset.originalBorder;
+        } else {
+          el.style.border = '';
+        }
+        if (el.dataset.originalBoxShadow !== undefined) {
+          el.style.boxShadow = el.dataset.originalBoxShadow;
+          delete el.dataset.originalBoxShadow;
+        } else {
+          el.style.boxShadow = '';
+        }
+        el.removeAttribute('data-capacity-highlight');
+      } else {
+        // Remove tooltip or other non-checkbox highlight
+        el.remove();
       }
-      if (element.dataset.originalBoxShadow !== undefined) {
-        element.style.boxShadow = element.dataset.originalBoxShadow
-        delete element.dataset.originalBoxShadow
-      }
-      delete element.dataset.capacityHighlight
-    })
-
-    // Remove any remaining tooltip elements
-    const tooltips = document.querySelectorAll('[data-capacity-highlight]')
-    tooltips.forEach(tooltip => tooltip.remove())
-
-    // Clean up dialog listeners
-    if (this.dialogCloseListener) {
-      document.removeEventListener('click', this.dialogCloseListener, true)
-      this.dialogCloseListener = null
+    });
+    // Clean up dialog close observer if present
+    if (this.#dialogCloseObserver) {
+      this.#dialogCloseObserver.disconnect();
+      this.#dialogCloseObserver = null;
     }
-
-    if (this.dialogMutationObserver) {
-      this.dialogMutationObserver.disconnect()
-      this.dialogMutationObserver = null
-    }
-
   }
 }
