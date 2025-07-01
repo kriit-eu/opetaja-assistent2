@@ -1333,7 +1333,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #checkAuditoriumLearningCheckbox() {
     /** @type {HTMLElement} */
-    const checkbox = document.querySelector('md-checkbox[aria-label="Auditoorne õpe"]')
+    const checkbox = document.querySelector('md-checkbox[ng-model*="selectedCapacityTypes"][aria-label="Auditoorne õpe"]')
 
     if (checkbox && this.#isElementVisible(checkbox)) {
       this.#setFieldState(checkbox, 'processing')
@@ -1746,6 +1746,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             : `Entry type "${entry.entryType}" has specific checkbox requirements`,
     }
 
+    // Check for specific error condition: SISSEKANNE_T (Tund) without auditoorne õpe
+    if (entry.entryType === 'SISSEKANNE_T' && !actualState.auditoorne) {
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'lesson_without_auditoorne',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error',
+      }
+    }
+
     // Check for error condition: no teacher selected
     if (!actualState.teacher) {
       return {
@@ -1951,6 +1965,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         message = 'Auditoorne õpe ja iseseisva õppe linnukesed on samaaegselt sees'
       } else if (entry.validationResult.errorType === 'lesson_with_independent_work') {
         message = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees'
+      } else if (entry.validationResult.errorType === 'lesson_without_auditoorne') {
+        message = 'Sissekande liik on tund, aga auditoorne õpe linnuke pole sees'
       } else if (entry.validationResult.errorType === 'independent_work_with_auditory') {
         message = 'Iseseisev tööl ei saa olla auditoorne õpe linnuke sees'
       } else if (entry.validationResult.errorType === 'praktiline_too_without_praktiline_checkbox') {
@@ -2055,8 +2071,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #findProblematicElementsForHighlighting(entryType, validationResult) {
     const elements = []
 
-    // Find all checkbox elements specifically
-    const allCheckboxes = document.querySelectorAll('md-checkbox')
+    // Find capacity type checkbox elements specifically
+    const allCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"]')
 
     // Handle specific error types
     if (entryType === 'SISSEKANNE_T' && validationResult?.errorType === 'lesson_with_independent_work') {
@@ -2068,6 +2084,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if ((ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe')) ||
           (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö'))) {
+          elements.push(checkbox)
+        }
+      })
+
+    } else if (entryType === 'SISSEKANNE_T' && validationResult?.errorType === 'lesson_without_auditoorne') {
+
+      // Find and highlight only "Auditoorne õpe" checkbox (should be checked but isn't)
+      allCheckboxes.forEach(checkbox => {
+        const ariaLabel = checkbox.getAttribute('aria-label') || ''
+        const textContent = checkbox.textContent || ''
+
+        if (ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) {
           elements.push(checkbox)
         }
       })
@@ -2198,11 +2226,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       })
 
-      // If still no capacity checkboxes found, highlight ALL checkboxes in the dialog for debugging
+      // If still no capacity checkboxes found, highlight ALL capacity checkboxes in the dialog for debugging
       if (elements.length === 0) {
-        allCheckboxes.forEach(checkbox => {
-          elements.push(checkbox)
-        })
+        // Fall back to any checkbox with capacity-related ng-model or all checkboxes if none found
+        const anyCapacityCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"], md-checkbox[ng-model*="capacityType"]')
+        if (anyCapacityCheckboxes.length > 0) {
+          anyCapacityCheckboxes.forEach(checkbox => {
+            elements.push(checkbox)
+          })
+        } else {
+          // Last resort: highlight all checkboxes
+          document.querySelectorAll('md-checkbox').forEach(checkbox => {
+            elements.push(checkbox)
+          })
+        }
       }
     }
 
@@ -2296,6 +2333,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         highlightMessage = 'Õpetaja pole valitud! Palun valige õpetaja.'
       } else if (validationResult?.errorType === 'lesson_with_independent_work') {
         highlightMessage = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees. Palun eemalda iseseisev õpe ja märgi auditoorne õpe!'
+      } else if (validationResult?.errorType === 'lesson_without_auditoorne') {
+        highlightMessage = 'Sissekande liik on tund, aga auditoorne õpe linnuke pole sees. Palun lülita auditoorne õpe sisse!'
       } else if (validationResult?.errorType === 'independent_work_with_auditory') {
         highlightMessage = 'Iseseisel tööl ei saa olla auditoorne õpe linnuke sees. Palun eemalda vale linnuke!'
       } else if (validationResult?.errorType === 'both_checkboxes_selected') {
@@ -2330,7 +2369,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Special handling for teacher validation issues
       if (validationResult?.errorType === 'no_teacher_selected') {
-        // Auto-check teacher checkbox and save immediately
+        // Auto-check teacher checkbox but don't auto-save
         await this.#checkTeacherCheckbox()
 
         // Highlight teacher checkboxes in green to show they were fixed
@@ -2339,46 +2378,45 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if (teacherElements.length > 0) {
           // Use green highlight for successful fix - no message needed
-          this.#highlightProblematicElements(teacherElements, '', '#4CAF50')
-        }
-
-        // Auto-save the entry
-        const saveButton = document.querySelector('button[ng-click*="save"]')
-        if (saveButton) {
-          setTimeout(async () => {
-            await this.#clickElement(saveButton)
-            // Refresh the table after saving
-            setTimeout(() => this.#refreshTableWithRetry(), 1000)
-          }, 1500) // Give user time to see the green highlight
-        }
-
-        return // Exit early for teacher validation
-      }
-
-      // Ensure teacher checkbox is always checked for other validation types
-      await this.#checkTeacherCheckbox()
-
-      // Check if teacher is actually selected after auto-checking
-      const teacherState = this.#getTeacherCheckboxState()
-
-      // If no teacher is selected, show specific error and highlight teacher checkboxes
-      if (!teacherState.hasTeacher) {
-        const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
-        const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
-
-        if (teacherElements.length > 0) {
-          this.#highlightProblematicElements(teacherElements, 'Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.')
+          this.#highlightProblematicElements(teacherElements, 'Õpetaja on valitud! Palun salvestage muudatused käsitsi.', '#4CAF50')
           this.#addDialogCloseListeners()
-
-          // Add event listeners to automatically clear the highlight when a teacher is selected
-          this.#addTeacherSelectionMonitoring()
-
-          return // Exit early - don't process capacity checkboxes until teacher is selected
         }
+
+        return // Exit early for teacher validation - no auto-save
       }
 
-      // Add teacher checkbox change listeners for validation refresh
-      this.#addTeacherCheckboxListeners()
+      // Special handling for lesson_without_auditoorne - only check capacity checkbox, not teacher
+      if (validationResult?.errorType === 'lesson_without_auditoorne') {
+        // Do NOT auto-check teacher checkbox for this specific error type
+        // Just highlight the auditoorne checkbox and let user handle teacher selection manually
+      } else {
+        // Ensure teacher checkbox is always checked for other validation types
+        await this.#checkTeacherCheckbox()
+      }
+
+      // Check if teacher is actually selected after auto-checking (skip for lesson_without_auditoorne)
+      if (validationResult?.errorType !== 'lesson_without_auditoorne') {
+        const teacherState = this.#getTeacherCheckboxState()
+
+        // If no teacher is selected, show specific error and highlight teacher checkboxes
+        if (!teacherState.hasTeacher) {
+          const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+          const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
+
+          if (teacherElements.length > 0) {
+            this.#highlightProblematicElements(teacherElements, 'Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.')
+            this.#addDialogCloseListeners()
+
+            // Add event listeners to automatically clear the highlight when a teacher is selected
+            this.#addTeacherSelectionMonitoring()
+
+            return // Exit early - don't process capacity checkboxes until teacher is selected
+          }
+        }
+
+        // Add teacher checkbox change listeners for validation refresh
+        this.#addTeacherCheckboxListeners()
+      }
 
       // Find and highlight problematic elements to guide the user
       const elementsToHighlight = this.#findProblematicElementsForHighlighting(entryType, validationResult)
@@ -2420,7 +2458,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Find capacity type checkboxes
       // noinspection CssInvalidHtmlTagReference
-      const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="capacityType"]')
+      const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"]')
       const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') ||
         checkbox.textContent.includes('Auditoorne õpe'))
@@ -2435,7 +2473,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       let needsSave = false
 
-      if (entryType === 'SISSEKANNE_I') {
+      // Special auto-fix for lesson_without_auditoorne: automatically check auditoorne õpe
+      if (validationResult?.errorType === 'lesson_without_auditoorne') {
+        // Auto-check the auditoorne checkbox but don't auto-save
+        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(auditoorneCheckbox)
+          
+          // Highlight the checkbox in green to show it was automatically fixed
+          this.#highlightProblematicElements([auditoorneCheckbox], 'Auditoorne õpe on automaatselt sisse lülitatud! Palun salvestage muudatused käsitsi.', '#4CAF50')
+          this.#addDialogCloseListeners()
+        }
+        return // Exit early - no auto-saving
+      } else if (entryType === 'SISSEKANNE_I') {
         // For independent work entries: ensure iseseisev õpe is checked, others are unchecked
         if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(iseseivCheckbox)
@@ -2479,16 +2528,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       }
 
-      if (needsSave) {
-        // Find and click the save button
-        const saveButton = document.querySelector('button[ng-click*="save"]')
-        if (saveButton) {
-          await this.#clickElement(saveButton)
-
-          // Refresh the table after saving
-          setTimeout(() => this.#refreshTableWithRetry(), 1000)
-        }
-      }
+      // Note: No auto-save functionality - user must manually save after making changes
     } catch (error) {
       Logger.error(`[${this.name}] fix capacity error`, error)
     }
