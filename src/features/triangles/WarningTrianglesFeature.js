@@ -16,6 +16,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
         this.name = 'WarningTrianglesFeature'
         this.journalCache = new Map()
         this.processedJournals = new Set()
+        this.activeRequests = new Map() // Track active requests to prevent duplicates
 
         // Create instance of LessonDiscrepanciesFeature to use its analysis methods
         this.discrepanciesAnalyzer = new LessonDiscrepanciesFeature()
@@ -29,6 +30,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
 
         // Clear previous state when reactivating
         this.processedJournals.clear()
+        this.activeRequests.clear()
 
         // Wait for page to be ready
         setTimeout(() => {
@@ -56,6 +58,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
                     Logger.debug(`[${this.name}] Navigation detected back to journals page`)
                     // Clear processed journals and reprocess after a delay
                     this.processedJournals.clear()
+                    this.activeRequests.clear()
                     setTimeout(() => {
                         this.processJournalList()
                     }, 1000)
@@ -84,7 +87,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
     }
 
     /**
-     * Process all journals on the current page
+     * Process all journals on the current page with parallel processing
      */
     async processJournalList() {
         try {
@@ -109,17 +112,37 @@ export default class WarningTrianglesFeature extends BaseFeature {
                 return
             }
 
+            // Process all journals in parallel
+            const journalPromises = []
             for (const link of journalLinks) {
                 const journalId = this.extractJournalId(link)
-                Logger.debug(`[${this.name}] Processing link with href: ${link.href}, extracted ID: ${journalId}`)
+                Logger.debug(`[${this.name}] Preparing parallel processing for journal ${journalId}`)
 
                 if (journalId && !this.processedJournals.has(journalId)) {
-                    await this.processJournal(journalId, link)
+                    // Add to parallel processing queue
+                    journalPromises.push(this.processJournalWithDeduplication(journalId, link))
                     this.processedJournals.add(journalId)
                 } else if (!journalId) {
                     Logger.warning(`[${this.name}] Could not extract journal ID from link: ${link.href}`)
                 }
             }
+
+            // Process all journals in parallel with controlled concurrency
+            const batchSize = 10 // Process 10 journals at a time to avoid overwhelming the API
+            Logger.info(`[${this.name}] Processing ${journalPromises.length} journals in batches of ${batchSize}`)
+            
+            for (let i = 0; i < journalPromises.length; i += batchSize) {
+                const batch = journalPromises.slice(i, i + batchSize)
+                Logger.debug(`[${this.name}] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(journalPromises.length / batchSize)} (${batch.length} journals)`)
+                
+                // Wait for this batch to complete before starting the next
+                await Promise.allSettled(batch)
+                
+                // Small delay between batches to be nice to the API
+                await new Promise(resolve => setTimeout(resolve, 100))
+            }
+
+            Logger.info(`[${this.name}] Completed processing all journals`)
         } catch (error) {
             Logger.error(`[${this.name}] Error processing journal list:`, error)
         }
@@ -167,7 +190,7 @@ export default class WarningTrianglesFeature extends BaseFeature {
         try {
             Logger.debug(`[${this.name}] Processing journal ${journalId}`)
 
-            // Collect journal data (same as old extension)
+            // Collect journal data
             const journalData = await this.collectJournalData(journalId)
 
             // Analyze the data for issues
@@ -182,29 +205,35 @@ export default class WarningTrianglesFeature extends BaseFeature {
                 Logger.debug(`[${this.name}] No issues found for journal ${journalId}, not adding triangles`)
             }
 
+            return issues
+
         } catch (error) {
             Logger.error(`[${this.name}] Error processing journal ${journalId}:`, error)
+            return []
         }
     }
 
     /**
-     * Collect all data for a journal using the same format as LessonDiscrepanciesFeature
+     * Collect all data for a journal using parallel requests
      */
     async collectJournalData(journalId) {
         try {
-            // Get journal basic info
-            const journalInfo = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true })
-            Logger.debug(`[${this.name}] Fetched journal info for ${journalId}`)
+            // Start all requests in parallel
+            const [journalInfo, journalEntries] = await Promise.all([
+                // Get journal basic info
+                this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true }),
+                // Get journal entries (use same parameters as LessonDiscrepanciesFeature)
+                this.api.tahvel.get(
+                    `/journals/${journalId}/journalEntriesByDate`,
+                    { allStudents: true },
+                    { cache: true }
+                )
+            ])
 
-            // Get journal entries (use same parameters as LessonDiscrepanciesFeature)
-            const journalEntries = await this.api.tahvel.get(
-                `/journals/${journalId}/journalEntriesByDate`,
-                { allStudents: true },
-                { cache: true }
-            )
+            Logger.debug(`[${this.name}] Fetched journal info for ${journalId}`)
             Logger.debug(`[${this.name}] Fetched ${journalEntries?.length || 0} journal entries for ${journalId}`)
 
-            // Get timetable data using the same method as LessonDiscrepanciesFeature
+            // Get timetable data (depends on journal info)
             const timetableEntries = await this.fetchTimetableDataForAnalysis(journalInfo)
             Logger.debug(`[${this.name}] Fetched ${timetableEntries?.length || 0} timetable entries for ${journalId}`)
 
@@ -276,21 +305,24 @@ export default class WarningTrianglesFeature extends BaseFeature {
     }
 
     /**
-     * Analyze journal data using LessonDiscrepanciesFeature's sophisticated logic
+     * Analyze journal data using LessonDiscrepanciesFeature's sophisticated logic with parallel processing
      */
     async analyzeJournalIssues(journalData) {
         const issues = []
 
         try {
             // Use LessonDiscrepanciesFeature's analysis methods
-            Logger.debug(`[${this.name}] Running lesson discrepancies analysis for journal ${journalData.info?.id}`)
+            Logger.debug(`[${this.name}] Running parallel analysis for journal ${journalData.info?.id}`)
 
-            // Find lesson discrepancies (missing lessons, count mismatches, etc.)
-            const discrepancies = await this.findLessonDiscrepancies(journalData, journalData.timetableData)
+            // Run both analyses in parallel
+            const [discrepancies, capacityProblems] = await Promise.all([
+                // Find lesson discrepancies (missing lessons, count mismatches, etc.)
+                this.findLessonDiscrepancies(journalData, journalData.timetableData),
+                // Find capacity type problems
+                this.getCapacityTypeProblems(journalData)
+            ])
+
             Logger.debug(`[${this.name}] Found ${discrepancies.length} lesson discrepancies`)
-
-            // Find capacity type problems
-            const capacityProblems = await this.getCapacityTypeProblems(journalData)
             Logger.debug(`[${this.name}] Found ${capacityProblems.length} capacity problems`)
 
             // Convert discrepancies to warning triangles
@@ -414,5 +446,41 @@ export default class WarningTrianglesFeature extends BaseFeature {
         triangle.setAttribute('data-issue-type', issue.type)
 
         return triangle
+    }
+
+    /**
+     * Process a journal with request deduplication
+     */
+    async processJournalWithDeduplication(journalId, linkElement) {
+        // Check if we already have an active request for this journal
+        if (this.activeRequests.has(journalId)) {
+            Logger.debug(`[${this.name}] Request for journal ${journalId} already in progress, waiting for existing request`)
+            try {
+                // Wait for the existing request to complete
+                const result = await this.activeRequests.get(journalId)
+                // Apply triangles if the existing request found issues
+                if (result && result.length > 0) {
+                    this.addWarningTriangles(linkElement, result)
+                }
+                return result
+            } catch (error) {
+                Logger.warning(`[${this.name}] Existing request for journal ${journalId} failed, starting new request`)
+            }
+        }
+
+        // Create new request promise
+        const requestPromise = this.processJournal(journalId, linkElement)
+        this.activeRequests.set(journalId, requestPromise)
+
+        try {
+            const result = await requestPromise
+            return result
+        } catch (error) {
+            Logger.error(`[${this.name}] Error processing journal ${journalId}:`, error)
+            return []
+        } finally {
+            // Clean up the active request
+            this.activeRequests.delete(journalId)
+        }
     }
 }
