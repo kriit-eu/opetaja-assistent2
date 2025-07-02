@@ -330,10 +330,17 @@ export default class WarningTrianglesFeature extends BaseFeature {
     async findLessonDiscrepancies(journalData, timetableData) {
         try {
             Logger.debug(`[${this.name}] Calling LessonDiscrepanciesFeature.findLessonDiscrepancies with ${journalData.entries?.length || 0} entries and ${timetableData?.length || 0} timetable events`)
-            // Delegate to the discrepancies analyzer
-            const result = await this.discrepanciesAnalyzer.findLessonDiscrepancies(journalData, timetableData)
+
+            // Add timeout to catch hanging calls
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('findLessonDiscrepancies timeout')), 10000)
+            })
+
+            const analysisPromise = this.discrepanciesAnalyzer.findLessonDiscrepancies(journalData, timetableData)
+
+            const result = await Promise.race([analysisPromise, timeoutPromise])
             Logger.debug(`[${this.name}] LessonDiscrepanciesFeature returned ${result?.length || 0} discrepancies`)
-            return result
+            return result || []
         } catch (error) {
             Logger.error(`[${this.name}] Error calling findLessonDiscrepancies:`, error)
             return []
