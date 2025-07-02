@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Emoji Warnings for Journal Issues</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .emoji-case {
+      margin-bottom: 1em;
+    }
+    .emoji-icon {
+      display: inline-block;
+      font-size: 2rem;
+      width: 1.2em;
+      height: 1.2em;
+      vertical-align: middle;
+    }
+    .desc {
+      display: inline-block;
+      margin-left: 0.5em;
+      vertical-align: middle;
+    }
+    .error-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2em;
+      background-color: #ffe5e5;
+      border: 1px solid #ff0000;
+      border-radius: 999px;
+      padding: 0 0.3em;
+      font-size: 13px;
+      height: 13px;
+      line-height: 1;
+    }
+    .pill-line {
+      display: flex;
+      align-items: center;
+      margin: 0.2em 0;
+    }
+    .pill-label {
+      width: 200px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="emoji-case">
+  <span class="emoji-icon">📅</span>
+  <span class="desc">Missing lessons based on timetable</span>
+</div>
+
+<div class="emoji-case">
+  <span class="emoji-icon">☑️</span>
+  <span class="desc">Checkbox mismatch for lesson type</span>
+</div>
+
+<div class="emoji-case">
+  <span class="emoji-icon">⭐</span>
+  <span class="desc">Final grades missing after all lessons entered</span>
+</div>
+
+<div class="emoji-case">
+  <span class="emoji-icon">📝</span>
+  <span class="desc">Independent work entries missing despite complete lessons</span>
+</div>
+
+<div class="emoji-case">
+  <span class="emoji-icon">⏰</span>
+  <span class="desc">Overdue independent work missing student grades</span>
+</div>
+
+<h2>Error Pills (Examples)</h2>
+<div class="pill-line"><span class="pill-label">Only timetable missing:</span><div class="error-pill">📅</div></div>
+<div class="pill-line"><span class="pill-label">Checkbox & final grade:</span><div class="error-pill">☑️ ⭐</div></div>
+<div class="pill-line"><span class="pill-label">Multiple issues:</span><div class="error-pill">📝 ⏰ 📅</div></div>
+<div class="pill-line"><span class="pill-label">Grade & deadline:</span><div class="error-pill">⭐ ⏰</div></div>
+<div class="pill-line"><span class="pill-label">Checkbox & work entry:</span><div class="error-pill">☑️ 📝</div></div>
+
+</body>
+</html>
