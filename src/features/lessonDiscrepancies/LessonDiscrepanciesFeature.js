@@ -2006,4 +2006,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       Logger.error(`[${this.name}] fix capacity error`, error)
     }
   }
+
+  // Public methods for use by WarningTrianglesFeature
+  async findLessonDiscrepancies(journalData, timetableData) {
+    return await this.#findLessonDiscrepancies(journalData, timetableData)
+  }
+
+  async getCapacityTypeProblems(journalData) {
+    return await this.#getCapacityTypeProblems(journalData)
+  }
 }

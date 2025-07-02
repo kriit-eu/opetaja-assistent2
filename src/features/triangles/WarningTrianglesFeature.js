@@ -1,13 +1,13 @@
 /**
  * Warning Triangles Feature - Shows warning triangles on journal list page
  * 
- * Based on the old extension's approach:
- * - Collects both journal entries and timetable data for each journal
- * - Shows warning triangles for missing lessons, discrepancies, etc.
+ * Uses LessonDiscrepanciesFeature's sophisticated analysis logic to accurately
+ * detect journal issues and show appropriate warning triangles.
  */
 
 import { BaseFeature } from '../../core/BaseFeature.js'
 import Logger from '../../services/Logger.js'
+import LessonDiscrepanciesFeature from '../lessonDiscrepancies/LessonDiscrepanciesFeature.js'
 
 export default class WarningTrianglesFeature extends BaseFeature {
     constructor() {
@@ -16,6 +16,9 @@ export default class WarningTrianglesFeature extends BaseFeature {
         this.name = 'WarningTrianglesFeature'
         this.journalCache = new Map()
         this.processedJournals = new Set()
+
+        // Create instance of LessonDiscrepanciesFeature to use its analysis methods
+        this.discrepanciesAnalyzer = new LessonDiscrepanciesFeature()
     }
 
     /**
@@ -24,10 +27,60 @@ export default class WarningTrianglesFeature extends BaseFeature {
     async activate() {
         Logger.info(`[${this.name}] Activating warning triangles feature`)
 
+        // Clear previous state when reactivating
+        this.processedJournals.clear()
+
         // Wait for page to be ready
         setTimeout(() => {
             this.processJournalList()
         }, 2000)
+
+        // Also listen for URL changes (navigation back to journals page)
+        this.setupNavigationListener()
+    }
+
+    /**
+     * Setup listener for navigation changes
+     */
+    setupNavigationListener() {
+        // Listen for URL changes (for SPA navigation)
+        let lastUrl = window.location.href
+
+        const checkUrlChange = () => {
+            const currentUrl = window.location.href
+            if (currentUrl !== lastUrl) {
+                lastUrl = currentUrl
+
+                // Check if we're on journals list page
+                if (currentUrl.includes('/#/journals')) {
+                    Logger.debug(`[${this.name}] Navigation detected back to journals page`)
+                    // Clear processed journals and reprocess after a delay
+                    this.processedJournals.clear()
+                    setTimeout(() => {
+                        this.processJournalList()
+                    }, 1000)
+                }
+            }
+        }
+
+        // Check for URL changes periodically
+        this.navigationInterval = setInterval(checkUrlChange, 500)
+
+        // Also listen for browser navigation events
+        window.addEventListener('popstate', () => {
+            setTimeout(checkUrlChange, 100)
+        })
+    }
+
+    /**
+     * Cleanup when feature is deactivated
+     */
+    onDeactivate() {
+        if (this.navigationInterval) {
+            clearInterval(this.navigationInterval)
+            this.navigationInterval = null
+        }
+        super.onDeactivate()
     }
 
     /**
@@ -46,6 +99,14 @@ export default class WarningTrianglesFeature extends BaseFeature {
                 Logger.debug(`[${this.name}] Found ${tableRows.length} table rows on page`)
                 const allLinks = document.querySelectorAll('a[href*="/journal/"]')
                 Logger.debug(`[${this.name}] Found ${allLinks.length} links containing "/journal/" on page`)
+                return
+            }
+
+            // Check if triangles are already present (avoid reprocessing if already done)
+            const existingTriangles = document.querySelectorAll('#WarningTrianglesWrapper')
+            if (existingTriangles.length > 0) {
+                Logger.debug(`[${this.name}] Warning triangles already present (${existingTriangles.length}), skipping reprocess`)
+                return
             }
 
             for (const link of journalLinks) {
@@ -110,11 +171,15 @@ export default class WarningTrianglesFeature extends BaseFeature {
             const journalData = await this.collectJournalData(journalId)
 
             // Analyze the data for issues
-            const issues = this.analyzeJournalIssues(journalData)
+            const issues = await this.analyzeJournalIssues(journalData)
+            Logger.debug(`[${this.name}] Analysis complete, found ${issues.length} issues for journal ${journalId}`)
 
             // Add warning triangles if there are issues
             if (issues.length > 0) {
+                Logger.info(`[${this.name}] Adding warning triangles for journal ${journalId}: ${issues.map(i => i.type).join(', ')}`)
                 this.addWarningTriangles(linkElement, issues)
+            } else {
+                Logger.debug(`[${this.name}] No issues found for journal ${journalId}, not adding triangles`)
             }
 
         } catch (error) {
@@ -123,53 +188,46 @@ export default class WarningTrianglesFeature extends BaseFeature {
     }
 
     /**
-     * Collect all data for a journal (journal entries + timetable data)
+     * Collect all data for a journal using the same format as LessonDiscrepanciesFeature
      */
     async collectJournalData(journalId) {
-        const data = {
-            id: journalId,
-            journalInfo: null,
-            journalEntries: [],
-            timetableEntries: [],
-            students: []
-        }
-
         try {
             // Get journal basic info
-            data.journalInfo = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true })
+            const journalInfo = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true })
             Logger.debug(`[${this.name}] Fetched journal info for ${journalId}`)
 
-            // Get journal entries
-            data.journalEntries = await this.api.tahvel.get(
+            // Get journal entries (use same parameters as LessonDiscrepanciesFeature)
+            const journalEntries = await this.api.tahvel.get(
                 `/journals/${journalId}/journalEntriesByDate`,
-                { allStudents: false },
+                { allStudents: true },
                 { cache: true }
             )
-            Logger.debug(`[${this.name}] Fetched ${data.journalEntries?.length || 0} journal entries for ${journalId}`)
+            Logger.debug(`[${this.name}] Fetched ${journalEntries?.length || 0} journal entries for ${journalId}`)
 
-            // Get timetable data using the working API endpoint
-            data.timetableEntries = await this.fetchTimetableData(journalId, data.journalInfo)
-            Logger.debug(`[${this.name}] Fetched ${data.timetableEntries?.length || 0} timetable entries for ${journalId}`)
+            // Get timetable data using the same method as LessonDiscrepanciesFeature
+            const timetableEntries = await this.fetchTimetableDataForAnalysis(journalInfo)
+            Logger.debug(`[${this.name}] Fetched ${timetableEntries?.length || 0} timetable entries for ${journalId}`)
 
-            // Get students
-            data.students = await this.api.tahvel.get(
-                `/journals/${journalId}/journalStudents`,
-                { allStudents: false },
-                { cache: true }
-            )
-            Logger.debug(`[${this.name}] Fetched ${data.students?.length || 0} students for ${journalId}`)
+            return {
+                info: journalInfo,
+                entries: journalEntries || [],
+                timetableData: timetableEntries || []
+            }
 
         } catch (error) {
             Logger.error(`[${this.name}] Error collecting data for journal ${journalId}:`, error)
+            return {
+                info: null,
+                entries: [],
+                timetableData: []
+            }
         }
-
-        return data
     }
 
     /**
-     * Fetch timetable data using the old extension's API endpoint
+     * Fetch timetable data using the same method as LessonDiscrepanciesFeature
      */
-    async fetchTimetableData(journalId, journalInfo) {
+    async fetchTimetableDataForAnalysis(journalInfo) {
         if (!journalInfo || !journalInfo.journalTeachers?.[0]?.id) {
             return []
         }
@@ -178,19 +236,10 @@ export default class WarningTrianglesFeature extends BaseFeature {
         const schoolId = journalInfo.school?.id || 9
 
         try {
-            // Use study year dates from journal info
-            let fromDate, thruDate
-            if (journalInfo.studyYearStartDate && journalInfo.studyYearEndDate) {
-                fromDate = journalInfo.studyYearStartDate
-                thruDate = journalInfo.studyYearEndDate
-            } else {
-                fromDate = "2024-07-29T00:00:00Z"
-                thruDate = "2025-08-31T00:00:00Z"
-            }
+            // Use the same date calculation as LessonDiscrepanciesFeature
+            const { from, thru } = this.getCurrentStudyYearDates()
 
-            // Use the old extension's API endpoint format
-            const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${fromDate}&lang=ET&teachers=${teacherId}&thru=${thruDate}`
-
+            const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherId}&thru=${thru}`
             Logger.debug(`[${this.name}] Fetching timetable data from: ${endpoint}`)
 
             const data = await this.api.tahvel.get(endpoint, {}, { cache: true })
@@ -200,118 +249,111 @@ export default class WarningTrianglesFeature extends BaseFeature {
                 return []
             }
 
-            Logger.info(`[${this.name}] Fetched ${data.timetableEvents.length} timetable entries for journal ${journalId}`)
+            // Filter to only events for this journal
+            const journalEvents = data.timetableEvents.filter(event =>
+                event.journalId === journalInfo.id
+            )
 
-            // Filter events with journalId and transform to our format
-            return data.timetableEvents
-                .filter(event => event.journalId !== null)
-                .map(event => ({
-                    id: event.id,
-                    name: event.nameEt,
-                    date: event.date,
-                    timeStart: event.timeStart,
-                    timeEnd: event.timeEnd,
-                    firstLessonStartNumber: this.calculateLessonNumber(event),
-                    journalId: event.journalId,
-                    rooms: event.rooms || []
-                }))
+            Logger.debug(`[${this.name}] Fetched ${journalEvents.length} timetable entries for journal ${journalInfo.id}`)
+            return journalEvents
 
         } catch (error) {
-            Logger.error(`[${this.name}] Error fetching timetable data for journal ${journalId}:`, error)
+            Logger.error(`[${this.name}] Error fetching timetable data:`, error)
             return []
         }
     }
 
     /**
-     * Calculate lesson number from timetable event
+     * Get current study year dates (same as LessonDiscrepanciesFeature)
      */
-    calculateLessonNumber(event) {
-        // Simple calculation based on time - can be improved
-        if (!event.timeStart) return 1
-
-        const hour = parseInt(event.timeStart.split(':')[0])
-        if (hour < 9) return 1
-        if (hour < 10) return 2
-        if (hour < 11) return 3
-        if (hour < 12) return 4
-        if (hour < 13) return 5
-        if (hour < 14) return 6
-        return 7
+    getCurrentStudyYearDates() {
+        const now = new Date()
+        const studyYear = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear()
+        return {
+            from: new Date(Date.UTC(studyYear, 8, 1)).toISOString(),
+            thru: new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
+        }
     }
 
     /**
-     * Analyze journal data for issues (same logic as old extension)
+     * Analyze journal data using LessonDiscrepanciesFeature's sophisticated logic
      */
-    analyzeJournalIssues(journalData) {
+    async analyzeJournalIssues(journalData) {
         const issues = []
 
-        if (!journalData.journalEntries || !journalData.timetableEntries) {
+        try {
+            // Use LessonDiscrepanciesFeature's analysis methods
+            Logger.debug(`[${this.name}] Running lesson discrepancies analysis for journal ${journalData.info?.id}`)
+
+            // Find lesson discrepancies (missing lessons, count mismatches, etc.)
+            const discrepancies = await this.findLessonDiscrepancies(journalData, journalData.timetableData)
+            Logger.debug(`[${this.name}] Found ${discrepancies.length} lesson discrepancies`)
+
+            // Find capacity type problems
+            const capacityProblems = await this.getCapacityTypeProblems(journalData)
+            Logger.debug(`[${this.name}] Found ${capacityProblems.length} capacity problems`)
+
+            // Convert discrepancies to warning triangles
+            if (discrepancies.length > 0) {
+                issues.push({
+                    type: 'lessonDiscrepancies',
+                    count: discrepancies.length,
+                    message: `Erinevused tunniplaaniga (${discrepancies.length})`,
+                    color: '#f8d00f',
+                    icon: '⚠'
+                })
+            }
+
+            // Convert capacity problems to warning triangles  
+            if (capacityProblems.length > 0) {
+                issues.push({
+                    type: 'capacityProblems',
+                    count: capacityProblems.length,
+                    message: `Ebaloogilised sissekande kombinatsioonid (${capacityProblems.length})`,
+                    color: '#dc3545',
+                    icon: '❌'
+                })
+            }
+
+            Logger.debug(`[${this.name}] Found ${issues.length} total issues for journal ${journalData.info?.id}`)
             return issues
+
+        } catch (error) {
+            Logger.error(`[${this.name}] Error analyzing journal issues:`, error)
+            return []
         }
+    }
 
-        // Group entries by date for comparison
-        const journalDates = new Set()
-        const timetableDates = new Set()
-
-        // Process journal entries
-        journalData.journalEntries.forEach(entry => {
-            if (entry.entryType === 'SISSEKANNE_T' && entry.entryDate) {
-                const date = this.formatDate(entry.entryDate)
-                journalDates.add(date)
-            }
-        })
-
-        // Process timetable entries  
-        journalData.timetableEntries.forEach(entry => {
-            if (entry.date || entry.timeTableDate) {
-                const date = this.formatDate(entry.date || entry.timeTableDate)
-                // Only consider past dates for missing lesson detection
-                if (new Date(date) < new Date()) {
-                    timetableDates.add(date)
-                }
-            }
-        })
-
-        // Check for missing lessons (lessons in timetable but not in journal)
-        const missingLessonDates = []
-        timetableDates.forEach(date => {
-            if (!journalDates.has(date)) {
-                missingLessonDates.push(date)
-            }
-        })
-
-        // Check for discrepancies (different lesson counts or times)
-        const discrepancies = []
-        journalDates.forEach(date => {
-            if (timetableDates.has(date)) {
-                // Could add more detailed comparison logic here
-                // For now, just check if dates exist in both
-            }
-        })
-
-        // Add issues based on analysis
-        if (missingLessonDates.length > 0) {
-            issues.push({
-                type: 'missingLessons',
-                count: missingLessonDates.length,
-                message: 'Päevikus pole ühtegi toimunud tunni sissekannet',
-                color: '#f8d00f',
-                icon: '⚠'
-            })
+    /**
+     * Use LessonDiscrepanciesFeature's sophisticated discrepancy detection
+     */
+    async findLessonDiscrepancies(journalData, timetableData) {
+        try {
+            Logger.debug(`[${this.name}] Calling LessonDiscrepanciesFeature.findLessonDiscrepancies with ${journalData.entries?.length || 0} entries and ${timetableData?.length || 0} timetable events`)
+            // Delegate to the discrepancies analyzer
+            const result = await this.discrepanciesAnalyzer.findLessonDiscrepancies(journalData, timetableData)
+            Logger.debug(`[${this.name}] LessonDiscrepanciesFeature returned ${result?.length || 0} discrepancies`)
+            return result
+        } catch (error) {
+            Logger.error(`[${this.name}] Error calling findLessonDiscrepancies:`, error)
+            return []
         }
+    }
 
-        if (discrepancies.length > 0) {
-            issues.push({
-                type: 'discrepancies',
-                count: discrepancies.length,
-                message: 'Erinevused päeviku sissekannete ja tunniplaani vahel',
-                color: 'grey',
-                icon: '⚠'
-            })
+    /**
+     * Use LessonDiscrepanciesFeature's capacity type problem detection
+     */
+    async getCapacityTypeProblems(journalData) {
+        try {
+            Logger.debug(`[${this.name}] Calling LessonDiscrepanciesFeature.getCapacityTypeProblems`)
+            // Delegate to the discrepancies analyzer
+            const result = await this.discrepanciesAnalyzer.getCapacityTypeProblems(journalData)
+            Logger.debug(`[${this.name}] LessonDiscrepanciesFeature returned ${result?.length || 0} capacity problems`)
+            return result
+        } catch (error) {
+            Logger.error(`[${this.name}] Error calling getCapacityTypeProblems:`, error)
+            return []
         }
-
-        Logger.debug(`[${this.name}] Found ${issues.length} issues for journal ${journalData.id}`)
-        return issues
     }
 
     /**
@@ -365,14 +407,5 @@ export default class WarningTrianglesFeature extends BaseFeature {
         triangle.setAttribute('data-issue-type', issue.type)
 
         return triangle
-    }
-
-    /**
-     * Format date to YYYY-MM-DD
-     */
-    formatDate(dateStr) {
-        if (!dateStr) return null
-        const date = new Date(dateStr)
-        return date.toISOString().split('T')[0]
     }
 }
