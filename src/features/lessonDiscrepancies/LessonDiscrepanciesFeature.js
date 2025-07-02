@@ -753,6 +753,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       addMissing: () => this.#handleAddMissingEntry(data.date, data.startLesson, data.lessonCount, data),
       editEntry: () => this.#handleEditEntry(data.date, data.entryId, data.type, data),
       fixCapacity: () => this.#handleFixCapacity(data.date, data.entryId, data),
+      openEntry: () => this.#handleOpenEntry(data.entryId, data),
     }
 
     const handler = actionHandlers[data.handler]
@@ -1677,7 +1678,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         },
         expectedState: {
           auditoorne: false,
-          iseseisev: true,
+          iseseiv: true,
           praktiline: false,
           teacher: true,
           reasoning: 'Journal must have MAHT_i capacity configured for independent work entries',
@@ -1702,7 +1703,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         },
         expectedState: {
           auditoorne: true,
-          iseseisev: false,
+          iseseiv: false,
           praktiline: false,
           teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
@@ -1724,7 +1725,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         },
         expectedState: {
           auditoorne: true,
-          iseseisev: false,
+          iseseiv: false,
           praktiline: false,
           teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
@@ -1804,7 +1805,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: both checkboxes selected
-    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseisev
+    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseiv
     if (hasBothCheckboxes) {
       return {
         entry,
@@ -1819,7 +1820,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_T (lesson) with MAHT_i (independent work)
-    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseisev && !actualState.auditoorne
+    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseiv && !actualState.auditoorne
     if (isLessonWithIndependentWork) {
       return {
         entry,
@@ -1834,7 +1835,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_I (independent work) with MAHT_a (auditory learning)
-    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseisev
+    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseiv
     if (isIndependentWorkWithAuditory) {
       return {
         entry,
@@ -2006,7 +2007,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       } else if (entry.validationResult.errorType === 'missing_iseseisev_checkbox') {
         message = 'Iseseisev õpe puudub'
       } else if (entry.validationResult.errorType === 'journal_missing_independent_work') {
-        message = 'Vigane sissekanne: päevikule pole määratud iseiseivaid töid'
+        message = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid'
       } else if (entry.validationResult.errorType === 'missing_praktiline_checkbox') {
         message = 'Praktiline töö puudub'
       }
@@ -2019,7 +2020,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         date: this.#formatDate(entry.entryDate),
       })
       : entry.validationResult?.errorType === 'journal_missing_independent_work'
-        ? null // No action button for journal configuration issues
+        ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
+          handler: 'openEntry',
+          entryId: entry.id,
+          date: this.#formatDate(entry.entryDate),
+        })
         : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
           handler: 'fixCapacity',
           entryId: entry.id,
@@ -2384,7 +2389,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       } else if (validationResult?.errorType === 'missing_iseseisev_checkbox') {
         highlightMessage = 'Iseseisev õpe linnuke puudub. Palun lülita see sisse!'
       } else if (validationResult?.errorType === 'journal_missing_independent_work') {
-        highlightMessage = 'Vigane sissekanne: päevikule pole määratud iseiseivaid töid. Kontrolli päeviku seadistusi!'
+        highlightMessage = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid. Kontrolli päeviku seadistusi!'
       } else if (validationResult?.errorType === 'missing_praktiline_checkbox') {
         highlightMessage = 'Praktiline töö linnuke puudub. Palun lülita see sisse!'
       } else if (entryType === 'SISSEKANNE_T') {
@@ -2715,5 +2720,218 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#dialogCloseObserver.disconnect()
       this.#dialogCloseObserver = null
     }
+  }
+
+  /**
+   * Handle opening a journal entry and highlighting the entry type field
+   * @param {string} entryId - Entry ID
+   * @param {Object} data - Button data object
+   */
+  async #handleOpenEntry(entryId, data = {}) {
+    try {
+      const actualEntryId = entryId || data.entryid
+      Logger.debug(`[${this.name}] handleOpenEntry called with entryId=${entryId}, actualEntryId=${actualEntryId}`)
+
+      // Find the journal entry element and click it to open
+      const element = await this.#findJournalEntryElement(actualEntryId, data.date)
+      if (!element) {
+        Logger.error(`[${this.name}] Could not find journal entry element for ID: ${actualEntryId}`)
+        return
+      }
+
+      // Click the element to open the entry dialog
+      await this.#clickElement(element)
+
+      // Wait for the dialog to open
+      await this.#waitForElement('md-dialog', 5000)
+
+      // Find and highlight the "Sissekande liik" (Entry type) field
+      setTimeout(() => {
+        this.#highlightEntryTypeField()
+      }, 500) // Small delay to ensure dialog is fully loaded
+
+    } catch (error) {
+      Logger.error(`[${this.name}] Error in handleOpenEntry:`, error)
+    }
+  }
+
+  /**
+   * Find and highlight the entry type field with a red box
+   */
+  #highlightEntryTypeField() {
+    try {
+      // Look for entry type related elements
+      const entryTypeSelectors = [
+        'md-select[ng-model*="entryType"]',
+        'md-select[ng-model*="EntryType"]',
+        'md-select[aria-label*="sissekande liik"]',
+        'md-select[aria-label*="Sissekande liik"]',
+        'select[ng-model*="entryType"]',
+        '[ng-model*="entryType"]'
+      ]
+
+      let entryTypeElement = null
+
+      for (const selector of entryTypeSelectors) {
+        entryTypeElement = document.querySelector(selector)
+        if (entryTypeElement) {
+          Logger.debug(`[${this.name}] Found entry type element with selector: ${selector}`)
+          break
+        }
+      }
+
+      // If not found, try finding by text content
+      if (!entryTypeElement) {
+        const labels = document.querySelectorAll('label, .md-input-label, md-input-container label')
+        for (const label of labels) {
+          if (label.textContent.toLowerCase().includes('sissekande liik') || 
+              label.textContent.toLowerCase().includes('sissekannetüüp')) {
+            // Look for nearby input/select elements
+            const parent = label.closest('md-input-container, .md-input-container, md-select, .form-group')
+            if (parent) {
+              entryTypeElement = parent.querySelector('md-select, select, input') || parent
+              Logger.debug(`[${this.name}] Found entry type element by label text`)
+              break
+            }
+          }
+        }
+      }
+
+      if (entryTypeElement) {
+        // Create and apply red highlight
+        const highlightBox = document.createElement('div')
+        highlightBox.dataset.entryTypeHighlight = 'true'
+        highlightBox.style.cssText = `
+          position: absolute;
+          border: 3px solid #ff0000;
+          background: rgba(255, 0, 0, 0.1);
+          pointer-events: none;
+          z-index: 10000;
+          border-radius: 4px;
+          box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+        `
+
+        // Position the highlight box over the element
+        const rect = entryTypeElement.getBoundingClientRect()
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft
+
+        highlightBox.style.top = (rect.top + scrollTop - 2) + 'px'
+        highlightBox.style.left = (rect.left + scrollLeft - 2) + 'px'
+        highlightBox.style.width = (rect.width + 4) + 'px'
+        highlightBox.style.height = (rect.height + 4) + 'px'
+
+        document.body.appendChild(highlightBox)
+
+        // Add tooltip message
+        const tooltip = document.createElement('div')
+        tooltip.dataset.entryTypeTooltip = 'true'
+        tooltip.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: #ff0000;
+          color: white;
+          padding: 12px 18px;
+          border-radius: 8px;
+          z-index: 10001;
+          font-weight: bold;
+          font-size: 14px;
+          max-width: 350px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+          border: 2px solid #ffffff;
+          line-height: 1.4;
+        `
+        tooltip.textContent = 'Vigane sissekanne: Kontrollige sissekande liiki! See peaks olema õige tüüp päeviku seadistuste järgi.'
+        document.body.appendChild(tooltip)
+
+        // Add cleanup listener for dialog close
+        this.#addEntryTypeHighlightCleanup()
+
+        Logger.debug(`[${this.name}] Entry type field highlighted`)
+      } else {
+        Logger.warn(`[${this.name}] Could not find entry type field to highlight`)
+      }
+
+    } catch (error) {
+      Logger.error(`[${this.name}] Error highlighting entry type field:`, error)
+    }
+  }
+
+  /**
+   * Add listeners to clean up entry type highlights when dialog is closed or entry type is clicked
+   */
+  #addEntryTypeHighlightCleanup() {
+    const cleanupHighlights = () => {
+      // Remove highlight box
+      document.querySelectorAll('[data-entry-type-highlight="true"]').forEach(el => el.remove())
+      // Remove tooltip
+      document.querySelectorAll('[data-entry-type-tooltip="true"]').forEach(el => el.remove())
+    }
+
+    // Listen for clicks on entry type elements to remove highlight when user interacts
+    const addEntryTypeClickListeners = () => {
+      const entryTypeSelectors = [
+        'md-select[ng-model*="entryType"]',
+        'md-select[ng-model*="EntryType"]',
+        'md-select[aria-label*="sissekande liik"]',
+        'md-select[aria-label*="Sissekande liik"]',
+        'select[ng-model*="entryType"]',
+        '[ng-model*="entryType"]'
+      ]
+
+      entryTypeSelectors.forEach(selector => {
+        const element = document.querySelector(selector)
+        if (element && !element.dataset.highlightCleanupAdded) {
+          element.dataset.highlightCleanupAdded = 'true'
+          element.addEventListener('click', cleanupHighlights, { once: true })
+          element.addEventListener('focus', cleanupHighlights, { once: true })
+          Logger.debug(`[${this.name}] Added cleanup listener to entry type element: ${selector}`)
+        }
+      })
+
+      // Also look for entry type elements by label text
+      const labels = document.querySelectorAll('label, .md-input-label, md-input-container label')
+      labels.forEach(label => {
+        if (label.textContent.toLowerCase().includes('sissekande liik') || 
+            label.textContent.toLowerCase().includes('sissekannetüüp')) {
+          const parent = label.closest('md-input-container, .md-input-container, md-select, .form-group')
+          if (parent) {
+            const entryTypeElement = parent.querySelector('md-select, select, input')
+            if (entryTypeElement && !entryTypeElement.dataset.highlightCleanupAdded) {
+              entryTypeElement.dataset.highlightCleanupAdded = 'true'
+              entryTypeElement.addEventListener('click', cleanupHighlights, { once: true })
+              entryTypeElement.addEventListener('focus', cleanupHighlights, { once: true })
+              Logger.debug(`[${this.name}] Added cleanup listener to entry type element found by label`)
+            }
+          }
+        }
+      })
+    }
+
+    // Add entry type click listeners with a small delay to ensure elements are loaded
+    setTimeout(addEntryTypeClickListeners, 100)
+
+    // Listen for dialog close
+    const dialog = document.querySelector('md-dialog')
+    if (dialog) {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'childList') {
+            mutation.removedNodes.forEach((node) => {
+              if (node.nodeType === Node.ELEMENT_NODE && 
+                  (node.matches('md-dialog') || node.querySelector('md-dialog'))) {
+                cleanupHighlights()
+                observer.disconnect()
+              }
+            })
+          }
+        })
+      })
+      observer.observe(document.body, { childList: true, subtree: true })
+    }
+
+    // Also clean up after 30 seconds as fallback
+    setTimeout(cleanupHighlights, 30000)
   }
 }
