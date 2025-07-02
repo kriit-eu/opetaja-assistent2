@@ -26,6 +26,10 @@ effort and ensures data consistency across systems.
 - **Visual Indicators**: Extension activity indicator in the Tahvel interface
 - **Caching System**: Intelligent caching to prevent redundant API calls
 - **Error Handling**: Comprehensive error logging and user feedback
+- **Lesson Discrepancies**: Detects and displays discrepancies between the timetable and journal entries for lessons, and validates lesson capacity types.
+  - Highlights missing or mismatched lessons between the timetable and journal.
+  - Performs background and table-based validation of lesson capacity (e.g., “auditoorne”/“independent work”).
+  - Integrates with the UI to allow fixing issues directly from the discrepancies table.
 
 #### Planned (TODO):
 - **Single Journal Features**: Features for individual journal pages
