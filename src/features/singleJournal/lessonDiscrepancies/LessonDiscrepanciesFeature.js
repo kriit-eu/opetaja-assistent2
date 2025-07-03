@@ -1,6 +1,6 @@
-import { BaseFeature } from '../../core/BaseFeature.js'
-import Logger from '../../services/Logger.js'
-import { cacheService } from '../../services/CacheService.js'
+import { BaseFeature } from '../../../core/BaseFeature.js'
+import Logger from '../../../services/Logger.js'
+import { cacheService } from '../../../services/CacheService.js'
 
 const HEX = {
   green: ['#28a745', '#218838', '#fff'],
