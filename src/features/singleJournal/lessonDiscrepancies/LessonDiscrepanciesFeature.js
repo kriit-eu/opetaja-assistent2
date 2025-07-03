@@ -2934,39 +2934,4 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Also clean up after 30 seconds as fallback
     setTimeout(cleanupHighlights, 30000)
   }
-
-  // --- Public methods for testing and integration ---
-  extractJournalId() {
-    return this.#extractJournalId();
-  }
-  async clearStaleCache() {
-    return await this.#clearStaleCache();
-  }
-  async delay(ms) {
-    return await this.#delay(ms);
-  }
-  async fetchJournalAndTimetableData(journalId, forceRefresh = false) {
-    return await this.#fetchJournalAndTimetableData(journalId, forceRefresh);
-  }
-  async fetchTimetableData(info, forceRefresh = false) {
-    return await this.#fetchTimetableData(info, forceRefresh);
-  }
-  async fetchLessonTimes(schoolId) {
-    return await this.#fetchLessonTimes(schoolId);
-  }
-  async calculateLessonNumber(timeStart, schoolId) {
-    return await this.#calculateLessonNumber(timeStart, schoolId);
-  }
-  aggregateJournalEntries(entries) {
-    return this.#aggregateJournalEntries(entries);
-  }
-  async aggregateTimetableEvents(events, schoolId) {
-    return await this.#aggregateTimetableEvents(events, schoolId);
-  }
-  async findLessonDiscrepancies(journalData, timetableData) {
-    return await this.#findLessonDiscrepancies(journalData, timetableData);
-  }
-  async getCapacityTypeProblems(journalData) {
-    return await this.#getCapacityTypeProblems(journalData);
-  }
 }
