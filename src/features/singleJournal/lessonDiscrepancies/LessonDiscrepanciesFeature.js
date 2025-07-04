@@ -403,11 +403,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #createPill = (text, color, backgroundColor) =>
-    `<span style="background-color:${backgroundColor};color:${color};font-weight:bold;font-size:14px;padding:4px 8px;">${text}</span>`
+  #createPill = (text, color, backgroundColor, textDecoration = 'none') =>
+    `<span style="background-color:${backgroundColor};color:${color};font-weight:bold;font-size:14px;padding:4px 8px;text-decoration:${textDecoration};">${text}</span>`
 
   #createDiffPill = (current, correct) => {
-    const currentPill = this.#createPill(current, '#721c24', '#f8d7da')
+    // Add strikethrough to the red (current) value
+    const currentPill = this.#createPill(current, '#721c24', '#f8d7da', 'line-through')
     const correctPill = this.#createPill(correct, '#155724', '#d1edcc')
     const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
     return `<div style="${style}">${currentPill}${correctPill}</div>`
@@ -629,9 +630,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       'margin:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
 
     // Title bar
-    const titleBar = `<div style="display:flex;align-items:center;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
-      <span style="font-size:20px;margin-right:10px;">🎓</span>
-      <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
+    const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
+      <div style="display:flex;align-items:center;">
+        <span style="font-size:20px;margin-right:10px;">🎓</span>
+        <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
+      </div>
+      <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
+        Probleemid sissekannetega
+      </div>
     </div>`
 
     // Timetable discrepancies section
@@ -692,7 +698,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
     // noinspection CssUnknownProperty
-    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
+    const tableHead = `<thead><tr style="background:#f9f9f9"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
 
     return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
   }
@@ -2478,9 +2484,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           checkbox.textContent.includes('Iseseisev õpe'))
 
         // Uncheck and highlight Iseseisev õpe in red if checked
-        if (iseseisvCheckbox && iseseisvCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseisvCheckbox)
-          this.#highlightProblematicElements([iseseisvCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
+        if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseivCheckbox)
+          this.#highlightProblematicElements([iseseivCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
         }
         // Check and highlight Praktiline töö in green if not checked
         if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') !== 'true') {

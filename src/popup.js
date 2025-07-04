@@ -22,6 +22,24 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 })
 
+// Helper to parse DD.MM.YYYY to Date
+function parseEuDate (str) {
+  if (!/^[0-9]{2}\.[0-9]{2}\.[0-9]{4}$/.test(str)) return null
+  const [day, month, year] = str.split('.').map(Number)
+  const d = new Date(year, month - 1, day)
+  // Check for invalid dates (e.g. 32.13.2025)
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null
+  return d
+}
+
+// Format date for display
+function formatDisplayDate (date) {
+  const day = date.getDate().toString().padStart(2, '0')
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}.${month}.${year}`
+}
+
 /**
  * Initialize the popup
  */
@@ -39,6 +57,9 @@ function initPopup () {
   const errorLogElement = document.getElementById('error-log')
   const viewCacheDetailsButton = document.getElementById('view-cache-details')
   const refreshCacheStatsButton = document.getElementById('refresh-cache-stats')
+  const showFutureSubjectsButton = document.getElementById('show-future-subjects')
+  const subjectsContainer = document.getElementById('subjects-container')
+  const comparisonDateInput = document.getElementById('comparison-date')
 
   // Check if all elements are found
   if (!debugModeCheckbox) throw new Error('Debug mode checkbox not found')
@@ -51,6 +72,9 @@ function initPopup () {
   if (!saveKriitSettingsButton) throw new Error('Save Kriit settings button not found')
   if (!saveStatusElement) throw new Error('Save status element not found')
   if (!errorLogElement) throw new Error('Error log element not found')
+  if (!showFutureSubjectsButton) throw new Error('Show future subjects button not found')
+  if (!subjectsContainer) throw new Error('Subjects container not found')
+  if (!comparisonDateInput) throw new Error('Comparison date input not found')
 
   // Set version from manifest
   try {
@@ -79,6 +103,45 @@ function initPopup () {
     // Set values
     kriitApiUrlInput.value = result[KRIIT_API_URL_KEY] || ''
     kriitApiKeyInput.value = result[KRIIT_API_KEY_KEY] || ''
+  })
+
+  // Initialize comparison date with today's date in DD.MM.YYYY
+  const today = new Date()
+  comparisonDateInput.value = formatDisplayDate(today)
+
+  // On load, initialize comparison date from storage if present
+  chrome.storage.local.get(['OA_comparisonDate'], function (result) {
+    const dateStr = result['OA_comparisonDate']
+    if (dateStr && parseEuDate(dateStr)) {
+      comparisonDateInput.value = dateStr
+    } else {
+      const today = new Date()
+      comparisonDateInput.value = formatDisplayDate(today)
+      chrome.storage.local.set({ 'OA_comparisonDate': comparisonDateInput.value })
+    }
+  })
+
+  // Add event listener for date change/blur to validate, save, and reset if empty
+  comparisonDateInput.addEventListener('blur', function () {
+    const val = comparisonDateInput.value.trim()
+    if (!val) {
+      // If empty, reset to today and save
+      const today = new Date()
+      const todayStr = formatDisplayDate(today)
+      comparisonDateInput.value = todayStr
+      chrome.storage.local.set({ 'OA_comparisonDate': todayStr })
+      comparisonDateInput.style.borderColor = ''
+      showError('')
+      return
+    }
+    if (!parseEuDate(val)) {
+      comparisonDateInput.style.borderColor = 'red'
+      showError('Kuupäev peab olema kujul DD.MM.YYYY')
+    } else {
+      comparisonDateInput.style.borderColor = ''
+      showError('')
+      chrome.storage.local.set({ 'OA_comparisonDate': val })
+    }
   })
 
   // Add event listeners
@@ -134,6 +197,16 @@ function initPopup () {
     } catch (error) {
       console.error('Error refreshing cache statistics:', error)
       showError('Failed to refresh cache statistics: ' + error.message)
+    }
+  })
+
+  // Add event listeners for subjects
+  showFutureSubjectsButton.addEventListener('click', function () {
+    try {
+      showFutureSubjects()
+    } catch (error) {
+      console.error('Error showing future subjects:', error)
+      showError('Failed to show future subjects: ' + error.message)
     }
   })
 
@@ -373,6 +446,149 @@ function formatAge (minutes) {
 }
 
 /**
+ * Show future subjects with upcoming lessons
+ */
+function showFutureSubjects () {
+  const subjectsContainer = document.getElementById('subjects-container')
+  const subjectsLoading = document.getElementById('subjects-loading')
+  const subjectsContent = document.getElementById('subjects-content')
+  const comparisonDateInput = document.getElementById('comparison-date')
+
+  // Show the container and loading state
+  subjectsContainer.style.display = 'block'
+  subjectsLoading.style.display = 'block'
+  subjectsContent.style.display = 'none'
+
+  // Get the selected comparison date in DD.MM.YYYY and convert to ISO
+  const comparisonDate = comparisonDateInput.value.trim()
+  let isoDate = ''
+  if (comparisonDate) {
+    const d = parseEuDate(comparisonDate)
+    if (!d) {
+      subjectsLoading.style.display = 'none'
+      subjectsContent.innerHTML = '<div style="color: red;">Vigane kuupäev. Kasuta DD.MM.YYYY</div>'
+      subjectsContent.style.display = 'block'
+      return
+    }
+    isoDate = d.toISOString().split('T')[0]
+  } else {
+    const d = new Date()
+    isoDate = d.toISOString().split('T')[0]
+  }
+
+  // Send message to background script to fetch future subjects
+  chrome.runtime.sendMessage({
+    action: 'getFutureSubjects',
+    comparisonDate: isoDate
+  }, function (response) {
+    subjectsLoading.style.display = 'none'
+
+    if (!response || response.status !== 'success') {
+      subjectsContent.innerHTML = '<div style="color: red;">Viga: ' + (response?.message || 'Tundmatu viga') + '</div>'
+      subjectsContent.style.display = 'block'
+      return
+    }
+
+    displaySubjects(response.data, isoDate)
+    subjectsContent.style.display = 'block'
+  })
+}
+
+/**
+ * Display subjects in the container
+ * @param {Array} subjects - Array of subject objects
+ * @param {string} comparisonDate - The comparison date in YYYY-MM-DD format
+ */
+function displaySubjects (subjects, comparisonDate) {
+  const subjectsContent = document.getElementById('subjects-content')
+
+  if (!subjects || subjects.length === 0) {
+    subjectsContent.innerHTML = '<div style="color: #666;">Tulevasi tunde ei leitud.</div>'
+    return
+  }
+
+  // Use the provided comparison date or today's date
+  const compareDate = comparisonDate ? new Date(comparisonDate) : new Date()
+  compareDate.setHours(0, 0, 0, 0)
+
+  // Group subjects by name and count future lessons
+  const subjectStats = {}
+
+  subjects.forEach(lesson => {
+    const lessonDate = new Date(lesson.date)
+    lessonDate.setHours(0, 0, 0, 0)
+
+    if (lessonDate >= compareDate) {
+      const subjectName = lesson.nameEt || lesson.name || 'Nimetu aine'
+      if (!subjectStats[subjectName]) {
+        subjectStats[subjectName] = {
+          count: 0,
+          nextLesson: lessonDate,
+          lessons: [],
+          teachers: new Set()
+        }
+      }
+      subjectStats[subjectName].count++
+      subjectStats[subjectName].lessons.push(lesson)
+
+      // Track teachers (if available in the lesson data)
+      if (lesson.teacherName) {
+        subjectStats[subjectName].teachers.add(lesson.teacherName)
+      }
+
+      // Keep track of the next lesson date
+      if (lessonDate < subjectStats[subjectName].nextLesson) {
+        subjectStats[subjectName].nextLesson = lessonDate
+      }
+    }
+  })
+
+  // Sort subjects by next lesson date
+  const sortedSubjects = Object.entries(subjectStats)
+    .sort(([, a], [, b]) => a.nextLesson - b.nextLesson)
+
+  // Create HTML
+  const selectedDateStr = formatDisplayDate(compareDate)
+  let html = `<div style="margin-bottom: 10px;"><strong>Kõigi õpetajate tulevaste tundide ained (alates ${selectedDateStr}):</strong></div>`
+
+  if (sortedSubjects.length === 0) {
+    html += `<div style="color: #666;">Tulevasi tunde ei leitud alates ${selectedDateStr}.</div>`
+  } else {
+    html += `<div style="margin-bottom: 10px; font-size: 12px; color: #666;">
+      Kokku ${sortedSubjects.length} erinevat ainet
+    </div>`
+
+    html += '<div style="display: flex; flex-direction: column; gap: 8px;">'
+
+    sortedSubjects.forEach(([subjectName, stats]) => {
+      const nextLessonStr = formatDisplayDate(stats.nextLesson)
+      const plural = stats.count === 1 ? 'tund' : 'tundi'
+      const teacherCount = stats.teachers.size
+      const teacherText = teacherCount > 0 ? ` • ${teacherCount} õpetajat` : ''
+
+      html += `
+        <div style="
+          border: 1px solid #ddd; 
+          border-radius: 4px; 
+          padding: 8px; 
+          background-color: white;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        ">
+          <div style="font-weight: bold; margin-bottom: 4px;">${subjectName}</div>
+          <div style="font-size: 11px; color: #666;">
+            ${stats.count} ${plural} • Järgmine: ${nextLessonStr}${teacherText}
+          </div>
+        </div>
+      `
+    })
+
+    html += '</div>'
+  }
+
+  subjectsContent.innerHTML = html
+}
+
+/**
  * Clear all cache items
  */
 function clearCache () {
@@ -413,7 +629,12 @@ function clearCache () {
 function showError (message) {
   const errorLogElement = document.getElementById('error-log')
   if (errorLogElement) {
-    errorLogElement.textContent = message
-    errorLogElement.style.display = 'block'
+    if (message) {
+      errorLogElement.textContent = message
+      errorLogElement.style.display = 'block'
+    } else {
+      errorLogElement.textContent = ''
+      errorLogElement.style.display = 'none'
+    }
   }
 }
