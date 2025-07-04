@@ -396,56 +396,83 @@ export default class WarningTrianglesFeature extends BaseFeature {
     }
 
     /**
-     * Add warning triangles to journal link
+     * Map issue types to emoji icons (from example.html)
      */
-    addWarningTriangles(linkElement, issues) {
-        try {
-            // Create wrapper for link + triangles
-            const wrapper = document.createElement('span')
-            wrapper.style.display = 'flex'
-            wrapper.style.alignItems = 'center'
-            wrapper.style.gap = '5px'
-            wrapper.id = 'WarningTrianglesWrapper'
-
-            // Clone the original link
-            const clonedLink = linkElement.cloneNode(true)
-            wrapper.appendChild(clonedLink)
-
-            // Add warning triangles for each issue
-            issues.forEach(issue => {
-                const triangle = this.createWarningTriangle(issue)
-                wrapper.appendChild(triangle)
-            })
-
-            // Replace original link with wrapper
-            linkElement.replaceWith(wrapper)
-
-            Logger.debug(`[${this.name}] Added ${issues.length} warning triangles`)
-
-        } catch (error) {
-            Logger.error(`[${this.name}] Error adding warning triangles:`, error)
-        }
+    getIssueIcon(issue) {
+        // Map known types to icons
+        const typeToIcon = {
+            // Timetable discrepancies
+            lessonDiscrepancies: '📅', // Missing lessons based on timetable
+            missingLessons: '📅',
+            // Checkbox mismatch
+            capacityProblems: '☑️', // Checkbox mismatch for lesson type
+            checkboxMismatch: '☑️',
+            // Final grades missing
+            missingFinalGrades: '⭐',
+            // Independent work entries missing
+            missingIndependentWork: '📝',
+            // Overdue independent work missing grades
+            overdueIndependentWork: '⏰',
+        };
+        // Try to use the type, fallback to icon property if present
+        return typeToIcon[issue.type] || issue.icon || '⚠';
     }
 
     /**
-     * Create a warning triangle element
+     * Add warning pill with icons to journal link
      */
-    createWarningTriangle(issue) {
-        const triangle = document.createElement('span')
-        triangle.style.cssText = `
-            display: inline-block;
-            color: ${issue.color};
-            font-size: 16px;
-            font-weight: bold;
-            margin-left: 5px;
-            cursor: help;
-            title: "${issue.message}";
-        `
-        triangle.textContent = issue.icon
-        triangle.title = issue.message
-        triangle.setAttribute('data-issue-type', issue.type)
+    addWarningTriangles(linkElement, issues) {
+        try {
+            // Create wrapper for link + pill
+            const wrapper = document.createElement('span');
+            wrapper.style.display = 'flex';
+            wrapper.style.alignItems = 'center';
+            wrapper.style.gap = '5px';
+            wrapper.id = 'WarningTrianglesWrapper';
 
-        return triangle
+            // Clone the original link
+            const clonedLink = linkElement.cloneNode(true);
+            wrapper.appendChild(clonedLink);
+
+            // Collect all icons for this journal's issues
+            const icons = issues.map(issue => this.getIssueIcon(issue));
+            // Remove duplicates, just in case
+            const uniqueIcons = [...new Set(icons)];
+
+            // Create the pill element styled as in example.html, but slightly bigger than the icons (only pill, not icons)
+            const pill = document.createElement('span');
+            pill.className = 'error-pill';
+            pill.style.display = 'inline-flex';
+            pill.style.alignItems = 'center';
+            pill.style.gap = '0.3em';
+            pill.style.backgroundColor = '#ffe5e5';
+            pill.style.border = '1.5px solid #ff0000';
+            pill.style.borderRadius = '999px';
+            pill.style.padding = '0.2em 0.7em'; // slightly more padding
+            pill.style.fontSize = '1em'; // normal font size
+            pill.style.height = '2em'; // slightly taller than icon
+            pill.style.lineHeight = '1.2';
+            pill.title = issues.map(issue => issue.message).join(' | ');
+
+            // Add each icon to the pill
+            uniqueIcons.forEach(icon => {
+                const iconSpan = document.createElement('span');
+                iconSpan.textContent = icon;
+                iconSpan.style.fontSize = '1em'; // icon stays normal size
+                iconSpan.style.verticalAlign = 'middle';
+                pill.appendChild(iconSpan);
+            });
+
+            // Add the pill after the link
+            wrapper.appendChild(pill);
+
+            // Replace original link with wrapper
+            linkElement.replaceWith(wrapper);
+
+            Logger.debug(`[${this.name}] Added warning pill with icons: ${uniqueIcons.join(' ')} for issues: ${issues.map(i => i.type).join(', ')}`);
+        } catch (error) {
+            Logger.error(`[${this.name}] Error adding warning pill:`, error);
+        }
     }
 
     /**
