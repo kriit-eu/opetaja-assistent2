@@ -403,11 +403,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #createPill = (text, color, backgroundColor) =>
-    `<span style="background-color:${backgroundColor};color:${color};font-weight:bold;font-size:14px;padding:4px 8px;">${text}</span>`
+  #createPill = (text, color, backgroundColor, textDecoration = 'none') =>
+    `<span style="background-color:${backgroundColor};color:${color};font-weight:bold;font-size:14px;padding:4px 8px;text-decoration:${textDecoration};">${text}</span>`
 
   #createDiffPill = (current, correct) => {
-    const currentPill = this.#createPill(current, '#721c24', '#f8d7da')
+    // Add strikethrough to the red (current) value
+    const currentPill = this.#createPill(current, '#721c24', '#f8d7da', 'line-through')
     const correctPill = this.#createPill(correct, '#155724', '#d1edcc')
     const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
     return `<div style="${style}">${currentPill}${correctPill}</div>`
