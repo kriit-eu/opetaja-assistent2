@@ -45,7 +45,7 @@ export async function loadFeatures () {
 
   // Load lesson discrepancies feature (always enabled)
   try {
-    const LessonDiscrepanciesFeature = (await import('../features/lessonDiscrepancies/LessonDiscrepanciesFeature.js')).default
+    const LessonDiscrepanciesFeature = (await import('../features/singleJournal/lessonDiscrepancies/LessonDiscrepanciesFeature.js')).default
     const lessonDiscrepanciesFeature = new LessonDiscrepanciesFeature()
     allAvailableFeatures.singleJournal.push(lessonDiscrepanciesFeature)
     Logger.debug('Feature "LessonDiscrepanciesFeature" created')
