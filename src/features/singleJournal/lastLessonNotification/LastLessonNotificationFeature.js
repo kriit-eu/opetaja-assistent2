@@ -17,7 +17,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
 
     // Hardcoded comparison date - change this date to test different scenarios
     // Format: YYYY-MM-DD
-    this.comparisonDate = '2025-06-02' // Current date as example
+    this.comparisonDate = '2025-06-22' // Current date as example
   }
 
   async activate () {
@@ -33,7 +33,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
   }
 
   onDeactivate () {
-    this.#removeBanner()
+    this._removeBanner()
     super.onDeactivate()
   }
 
@@ -103,33 +103,33 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     if ((countsMatchOrExceed && hasFutureLessons) || hasJournalEntriesButNoTimetable) {
       const displayDate = timetableCount > 0 ? lastLessonDate : 'not found in timetable'
       const isAllPast = allPast
-      this.#showBanner(displayDate, isAllPast)
+      this._showBanner(displayDate, isAllPast)
     } else if (countsMatchOrExceed && allPast) {
       // If all scheduled lessons are in the past, show 'toimus'
       const displayDate = timetableCount > 0 ? lastLessonDate : 'not found in timetable'
-      this.#showBanner(displayDate, true)
+      this._showBanner(displayDate, true)
     } else {
-      this.#removeBanner()
+      this._removeBanner()
     }
   }
 
-  #findInsertionPoint () {
-    // Use the same insertion point logic as LessonDiscrepanciesFeature
-    const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-    const container = selectors
-      .map(selector => document.querySelector(selector))
-      .find(element => element && element.getBoundingClientRect().width > 100) || document.body
-
-    console.debug('[LastLessonNotificationFeature] Found insertion container:', container)
-    return container
-  }
-
-  #showBanner (date, allPast = false) {
-    this.#removeBanner()
+  _showBanner (date, allPast = false) {
+    this._removeBanner()
     const banner = document.createElement('div')
     banner.setAttribute('id', 'last-lesson-banner')
+
+    // Determine if the last lesson date is the comparison date
+    let isLastLessonToday = false
+    if (date !== 'not found in timetable') {
+      const d1 = new Date(date)
+      const d2 = new Date(this.comparisonDate)
+      d1.setHours(0, 0, 0, 0)
+      d2.setHours(0, 0, 0, 0)
+      isLastLessonToday = d1.getTime() === d2.getTime()
+    }
+
     banner.style.cssText = `
-            background: #fff3cd;
+            background: ${isLastLessonToday ? '#ffcccc' : '#fff3cd'};
             border: 1px solid #ffeaa7;
             border-radius: 4px;
             padding: 15px;
@@ -140,12 +140,22 @@ export default class LastLessonNotificationFeature extends BaseFeature {
         `
 
     const comparisonDateStr = this.#formatDisplayDate(this.comparisonDate)
+    const todayStr = this.#formatDisplayDate(new Date())
     let bannerMessage
     if (date === 'not found in timetable') {
-      bannerMessage = `NB! Õppetöö kirjed on olemas, kuid tunniplaani andmeid ei leitud (võrdlus kuupäevaga ${comparisonDateStr})`
+      // Always show comparison date if not today
+      if (comparisonDateStr !== todayStr) {
+        bannerMessage = `NB! Õppetöö kirjed on olemas, kuid tunniplaani andmeid ei leitud (võrdlus kuupäevaga ${comparisonDateStr})`
+      } else {
+        bannerMessage = `NB! Õppetöö kirjed on olemas, kuid tunniplaani andmeid ei leitud`
+      }
     } else {
       const verb = allPast ? 'toimus' : 'toimub'
-      bannerMessage = `NB! Viimane tund ${verb} ${this.#formatDisplayDate(date)}`
+      if (comparisonDateStr !== todayStr) {
+        bannerMessage = `NB! Viimane tund ${verb} ${this.#formatDisplayDate(date)} (võrdlus kuupäevaga ${comparisonDateStr})`
+      } else {
+        bannerMessage = `NB! Viimane tund ${verb} ${this.#formatDisplayDate(date)}`
+      }
     }
 
     // Header bar: left = logo + Õpetaja Assistent 2, right = Last lesson notification label
@@ -164,12 +174,23 @@ export default class LastLessonNotificationFeature extends BaseFeature {
             <div style="font-size:16px;font-weight:bold;color:#212529;">${bannerMessage}</div>
         `
 
-    const container = this.#findInsertionPoint()
+    const container = this._findInsertionPoint()
     container.insertBefore(banner, container.firstChild)
   }
 
-  #removeBanner () {
+  _removeBanner () {
     document.getElementById('last-lesson-banner')?.remove()
+  }
+
+  _findInsertionPoint () {
+    // Use the same insertion point logic as LessonDiscrepanciesFeature
+    const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
+    const container = selectors
+      .map(selector => document.querySelector(selector))
+      .find(element => element && element.getBoundingClientRect().width > 100) || document.body
+
+    console.debug('[LastLessonNotificationFeature] Found insertion container:', container)
+    return container
   }
 
   #formatDisplayDate (date) {
