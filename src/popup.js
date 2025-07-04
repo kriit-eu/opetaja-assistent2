@@ -22,10 +22,28 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 })
 
+// Helper to parse DD.MM.YYYY to Date
+function parseEuDate(str) {
+  if (!/^[0-9]{2}\.[0-9]{2}\.[0-9]{4}$/.test(str)) return null
+  const [day, month, year] = str.split('.').map(Number)
+  const d = new Date(year, month - 1, day)
+  // Check for invalid dates (e.g. 32.13.2025)
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null
+  return d
+}
+
+// Format date for display
+function formatDisplayDate(date) {
+  const day = date.getDate().toString().padStart(2, '0')
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}.${month}.${year}`
+}
+
 /**
  * Initialize the popup
  */
-function initPopup () {
+function initPopup() {
   // Get DOM elements
   const debugModeCheckbox = document.getElementById('debug-mode')
   const clearCacheButton = document.getElementById('clear-cache')
@@ -87,9 +105,44 @@ function initPopup () {
     kriitApiKeyInput.value = result[KRIIT_API_KEY_KEY] || ''
   })
 
-  // Initialize comparison date with today's date
+  // Initialize comparison date with today's date in DD.MM.YYYY
   const today = new Date()
-  comparisonDateInput.value = today.toISOString().split('T')[0]
+  comparisonDateInput.value = formatDisplayDate(today)
+
+  // On load, initialize comparison date from storage if present
+  chrome.storage.local.get(['OA_comparisonDate'], function (result) {
+    let dateStr = result['OA_comparisonDate']
+    if (dateStr && parseEuDate(dateStr)) {
+      comparisonDateInput.value = dateStr
+    } else {
+      const today = new Date()
+      comparisonDateInput.value = formatDisplayDate(today)
+      chrome.storage.local.set({ 'OA_comparisonDate': comparisonDateInput.value })
+    }
+  })
+
+  // Add event listener for date change/blur to validate, save, and reset if empty
+  comparisonDateInput.addEventListener('blur', function () {
+    let val = comparisonDateInput.value.trim()
+    if (!val) {
+      // If empty, reset to today and save
+      const today = new Date()
+      const todayStr = formatDisplayDate(today)
+      comparisonDateInput.value = todayStr
+      chrome.storage.local.set({ 'OA_comparisonDate': todayStr })
+      comparisonDateInput.style.borderColor = ''
+      showError('')
+      return
+    }
+    if (!parseEuDate(val)) {
+      comparisonDateInput.style.borderColor = 'red'
+      showError('Kuupäev peab olema kujul DD.MM.YYYY')
+    } else {
+      comparisonDateInput.style.borderColor = ''
+      showError('')
+      chrome.storage.local.set({ 'OA_comparisonDate': val })
+    }
+  })
 
   // Add event listeners
   debugModeCheckbox.addEventListener('change', function () {
@@ -157,19 +210,6 @@ function initPopup () {
     }
   })
 
-  // Add event listener for date change
-  comparisonDateInput.addEventListener('change', function () {
-    // If subjects are currently displayed, refresh them with the new date
-    if (subjectsContainer.style.display === 'block') {
-      try {
-        showFutureSubjects()
-      } catch (error) {
-        console.error('Error updating subjects for new date:', error)
-        showError('Failed to update subjects: ' + error.message)
-      }
-    }
-  })
-
   // Load cache statistics
   loadCacheStatistics()
 
@@ -180,7 +220,7 @@ function initPopup () {
  * Toggle debug mode
  * @param {boolean} enabled - Whether debug mode should be enabled
  */
-function toggleDebugMode (enabled) {
+function toggleDebugMode(enabled) {
   chrome.storage.sync.set({ [DEBUG_MODE_KEY]: enabled }, function () {
     console.log('Debug mode set to:', enabled)
 
@@ -203,7 +243,7 @@ function toggleDebugMode (enabled) {
  * @param {boolean} enabled - Whether Kriit integration should be enabled
  * @param {HTMLElement} settingsContainer - Container for Kriit settings
  */
-function toggleKriitEnabled (enabled, settingsContainer) {
+function toggleKriitEnabled(enabled, settingsContainer) {
   chrome.storage.sync.set({ [KRIIT_ENABLED_KEY]: enabled }, function () {
     console.log('Kriit integration set to:', enabled)
 
@@ -230,7 +270,7 @@ function toggleKriitEnabled (enabled, settingsContainer) {
  * @param {string} apiKey - The API key
  * @param {HTMLElement} statusElement - Element to show status message
  */
-function saveKriitSettings (apiUrl, apiKey, statusElement) {
+function saveKriitSettings(apiUrl, apiKey, statusElement) {
   apiUrl = apiUrl.trim()
   apiKey = apiKey.trim()
 
@@ -273,7 +313,7 @@ function saveKriitSettings (apiUrl, apiKey, statusElement) {
 /**
  * Load and display cache statistics
  */
-function loadCacheStatistics () {
+function loadCacheStatistics() {
   const cacheStatsContainer = document.getElementById('cache-stats-container')
 
   if (!cacheStatsContainer) {
@@ -312,7 +352,7 @@ function loadCacheStatistics () {
  * Update cache details content
  * @param {Object} stats - Cache statistics
  */
-function updateCacheDetailsContent (stats) {
+function updateCacheDetailsContent(stats) {
   const cacheDetailsContainer = document.getElementById('cache-details')
 
   if (!cacheDetailsContainer) return
@@ -365,7 +405,7 @@ function updateCacheDetailsContent (stats) {
 /**
  * Toggle cache details visibility
  */
-function toggleCacheDetails () {
+function toggleCacheDetails() {
   const cacheDetailsContainer = document.getElementById('cache-details')
   const viewCacheDetailsButton = document.getElementById('view-cache-details')
 
@@ -387,7 +427,7 @@ function toggleCacheDetails () {
  * @param {number} bytes - Size in bytes
  * @returns {string} Formatted size
  */
-function formatSize (bytes) {
+function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
@@ -398,7 +438,7 @@ function formatSize (bytes) {
  * @param {number} minutes - Age in minutes
  * @returns {string} Formatted age
  */
-function formatAge (minutes) {
+function formatAge(minutes) {
   if (minutes < 1) return 'äsja'
   if (minutes < 60) return minutes + ' min'
   if (minutes < 24 * 60) return Math.round(minutes / 60) + ' h'
@@ -408,7 +448,7 @@ function formatAge (minutes) {
 /**
  * Show future subjects with upcoming lessons
  */
-function showFutureSubjects () {
+function showFutureSubjects() {
   const subjectsContainer = document.getElementById('subjects-container')
   const subjectsLoading = document.getElementById('subjects-loading')
   const subjectsContent = document.getElementById('subjects-content')
@@ -419,13 +459,27 @@ function showFutureSubjects () {
   subjectsLoading.style.display = 'block'
   subjectsContent.style.display = 'none'
 
-  // Get the selected comparison date
-  const comparisonDate = comparisonDateInput.value || new Date().toISOString().split('T')[0]
+  // Get the selected comparison date in DD.MM.YYYY and convert to ISO
+  let comparisonDate = comparisonDateInput.value.trim()
+  let isoDate = ''
+  if (comparisonDate) {
+    const d = parseEuDate(comparisonDate)
+    if (!d) {
+      subjectsLoading.style.display = 'none'
+      subjectsContent.innerHTML = '<div style="color: red;">Vigane kuupäev. Kasuta DD.MM.YYYY</div>'
+      subjectsContent.style.display = 'block'
+      return
+    }
+    isoDate = d.toISOString().split('T')[0]
+  } else {
+    const d = new Date()
+    isoDate = d.toISOString().split('T')[0]
+  }
 
   // Send message to background script to fetch future subjects
   chrome.runtime.sendMessage({
     action: 'getFutureSubjects',
-    comparisonDate: comparisonDate
+    comparisonDate: isoDate
   }, function (response) {
     subjectsLoading.style.display = 'none'
 
@@ -435,7 +489,7 @@ function showFutureSubjects () {
       return
     }
 
-    displaySubjects(response.data, comparisonDate)
+    displaySubjects(response.data, isoDate)
     subjectsContent.style.display = 'block'
   })
 }
@@ -445,7 +499,7 @@ function showFutureSubjects () {
  * @param {Array} subjects - Array of subject objects
  * @param {string} comparisonDate - The comparison date in YYYY-MM-DD format
  */
-function displaySubjects (subjects, comparisonDate) {
+function displaySubjects(subjects, comparisonDate) {
   const subjectsContent = document.getElementById('subjects-content')
 
   if (!subjects || subjects.length === 0) {
@@ -535,21 +589,9 @@ function displaySubjects (subjects, comparisonDate) {
 }
 
 /**
- * Format date for display
- * @param {Date} date - Date to format
- * @returns {string} Formatted date string
- */
-function formatDisplayDate (date) {
-  const day = date.getDate().toString().padStart(2, '0')
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}.${month}.${year}`
-}
-
-/**
  * Clear all cache items
  */
-function clearCache () {
+function clearCache() {
   chrome.storage.local.get(null, function (items) {
     const keysToRemove = Object.keys(items).filter(key => key.startsWith(CACHE_PREFIX))
 
@@ -584,10 +626,15 @@ function clearCache () {
  * Show error message in the error log element
  * @param {string} message - Error message to display
  */
-function showError (message) {
+function showError(message) {
   const errorLogElement = document.getElementById('error-log')
   if (errorLogElement) {
-    errorLogElement.textContent = message
-    errorLogElement.style.display = 'block'
+    if (message) {
+      errorLogElement.textContent = message
+      errorLogElement.style.display = 'block'
+    } else {
+      errorLogElement.textContent = ''
+      errorLogElement.style.display = 'none'
+    }
   }
 }
