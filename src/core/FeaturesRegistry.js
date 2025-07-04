@@ -52,6 +52,15 @@ export async function loadFeatures () {
   } catch (error) {
     Logger.error('Error loading LessonDiscrepanciesFeature:', error)
   }
+  // Load last lesson notification feature (always enabled)
+  try {
+    const LastLessonNotificationFeature = (await import('../features/singleJournal/lastLessonNotification/LastLessonNotificationFeature.js')).default
+    const lastLessonNotificationFeature = new LastLessonNotificationFeature()
+    allAvailableFeatures.singleJournal.push(lastLessonNotificationFeature)
+    Logger.debug('Feature "LastLessonNotificationFeature" created')
+  } catch (error) {
+    Logger.error('Error loading LastLessonNotificationFeature:', error)
+  }
 
   // Create a copy of the features structure for returning
   const featureGroups = {
