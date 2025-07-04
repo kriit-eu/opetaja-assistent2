@@ -1,6 +1,6 @@
-import { BaseFeature } from '../../core/BaseFeature.js'
-import Logger from '../../services/Logger.js'
-import { cacheService } from '../../services/CacheService.js'
+import { BaseFeature } from '../../../core/BaseFeature.js'
+import Logger from '../../../services/Logger.js'
+import { cacheService } from '../../../services/CacheService.js'
 
 const HEX = {
   green: ['#28a745', '#218838', '#fff'],
@@ -49,10 +49,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #currentJournalId = null
   #saveMonitoringSetup = false
   #tableObserver = null
+  #dialogObserver = null
   #isRefreshing = false
   #lastJournalData = null
   #originalFetch = null
   #problematicEntriesCache = null
+  #dialogCloseObserver = null
+  #dialogWasPresent = false
 
   static SCHOOL_ID_FALLBACK = 9
   static JOURNAL_ENTRY_LESSON_TYPE = 'SISSEKANNE_T'
@@ -68,6 +71,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     await this.#delay(1000)
     await this.#createLessonDiscrepanciesTable()
     this.#setupJournalSaveMonitoring()
+    this.#setupDialogObserver()
   }
 
   onDeactivate () {
@@ -427,25 +431,52 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       return { exactMatches: [], targetIndex: 0 }
     }
 
+    Logger.debug(`[${this.name}] Target entry for ${entryId}:`, {
+      id: targetEntry.id,
+      entryType: targetEntry.entryType,
+      lessons: targetEntry.lessons,
+      lessonCount: targetEntry.lessonCount,
+      entryDate: targetEntry.entryDate
+    })
+
     // Get all rows that match the date
     const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
-    const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
+
+    // Try multiple selectors to find journal entry rows
+    let allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
+    if (allRows.length === 0) {
+      allRows = document.querySelectorAll('tr[onclick*="editJournalEntry"]')
+    }
+    if (allRows.length === 0) {
+      // Fallback: look for any clickable table rows
+      allRows = document.querySelectorAll('tr[ng-click], tr[onclick]')
+    }
+
+    Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
+
     const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
+
+    Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${datePrefix}`)
+
+    // Get the lesson count from targetEntry (could be lessons or lessonCount property)
+    const targetLessonCount = targetEntry.lessons || targetEntry.lessonCount || 1
 
     // Filter by lesson count and type to get the exact matches in DOM order
     const exactMatches = dateMatchingRows.filter(row => {
       const { lessonCount, entryType } = this.#parseRowLessonInfo(row)
-      return lessonCount === targetEntry.lessons && entryType === targetEntry.entryType
+      Logger.debug(`[${this.name}] Row info:`, { lessonCount, entryType, targetLessonCount, targetEntryType: targetEntry.entryType })
+      return lessonCount === targetLessonCount && entryType === targetEntry.entryType
     })
 
     // For single matches, index is always 0
     if (exactMatches.length <= 1) {
+      Logger.debug(`[${this.name}] Found ${exactMatches.length} exact matches`)
       return { exactMatches, targetIndex: 0 }
     }
 
     // Find all duplicate entries in API data, sorted by ID (for consistent ordering)
     const duplicateEntries = this.#lastJournalData.entries.filter(entry => this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate) &&
-      entry.lessons === targetEntry.lessons &&
+      (entry.lessons || entry.lessonCount || 1) === targetLessonCount &&
       entry.entryType === targetEntry.entryType).sort((a, b) => a.id - b.id)
 
     // Simple position-based matching: assume DOM order matches API order
@@ -581,7 +612,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       insertionPoint.insertBefore(this.#createUnifiedTableElement(discrepancies, capacityProblems), insertionPoint.firstChild)
       this.#addDiscrepancyButtonListeners()
-      this.#addCapacityProblemButtonListeners()
       return true
     } catch (error) {
       Logger.error(`[${this.name}] insert unified table`, error)
@@ -711,14 +741,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #parseButtonData (button) {
-    return Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
+    const parsedData = Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
+    Logger.debug(`[${this.name}] Parsed button data:`, parsedData)
+    return parsedData
   }
 
   async #executeButtonAction (data) {
+    Logger.debug(`[${this.name}] Executing button action with data:`, data)
+
     const actionHandlers = {
       addMissing: () => this.#handleAddMissingEntry(data.date, data.startLesson, data.lessonCount, data),
       editEntry: () => this.#handleEditEntry(data.date, data.entryId, data.type, data),
       fixCapacity: () => this.#handleFixCapacity(data.date, data.entryId, data),
+      openEntry: () => this.#handleOpenEntry(data.entryId, data),
     }
 
     const handler = actionHandlers[data.handler]
@@ -772,7 +807,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       await this.#clickJournalEntry(element)
       await this.#waitForDialogContentLoaded()
 
-
       await this.#fillEditForm(type, data)
     } catch (error) {
       Logger.error(`[${this.name}] edit entry error`, error)
@@ -822,7 +856,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#fillStartLessonField(String(effectiveStart)),
       this.#fillLessonCountField(String(effectiveCount)),
       this.#checkAuditoriumLearningCheckbox(),
+      this.#checkTeacherCheckbox(),
     ])
+
+    // Add teacher checkbox change listeners for validation refresh
+    this.#addTeacherCheckboxListeners()
   }
 
   async #fillEditForm (type, data) {
@@ -1054,8 +1092,24 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const { exactMatches } = this.#findDuplicateMatches(entryId, date)
 
+    Logger.debug(`[${this.name}] findJournalEntryElement: entryId=${entryId}, date=${date}, exactMatches.length=${exactMatches.length}`)
 
     if (exactMatches.length === 0) {
+      // Fallback: try a broader search if exact matching fails
+      Logger.warning(`[${this.name}] No exact matches found, trying fallback search`)
+
+      const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
+      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
+      const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
+
+      Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${datePrefix}`)
+
+      if (dateMatchingRows.length > 0) {
+        // Return the first matching row as a last resort
+        Logger.warning(`[${this.name}] Using fallback row for entryId ${entryId}`)
+        return dateMatchingRows[0]
+      }
+
       return null
     }
 
@@ -1085,6 +1139,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         entryType = 'SISSEKANNE_T'
       } else if (text.includes('Iseseisev töö')) {
         entryType = 'SISSEKANNE_I'
+      } else if (text.includes('Praktiline töö')) {
+        entryType = 'SISSEKANNE_P'
       } else if (text.includes('E-õpe')) {
         entryType = 'SISSEKANNE_E'
       }
@@ -1280,13 +1336,60 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #checkAuditoriumLearningCheckbox () {
     /** @type {HTMLElement} */
-    const checkbox = document.querySelector('md-checkbox[aria-label="Auditoorne õpe"]')
+    const checkbox = document.querySelector('md-checkbox[ng-model*="selectedCapacityTypes"][aria-label="Auditoorne õpe"]')
 
     if (checkbox && this.#isElementVisible(checkbox)) {
       this.#setFieldState(checkbox, 'processing')
       checkbox.click()
       const isChecked = checkbox.getAttribute('aria-checked') === 'true'
       this.#setFieldState(checkbox, isChecked ? 'success' : 'error')
+    }
+  }
+
+  async #checkTeacherCheckbox () {
+    /** @type {HTMLElement} */
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+
+    for (const checkbox of teacherCheckboxes) {
+      if (checkbox && this.#isElementVisible(checkbox)) {
+        const isChecked = checkbox.getAttribute('aria-checked') === 'true'
+
+        if (!isChecked) {
+          this.#setFieldState(checkbox, 'processing')
+          checkbox.click()
+
+          // Verify it was checked
+          await this.#delay(200)
+          const nowChecked = checkbox.getAttribute('aria-checked') === 'true'
+          this.#setFieldState(checkbox, nowChecked ? 'success' : 'error')
+
+          Logger.debug(`[${this.name}] Teacher checkbox toggled: ${checkbox.getAttribute('aria-label')} - checked: ${nowChecked}`)
+        }
+      }
+    }
+  }
+
+  #getTeacherCheckboxState () {
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+    const checkboxes = []
+    let checkedCount = 0
+
+    teacherCheckboxes.forEach(checkbox => {
+      const checked = checkbox.getAttribute('aria-checked') === 'true'
+      if (checked) checkedCount++
+
+      checkboxes.push({
+        element: checkbox,
+        checked,
+        label: checkbox.getAttribute('aria-label') || checkbox.textContent.trim()
+      })
+    })
+
+    return {
+      hasTeacher: checkedCount > 0,
+      checkboxCount: teacherCheckboxes.length,
+      checkedCount,
+      checkboxes
     }
   }
 
@@ -1410,6 +1513,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
+  /**
+   * Setup observer to monitor for journal entry dialogs being opened and auto-check teacher checkboxes
+   */
+  #setupDialogObserver () {
+    // Dialog observer removed - no longer auto-checking teacher checkbox
+    // Teacher validation is now handled in table/background validation
+  }
+
   async #refreshCapacityValidationAfterSave () {
     try {
 
@@ -1442,6 +1553,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#tableObserver?.disconnect()
     this.#tableObserver = null
 
+    this.#dialogObserver?.disconnect()
+    this.#dialogObserver = null
+
     // Restore original fetch if we modified it
     if (this.#originalFetch) {
       window.fetch = this.#originalFetch
@@ -1461,7 +1575,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Log capacity type code mappings
 
       // Get detailed capacity validation results
-      const validationResults = await this.#performDetailedCapacityValidation(journalData, auditoorneCapacity)
+      const validationResults = await this.#performDetailedCapacityValidation(journalData, auditoorneCapacity, capacityHours)
 
 
       // Return problematic entries
@@ -1481,7 +1595,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #performDetailedCapacityValidation (journalData, auditoorneCapacity) {
+  async #performDetailedCapacityValidation (journalData, auditoorneCapacity, capacityHours) {
 
     const entries = journalData.entries || []
     const journalId = journalData.info?.id
@@ -1498,7 +1612,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Fetch detailed data for each target entry
-    const validationResults = await this.#validateEntriesWithDetailedData(journalId, targetEntries)
+    const validationResults = await this.#validateEntriesWithDetailedData(journalId, targetEntries, capacityHours)
 
     // Log validation summary
     this.#logValidationSummary(validationResults, auditoorneCapacity)
@@ -1508,7 +1622,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return validationResults
   }
 
-  async #validateEntriesWithDetailedData (journalId, targetEntries) {
+  async #validateEntriesWithDetailedData (journalId, targetEntries, journalCapacityHours) {
 
     const validationResults = []
 
@@ -1528,7 +1642,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         const capacityTypes = detailedEntry.journalEntryCapacityTypes
 
         // Validate the entry
-        const validationResult = this.#validateSingleEntry(entry, detailedEntry, capacityTypes)
+        const validationResult = this.#validateSingleEntry(entry, detailedEntry, capacityTypes, journalCapacityHours)
         validationResults.push(validationResult)
 
       } catch (error) {
@@ -1545,7 +1659,34 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return validationResults
   }
 
-  #validateSingleEntry (entry, detailedEntry, capacityTypes) {
+  #validateSingleEntry (entry, detailedEntry, capacityTypes, journalCapacityHours) {
+
+    // Check if entry requires independent work but journal doesn't have MAHT_i configured
+    const journalHasIndependentWork = journalCapacityHours && journalCapacityHours.some(c => c.capacity === 'MAHT_i')
+
+    if (entry.entryType === 'SISSEKANNE_I' && !journalHasIndependentWork) {
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'journal_missing_independent_work',
+        actualState: {
+          auditoorne: false,
+          iseseisev: false,
+          praktiline: false,
+          teacher: true,
+        },
+        expectedState: {
+          auditoorne: false,
+          iseseiv: true,
+          praktiline: false,
+          teacher: true,
+          reasoning: 'Journal must have MAHT_i capacity configured for independent work entries',
+        },
+        capacityTypes,
+        validationResult: 'error',
+      }
+    }
 
     // Handle edge cases
     if (capacityTypes === null || capacityTypes === undefined) {
@@ -1557,9 +1698,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         actualState: {
           auditoorne: false,
           iseseisev: false,
+          praktiline: false,
+          teacher: true,
         },
         expectedState: {
           auditoorne: true,
+          iseseiv: false,
+          praktiline: false,
+          teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
         },
       }
@@ -1574,9 +1720,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         actualState: {
           auditoorne: false,
           iseseisev: false,
+          praktiline: false,
+          teacher: true,
         },
         expectedState: {
           auditoorne: true,
+          iseseiv: false,
+          praktiline: false,
+          teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
         },
       }
@@ -1589,12 +1740,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const hasIseseisvIncludes = capacityTypes.includes('MAHT_i')
     const hasPraktiliseIncludes = capacityTypes.includes('MAHT_p')
 
+    // Teacher validation - check if any teachers are selected
+    const hasTeacher = Array.isArray(detailedEntry?.journalEntryTeachers) && detailedEntry.journalEntryTeachers.length > 0
+
     // Using includes() as the primary method
 
     return this.#performBusinessLogicValidation(entry, detailedEntry, {
       auditoorne: hasAuditoorneIncludes,
-      iseseisev: hasIseseisvIncludes,
+      iseseiv: hasIseseisvIncludes,
       praktiline: hasPraktiliseIncludes,
+      teacher: hasTeacher,
     }, capacityTypes)
   }
 
@@ -1603,13 +1758,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Log the business rules
 
     // Determine expected state based on entry type
-    const shouldHaveAuditoorne = entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_P'
+    const shouldHaveAuditoorne = entry.entryType === 'SISSEKANNE_T' // Only SISSEKANNE_T should have auditoorne
     const shouldHaveIseseisev = entry.entryType === 'SISSEKANNE_I'
     const shouldHavePraktiline = entry.entryType === 'SISSEKANNE_P'
+
     const expectedState = {
       auditoorne: shouldHaveAuditoorne,
-      iseseisev: shouldHaveIseseisev,
+      iseseiv: shouldHaveIseseisev,
       praktiline: shouldHavePraktiline,
+      teacher: true, // All entries should have a teacher selected
       reasoning: shouldHaveAuditoorne
         ? `Entry type "${entry.entryType}" requires auditoorne õpe checkbox`
         : shouldHaveIseseisev
@@ -1619,9 +1776,36 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             : `Entry type "${entry.entryType}" has specific checkbox requirements`,
     }
 
+    // Check for specific error condition: SISSEKANNE_T (Tund) without auditoorne õpe
+    if (entry.entryType === 'SISSEKANNE_T' && !actualState.auditoorne) {
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'lesson_without_auditoorne',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error',
+      }
+    }
+
+    // Check for error condition: no teacher selected
+    if (!actualState.teacher) {
+      return {
+        entry,
+        detailedData: detailedEntry,
+        isValid: false,
+        errorType: 'no_teacher_selected',
+        actualState,
+        expectedState,
+        capacityTypes,
+        validationResult: 'error',
+      }
+    }
 
     // Check for error condition: both checkboxes selected
-    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseisev
+    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseiv
     if (hasBothCheckboxes) {
       return {
         entry,
@@ -1636,7 +1820,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_T (lesson) with MAHT_i (independent work)
-    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseisev && !actualState.auditoorne
+    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseiv && !actualState.auditoorne
     if (isLessonWithIndependentWork) {
       return {
         entry,
@@ -1651,7 +1835,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_I (independent work) with MAHT_a (auditory learning)
-    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseisev
+    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseiv
     if (isIndependentWorkWithAuditory) {
       return {
         entry,
@@ -1682,15 +1866,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Validate against expected state
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
-    const iseseisvValid = actualState.iseseisev === expectedState.iseseisev
+    const iseseisvValid = actualState.iseseiv === expectedState.iseseiv
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
-    const isValid = auditoorneValid && iseseisvValid && praktiliseValid
+    const teacherValid = actualState.teacher === expectedState.teacher
+    const isValid = auditoorneValid && iseseisvValid && praktiliseValid && teacherValid
     const validationResult = isValid ? 'pass' : 'fail'
 
     // Determine specific error type
     let errorType = null
     if (!isValid) {
-
       errorType = 'missing_required_checkbox'
       if (entry.entryType === 'SISSEKANNE_T') {
         errorType = 'missing_auditoorne_checkbox'
@@ -1776,11 +1960,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {string} entry.entryType - Entry type (SISSEKANNE_T, SISSEKANNE_I, SISSEKANNE_P)
    * @param {number} [entry.startLessonNr] - Start lesson number
    * @param {Array} [entry.lessons] - Array of lesson objects
+
    * @param {number} [entry.lessons[].lessonNr] - Lesson number
    * @param {Object} [entry.validationResult] - Validation result object
    * @param {string} [entry.validationResult.errorType] - Error type
    * @param {number} entry.id - Entry ID
-   */
+
+     */
   #createCapacityProblemRow (entry) {
     const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
     const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
@@ -1804,10 +1990,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Determine the correct message based on the validation result
     let message = 'Auditoorne õpe puudub'
     if (entry.validationResult) {
-      if (entry.validationResult.errorType === 'both_checkboxes_selected') {
+      if (entry.validationResult.errorType === 'no_teacher_selected') {
+        message = 'Õpetaja pole valitud'
+      } else if (entry.validationResult.errorType === 'both_checkboxes_selected') {
         message = 'Auditoorne õpe ja iseseisva õppe linnukesed on samaaegselt sees'
       } else if (entry.validationResult.errorType === 'lesson_with_independent_work') {
         message = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees'
+      } else if (entry.validationResult.errorType === 'lesson_without_auditoorne') {
+        message = 'Sissekande liik on tund, aga auditoorne õpe linnuke pole sees'
       } else if (entry.validationResult.errorType === 'independent_work_with_auditory') {
         message = 'Iseseisev tööl ei saa olla auditoorne õpe linnuke sees'
       } else if (entry.validationResult.errorType === 'praktiline_too_without_praktiline_checkbox') {
@@ -1816,16 +2006,30 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         message = 'Auditoorne õpe puudub'
       } else if (entry.validationResult.errorType === 'missing_iseseisev_checkbox') {
         message = 'Iseseisev õpe puudub'
+      } else if (entry.validationResult.errorType === 'journal_missing_independent_work') {
+        message = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid'
       } else if (entry.validationResult.errorType === 'missing_praktiline_checkbox') {
         message = 'Praktiline töö puudub'
       }
     }
 
-    const action = this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-      handler: 'fixCapacity',
-      entryId: entry.id,
-      date: this.#formatDate(entry.entryDate),
-    })
+    const action = entry.validationResult?.errorType === 'no_teacher_selected'
+      ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+        handler: 'fixCapacity',
+        entryId: entry.id,
+        date: this.#formatDate(entry.entryDate),
+      })
+      : entry.validationResult?.errorType === 'journal_missing_independent_work'
+        ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
+          handler: 'openEntry',
+          entryId: entry.id,
+          date: this.#formatDate(entry.entryDate),
+        })
+        : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+          handler: 'fixCapacity',
+          entryId: entry.id,
+          date: this.#formatDate(entry.entryDate),
+        })
 
     return `<tr style="background-color:white">
       <td style="${CENTER_STYLE}">${dateWithBadge}</td>
@@ -1835,82 +2039,38 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #addCapacityProblemButtonListeners () {
-    document.querySelectorAll('[data-capacity-problems-table] button').forEach(/** @param {HTMLElement} button */ button => {
+    document.querySelectorAll('[data-discrepancies-table] button').forEach(/** @param {HTMLElement} button */ button => {
       if (button.dataset.handler) {
         button.addEventListener('click', event => this.#handleDiscrepancyButtonClick(event, button))
       }
     })
   }
 
-  #highlightProblematicElements (elements, message = '') {
+  #highlightProblematicElements (elements, message = '', color = '#ff0000') {
     // Clean up any existing highlights first
     this.#cleanupHighlights()
 
     const highlights = []
 
-    elements.forEach((element, index) => {
+    elements.forEach(element => {
       if (!element) return
 
-      // Create fixed overlay div that follows the element when scrolling
-      const highlight = document.createElement('div')
-      highlight.dataset.capacityHighlight = 'true'
-      highlight.dataset.targetElement = index
-      highlight.style.cssText = `
-        position: fixed;
-        border: 2px solid #ff0000;
-        border-radius: 10px;
-        pointer-events: none;
-        z-index: 9998;
-        box-shadow: 0 0 15px rgba(255, 0, 0, 0.6);
-        background: rgba(255, 0, 0, 0.05);
-      `
+      // Add border highlight directly to the element instead of creating an overlay
+      element.style.border = `2px solid ${color}`
+      element.style.boxShadow = `0 0 8px ${color}`
+      element.dataset.capacityHighlight = 'true'
 
-      // Function to update highlight position based on element's current position
-      const updatePosition = () => {
-        if (!element.isConnected) {
-          highlight.remove()
-          return
-        }
-
-        const rect = element.getBoundingClientRect()
-        // Only show highlight if element is visible in viewport
-        if (rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0) {
-          highlight.style.top = `${rect.top - 2}px`
-          highlight.style.left = `${rect.left - 2}px`
-          highlight.style.width = `${rect.width + 4}px`
-          highlight.style.height = `${rect.height + 4}px`
-          highlight.style.display = 'block'
-        } else {
-          highlight.style.display = 'none'
-        }
-      }
-
-      // Initial position
-      updatePosition()
-
-      // Store the update function and element reference
-      highlight.updatePosition = updatePosition
-      highlight.targetElement = element
-
-      document.body.appendChild(highlight)
-      highlights.push(highlight)
-
+      highlights.push(element)
     })
 
-    // Add scroll listener to update all highlight positions when user scrolls
+    // Store original styles for restoration
     if (highlights.length > 0) {
-      this.highlightScrollListener = () => {
-        highlights.forEach(highlight => {
-          if (highlight.updatePosition && highlight.targetElement && highlight.targetElement.isConnected) {
-            highlight.updatePosition()
-          }
-        })
-      }
-
-      // Listen to scroll events on window and all scrollable containers
-      window.addEventListener('scroll', this.highlightScrollListener, true)
-      document.addEventListener('scroll', this.highlightScrollListener, true)
-
+      highlights.forEach(element => {
+        if (!element.dataset.originalBorder) {
+          element.dataset.originalBorder = element.style.border || ''
+          element.dataset.originalBoxShadow = element.style.boxShadow || ''
+        }
+      })
     }
 
     // Add a message tooltip if provided
@@ -1921,7 +2081,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         position: fixed;
         top: 20px;
         right: 20px;
-        background: #ff0000;
+        background: ${color};
         color: white;
         padding: 12px 18px;
         border-radius: 8px;
@@ -1950,10 +2110,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #findProblematicElementsForHighlighting (entryType, validationResult) {
     const elements = []
 
-    // Find all checkbox elements specifically
-    const allCheckboxes = document.querySelectorAll('md-checkbox')
+    // Find capacity type checkbox elements specifically
+    const allCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"]')
 
-    // Handle specific error types first
+    // Handle specific error types
     if (entryType === 'SISSEKANNE_T' && validationResult?.errorType === 'lesson_with_independent_work') {
 
       // Find and highlight both "Iseseisev õpe" (incorrectly checked) and "Praktiline töö" checkboxes
@@ -1963,6 +2123,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         if ((ariaLabel.includes('Iseseisev õpe') || textContent.includes('Iseseisev õpe')) ||
           (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö'))) {
+          elements.push(checkbox)
+        }
+      })
+
+    } else if (entryType === 'SISSEKANNE_T' && validationResult?.errorType === 'lesson_without_auditoorne') {
+
+      // Find and highlight only "Auditoorne õpe" checkbox (should be checked but isn't)
+      allCheckboxes.forEach(checkbox => {
+        const ariaLabel = checkbox.getAttribute('aria-label') || ''
+        const textContent = checkbox.textContent || ''
+
+        if (ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) {
           elements.push(checkbox)
         }
       })
@@ -2016,6 +2188,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       })
 
+    } else if (validationResult?.errorType === 'journal_missing_independent_work') {
+      // For journal missing independent work, no specific checkbox highlighting needed
+      // The issue is with journal configuration, not entry checkboxes
+
     } else if (validationResult?.errorType === 'praktiline_too_without_praktiline_checkbox') {
 
       // Find and highlight only "Praktiline töö" checkbox
@@ -2044,13 +2220,24 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Handle cases where we have entryType but no specific validation result
     else if (entryType && !validationResult?.errorType) {
 
-      if (entryType === 'SISSEKANNE_T' || entryType === 'SISSEKANNE_P') {
+      if (entryType === 'SISSEKANNE_T') {
         // For lesson entries, highlight "Auditoorne õpe" as it's likely missing
         allCheckboxes.forEach(checkbox => {
           const ariaLabel = checkbox.getAttribute('aria-label') || ''
           const textContent = checkbox.textContent || ''
 
           if (ariaLabel.includes('Auditoorne õpe') || textContent.includes('Auditoorne õpe')) {
+            elements.push(checkbox)
+          }
+        })
+
+      } else if (entryType === 'SISSEKANNE_P') {
+        // For practical work entries, highlight "Praktiline töö" as it's likely missing
+        allCheckboxes.forEach(checkbox => {
+          const ariaLabel = checkbox.getAttribute('aria-label') || ''
+          const textContent = checkbox.textContent || ''
+
+          if (ariaLabel.includes('Praktiline töö') || textContent.includes('Praktiline töö')) {
             elements.push(checkbox)
           }
         })
@@ -2082,11 +2269,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       })
 
-      // If still no capacity checkboxes found, highlight ALL checkboxes in the dialog for debugging
+      // If still no capacity checkboxes found, highlight ALL checkboxes for debugging
       if (elements.length === 0) {
-        allCheckboxes.forEach(checkbox => {
-          elements.push(checkbox)
-        })
+        // Fall back to any checkbox with capacity-related ng-model or all checkboxes if none found
+        const anyCapacityCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"], md-checkbox[ng-model*="capacityType"]')
+        if (anyCapacityCheckboxes.length > 0) {
+          anyCapacityCheckboxes.forEach(checkbox => {
+            elements.push(checkbox)
+          })
+        } else {
+          // Last resort: highlight all checkboxes
+          document.querySelectorAll('md-checkbox').forEach(checkbox => {
+            elements.push(checkbox)
+          })
+        }
       }
     }
 
@@ -2100,7 +2296,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    */
   async #handleFixCapacity (date, entryId, data = {}) {
     try {
+      const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
+
+      // Debug logging for entryId resolution
+      Logger.debug(`[${this.name}] handleFixCapacity called with entryId=${entryId}, data.entryid=${data.entryid}, actualEntryId=${actualEntryId}`)
 
 
       // Try to refresh journal data if it's missing
@@ -2113,30 +2313,31 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       }
 
-      const element = await this.#findJournalEntryElement(entryId, date, duplicateIndex)
+      const element = await this.#findJournalEntryElement(actualEntryId, date, duplicateIndex)
       if (!element) {
         // Enhanced error logging
         const debugInfo = {
           entryId,
+          actualEntryId,
           date,
           duplicateIndex,
           formattedDate: this.#formatDisplayDate(date),
           datePrefix: this.#formatDisplayDate(date).slice(0, 5),
           hasJournalData: !!this.#lastJournalData,
           entriesInCache: this.#lastJournalData?.entries?.length || 0,
-          targetEntryExists: !!(this.#lastJournalData?.entries ?? []).find(entry => entry.id == entryId),
+          targetEntryExists: !!(this.#lastJournalData?.entries ?? []).find(entry => entry.id == actualEntryId),
           rowsFound: document.querySelectorAll('tr[ng-click*="editJournalEntry"]').length,
           clickableRowsFound: document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"]').length,
           allTableRows: document.querySelectorAll('tr').length,
         }
 
-        Logger.error(`[${this.name}] Entry element not found for ID=${entryId}, date=${date}, duplicateIndex=${duplicateIndex}`, debugInfo)
+        Logger.error(`[${this.name}] Entry element not found for ID=${actualEntryId}, date=${date}, duplicateIndex=${duplicateIndex}`, debugInfo)
 
-        throw new Error(`entry element not found - entryId: ${entryId}, date: ${date}, duplicateIndex: ${duplicateIndex}`)
+        throw new Error(`entry element not found - entryId: ${entryId}, actualEntryId: ${actualEntryId}, date: ${date}, duplicateIndex: ${duplicateIndex}`)
       }
 
 
-      return this.#continueFixCapacity(element, entryId, date)
+      return this.#continueFixCapacity(element, actualEntryId, date)
     } catch (error) {
       Logger.error(`[${this.name}] fix capacity error`, error)
     }
@@ -2171,25 +2372,38 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Prepare highlight message
       let highlightMessage
-      if (validationResult?.errorType === 'lesson_with_independent_work') {
-        highlightMessage = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees. Palun eemalda iseseisev õpe ja märgi praktiline töö!'
+      if (validationResult?.errorType === 'no_teacher_selected') {
+        highlightMessage = 'Õpetaja pole valitud! Palun valige õpetaja.'
+      } else if (validationResult?.errorType === 'lesson_with_independent_work') {
+        highlightMessage = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees. Palun eemalda iseseisev õpe ja märgi auditoorne õpe!'
+      } else if (validationResult?.errorType === 'lesson_without_auditoorne') {
+        highlightMessage = 'Sissekande liik on tund, aga auditoorne õpe linnuke pole sees. Palun lülita auditoorne õpe sisse!'
       } else if (validationResult?.errorType === 'independent_work_with_auditory') {
-        highlightMessage = 'Iseseisel tööl ei saa olla auditoorne õpe linnuke sees. Palun eemalda vale linnuke!'
+        highlightMessage = 'Iseseisev tööl ei saa olla auditoorne õpe linnuke sees. Palun eemalda vale linnuke!'
       } else if (validationResult?.errorType === 'both_checkboxes_selected') {
         highlightMessage = 'Korraga ei saa auditoorne õpe ja individuaalne õpe aktiivsed olla. Palun eemalda üks linnuke!'
+      } else if (validationResult?.errorType === 'praktiline_too_without_praktiline_checkbox') {
+        highlightMessage = 'Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees. Palun lülita praktiline töö sisse!'
       } else if (validationResult?.errorType === 'missing_auditoorne_checkbox') {
         highlightMessage = 'Auditoorne õpe linnuke puudub. Palun lülita see sisse!'
       } else if (validationResult?.errorType === 'missing_iseseisev_checkbox') {
         highlightMessage = 'Iseseisev õpe linnuke puudub. Palun lülita see sisse!'
-      } else if (entryType === 'SISSEKANNE_T' || entryType === 'SISSEKANNE_P') {
+      } else if (validationResult?.errorType === 'journal_missing_independent_work') {
+        highlightMessage = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid. Kontrolli päeviku seadistusi!'
+      } else if (validationResult?.errorType === 'missing_praktiline_checkbox') {
+        highlightMessage = 'Praktiline töö linnuke puudub. Palun lülita see sisse!'
+      } else if (entryType === 'SISSEKANNE_T') {
         // Default message for lesson entries
         highlightMessage = 'Auditoorne õpe linnuke puudub. Palun lülita see sisse!'
+      } else if (entryType === 'SISSEKANNE_P') {
+        // Default message for practical work entries
+        highlightMessage = 'Praktiline töö linnuke puudub. Palun lülita see sisse!'
       } else if (entryType === 'SISSEKANNE_I') {
         // Default message for independent work entries
         highlightMessage = 'Iseseisev õpe linnuke puudub. Palun lülita see sisse!'
       } else {
         // Fallback message
-        highlightMessage = 'Kontrollige auditoorse õppe ja iseseisva õppe linnukesi!'
+        highlightMessage = 'Kontrollige auditoorse õppe ja iseseiseva õppe linnukesi!'
       }
 
       await this.#clickJournalEntry(element)
@@ -2198,13 +2412,84 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Wait a bit for dialog content to fully render
       await new Promise(resolve => setTimeout(resolve, 500))
 
+      // Special handling for teacher validation issues
+      if (validationResult?.errorType === 'no_teacher_selected') {
+        // Auto-check teacher checkbox but don't auto-save
+        await this.#checkTeacherCheckbox()
+
+        // Highlight teacher checkboxes in green to show they were fixed
+        const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+        const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
+
+        if (teacherElements.length > 0) {
+          // Use green highlight for successful fix - no message needed
+          this.#highlightProblematicElements(teacherElements, 'Õpetaja on valitud! Palun salvestage muudatused käsitsi.', '#4CAF50')
+          this.#addDialogCloseListeners()
+        }
+
+        return // Exit early for teacher validation - no auto-save
+      }
+
+      // Special handling for lesson_without_auditoorne - only check capacity checkbox, not teacher
+      if (validationResult?.errorType === 'lesson_without_auditoorne') {
+        // Do NOT auto-check teacher checkbox for this specific error type
+        // Just highlight the auditoorne checkbox and let user handle teacher selection manually
+      } else {
+        // Ensure teacher checkbox is always checked for other validation types
+        await this.#checkTeacherCheckbox()
+      }
+
+      // Check if teacher is actually selected after auto-checking (skip for lesson_without_auditoorne)
+      if (validationResult?.errorType !== 'lesson_without_auditoorne') {
+        const teacherState = this.#getTeacherCheckboxState()
+
+        // If no teacher is selected, show specific error and highlight teacher checkboxes
+        if (!teacherState.hasTeacher) {
+          const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+          const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
+
+          if (teacherElements.length > 0) {
+            this.#highlightProblematicElements(teacherElements, 'Õpetaja pole valitud! Palun valige õpetaja enne salvestamist.')
+            this.#addDialogCloseListeners()
+
+            // Add event listeners to automatically clear the highlight when a teacher is selected
+            this.#addTeacherSelectionMonitoring()
+
+            return // Exit early - don't process capacity checkboxes until teacher is selected
+          }
+        }
+
+        // Add teacher checkbox change listeners for validation refresh
+        this.#addTeacherCheckboxListeners()
+      }
+
       // Find and highlight problematic elements to guide the user
       const elementsToHighlight = this.#findProblematicElementsForHighlighting(entryType, validationResult)
 
+      // Special green highlight for praktiline töö missing checkbox error
+      if (validationResult?.errorType === 'praktiline_too_without_praktiline_checkbox') {
+        // Find the relevant checkboxes
+        const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"]')
+        const praktiliseCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+          checkbox.getAttribute('aria-label')?.includes('Praktiline töö') ||
+          checkbox.textContent.includes('Praktiline töö'))
+        const iseseisvCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+          checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
+          checkbox.textContent.includes('Iseseisev õpe'))
 
-      if (elementsToHighlight.length > 0) {
+        // Uncheck and highlight Iseseisev õpe in red if checked
+        if (iseseisvCheckbox && iseseisvCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisvCheckbox)
+          this.#highlightProblematicElements([iseseisvCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
+        }
+        // Check and highlight Praktiline töö in green if not checked
+        if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(praktiliseCheckbox)
+          this.#highlightProblematicElements([praktiliseCheckbox], highlightMessage, '#4CAF50')
+        }
+        this.#addDialogCloseListeners()
+      } else if (elementsToHighlight.length > 0) {
         this.#highlightProblematicElements(elementsToHighlight, highlightMessage)
-
         // Add listeners to remove highlights when dialog is closed or saved
         this.#addDialogCloseListeners()
       } else {
@@ -2238,52 +2523,115 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       // Find capacity type checkboxes
       // noinspection CssInvalidHtmlTagReference
-      const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="capacityType"]')
+      const capacityTypeCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedCapacityTypes"]')
       const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') ||
         checkbox.textContent.includes('Auditoorne õpe'))
       const iseseivCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
         checkbox.getAttribute('aria-label')?.includes('Individuaalne õpe') ||
-        checkbox.textContent.includes('Iseseisev õpe') ||
+        checkbox.textContent.includes('Iseseisv õpe') ||
         checkbox.textContent.includes('Individuaalne õpe'))
+      const praktiliseCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+        checkbox.getAttribute('aria-label')?.includes('Praktiline töö') ||
+        checkbox.textContent.includes('Praktiline töö'))
 
-      let needsSave = false
+      // Special auto-fix for lesson_without_auditoorne: automatically check auditoorne õpe
+      if (validationResult?.errorType === 'lesson_without_auditoorne') {
+        // Auto-check the auditoorne checkbox but don't auto-save
+        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(auditoorneCheckbox)
 
-      if (entryType === 'SISSEKANNE_I') {
-        // For independent work entries: ensure iseseisev õpe is checked, auditoorne õpe is unchecked
+          // Highlight the checkbox in green to show it was automatically fixed
+          this.#highlightProblematicElements([auditoorneCheckbox], 'Auditoorne õpe on automaatselt sisse lülitatud! Palun salvestage muudatused käsitsi.', '#4CAF50')
+          this.#addDialogCloseListeners()
+        }
+        return // Exit early - no auto-saving
+      } else if (entryType === 'SISSEKANNE_I') {
+        // For independent work entries: ensure iseseivCheckbox is checked, others are unchecked
         if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(iseseivCheckbox)
-          needsSave = true
         }
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
-          needsSave = true
         }
-      } else {
-        // For lesson entries (SISSEKANNE_T/P): ensure auditoorne õpe is checked, iseseisev õpe is unchecked
-        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
+        if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(praktiliseCheckbox)
+        }
+      } else if (entryType === 'SISSEKANNE_P') {
+        // For practical work entries: ensure praktiline töö is checked, others are unchecked
+        if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(praktiliseCheckbox)
+        }
+        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
-          needsSave = true
         }
         if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(iseseivCheckbox)
-          needsSave = true
+        }
+      } else {
+        // For regular lesson entries (SISSEKANNE_T): ensure auditoorne õpe is checked, others are unchecked
+        if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(auditoorneCheckbox)
+        }
+        if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseivCheckbox)
+        }
+        if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(praktiliseCheckbox)
         }
       }
 
-      if (needsSave) {
-        // Find and click the save button
-        const saveButton = document.querySelector('button[ng-click*="save"]')
-        if (saveButton) {
-          await this.#clickElement(saveButton)
-
-          // Refresh the table after saving
-          setTimeout(() => this.#refreshTableWithRetry(), 1000)
-        }
-      }
+      // Note: No auto-save functionality - user must manually save after making changes
     } catch (error) {
       Logger.error(`[${this.name}] fix capacity error`, error)
+    }
+  }
+
+  #addTeacherSelectionMonitoring () {
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
+
+    for (const checkbox of teacherCheckboxes) {
+      if (checkbox && this.#isElementVisible(checkbox) && !checkbox.dataset.teacherMonitoringAdded) {
+        const handleTeacherSelection = () => {
+          // Small delay to let the change propagate
+          setTimeout(() => {
+            const teacherState = this.#getTeacherCheckboxState()
+            if (teacherState.hasTeacher) {
+              // Teacher is now selected, clear highlights and continue with normal validation
+              this.#cleanupHighlights()
+              Logger.debug(`[${this.name}] Teacher selected, continuing with capacity validation...`)
+            }
+          }, 200)
+        }
+
+        checkbox.addEventListener('click', handleTeacherSelection)
+        checkbox.addEventListener('change', handleTeacherSelection)
+        checkbox.dataset.teacherMonitoringAdded = 'true'
+      }
+    }
+  }
+
+  #addTeacherCheckboxListeners () {
+    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]:not([data-teacher-listener-added])')
+
+    for (const checkbox of teacherCheckboxes) {
+      if (checkbox && this.#isElementVisible(checkbox)) {
+        const handleTeacherChange = async () => {
+          Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
+          // Small delay to let the change propagate
+          await this.#delay(300)
+          // Refresh the capacity validation table
+          await this.#refreshTableWithRetry()
+        }
+
+        // Listen for both click and change events
+        checkbox.addEventListener('click', handleTeacherChange)
+        checkbox.addEventListener('change', handleTeacherChange)
+
+        // Mark this checkbox as having listeners to avoid duplicates
+        checkbox.dataset.teacherListenerAdded = 'true'
+      }
     }
   }
 
@@ -2345,28 +2693,245 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #cleanupHighlights () {
+    // Remove only tooltip popups (not checkboxes)
+    document.querySelectorAll('[data-capacity-highlight="true"]').forEach(el => {
+      if (el.tagName === 'MD-CHECKBOX') {
+        // Restore original styles and remove highlight attribute
+        if (el.dataset.originalBorder !== undefined) {
+          el.style.border = el.dataset.originalBorder
+          delete el.dataset.originalBorder
+        } else {
+          el.style.border = ''
+        }
+        if (el.dataset.originalBoxShadow !== undefined) {
+          el.style.boxShadow = el.dataset.originalBoxShadow
+          delete el.dataset.originalBoxShadow
+        } else {
+          el.style.boxShadow = ''
+        }
+        el.removeAttribute('data-capacity-highlight')
+      } else {
+        // Remove tooltip or other non-checkbox highlight
+        el.remove()
+      }
+    })
+    // Clean up dialog close observer if present
+    if (this.#dialogCloseObserver) {
+      this.#dialogCloseObserver.disconnect()
+      this.#dialogCloseObserver = null
+    }
+  }
 
-    // Remove all highlight overlays
-    const remainingHighlights = document.querySelectorAll('[data-capacity-highlight]')
-    remainingHighlights.forEach(highlight => highlight.remove())
+  /**
+   * Handle opening a journal entry and highlighting the entry type field
+   * @param {string} entryId - Entry ID
+   * @param {Object} data - Button data object
+   */
+  async #handleOpenEntry (entryId, data = {}) {
+    try {
+      const actualEntryId = entryId || data.entryid
+      Logger.debug(`[${this.name}] handleOpenEntry called with entryId=${entryId}, actualEntryId=${actualEntryId}`)
 
-    // Remove scroll listeners
-    if (this.highlightScrollListener) {
-      window.removeEventListener('scroll', this.highlightScrollListener, true)
-      document.removeEventListener('scroll', this.highlightScrollListener, true)
-      this.highlightScrollListener = null
+      // Find the journal entry element and click it to open
+      const element = await this.#findJournalEntryElement(actualEntryId, data.date)
+      if (!element) {
+        Logger.error(`[${this.name}] Could not find journal entry element for ID: ${actualEntryId}`)
+        return
+      }
+
+      // Click the element to open the entry dialog
+      await this.#clickElement(element)
+
+      // Wait for the dialog to open
+      await this.#waitForElement('md-dialog', 5000)
+
+      // Find and highlight the "Sissekande liik" (Entry type) field
+      setTimeout(() => {
+        this.#highlightEntryTypeField()
+      }, 500) // Small delay to ensure dialog is fully loaded
+
+    } catch (error) {
+      Logger.error(`[${this.name}] Error in handleOpenEntry:`, error)
+    }
+  }
+
+  /**
+   * Find and highlight the entry type field with a red box
+   */
+  #highlightEntryTypeField () {
+    try {
+      // Look for entry type related elements
+      const entryTypeSelectors = [
+        'md-select[ng-model*="entryType"]',
+        'md-select[ng-model*="EntryType"]',
+        'md-select[aria-label*="sissekande liik"]',
+        'md-select[aria-label*="Sissekande liik"]',
+        'select[ng-model*="entryType"]',
+        '[ng-model*="entryType"]'
+      ]
+
+      let entryTypeElement = null
+
+      for (const selector of entryTypeSelectors) {
+        entryTypeElement = document.querySelector(selector)
+        if (entryTypeElement) {
+          Logger.debug(`[${this.name}] Found entry type element with selector: ${selector}`)
+          break
+        }
+      }
+
+      // If not found, try finding by text content
+      if (!entryTypeElement) {
+        const labels = document.querySelectorAll('label, .md-input-label, md-input-container label')
+        for (const label of labels) {
+          if (label.textContent.toLowerCase().includes('sissekande liik') ||
+            label.textContent.toLowerCase().includes('sissekannetüüp')) {
+            // Look for nearby input/select elements
+            const parent = label.closest('md-input-container, .md-input-container, md-select, .form-group')
+            if (parent) {
+              entryTypeElement = parent.querySelector('md-select, select, input') || parent
+              Logger.debug(`[${this.name}] Found entry type element by label text`)
+              break
+            }
+          }
+        }
+      }
+
+      if (entryTypeElement) {
+        // Create and apply red highlight
+        const highlightBox = document.createElement('div')
+        highlightBox.dataset.entryTypeHighlight = 'true'
+        highlightBox.style.cssText = `
+          position: absolute;
+          border: 3px solid #ff0000;
+          background: rgba(255, 0, 0, 0.1);
+          pointer-events: none;
+          z-index: 10000;
+          border-radius: 4px;
+          box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+        `
+
+        // Position the highlight box over the element
+        const rect = entryTypeElement.getBoundingClientRect()
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft
+
+        highlightBox.style.top = (rect.top + scrollTop - 2) + 'px'
+        highlightBox.style.left = (rect.left + scrollLeft - 2) + 'px'
+        highlightBox.style.width = (rect.width + 4) + 'px'
+        highlightBox.style.height = (rect.height + 4) + 'px'
+
+        document.body.appendChild(highlightBox)
+
+        // Add tooltip message
+        const tooltip = document.createElement('div')
+        tooltip.dataset.entryTypeTooltip = 'true'
+        tooltip.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: #ff0000;
+          color: white;
+          padding: 12px 18px;
+          border-radius: 8px;
+          z-index: 10001;
+          font-weight: bold;
+          font-size: 14px;
+          max-width: 350px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+          border: 2px solid #ffffff;
+          line-height: 1.4;
+        `
+        tooltip.textContent = 'Vigane sissekanne: Kontrollige sissekande liiki! See peaks olema õige tüüp päeviku seadistuste järgi.'
+        document.body.appendChild(tooltip)
+
+        // Add cleanup listener for dialog close
+        this.#addEntryTypeHighlightCleanup()
+
+        Logger.debug(`[${this.name}] Entry type field highlighted`)
+      } else {
+        Logger.warn(`[${this.name}] Could not find entry type field to highlight`)
+      }
+
+    } catch (error) {
+      Logger.error(`[${this.name}] Error highlighting entry type field:`, error)
+    }
+  }
+
+  /**
+   * Add listeners to clean up entry type highlights when dialog is closed or entry type is clicked
+   */
+  #addEntryTypeHighlightCleanup () {
+    const cleanupHighlights = () => {
+      // Remove highlight box
+      document.querySelectorAll('[data-entry-type-highlight="true"]').forEach(el => el.remove())
+      // Remove tooltip
+      document.querySelectorAll('[data-entry-type-tooltip="true"]').forEach(el => el.remove())
     }
 
-    // Clean up dialog listeners
-    if (this.dialogCloseListener) {
-      document.removeEventListener('click', this.dialogCloseListener, true)
-      this.dialogCloseListener = null
+    // Listen for clicks on entry type elements to remove highlight when user interacts
+    const addEntryTypeClickListeners = () => {
+      const entryTypeSelectors = [
+        'md-select[ng-model*="entryType"]',
+        'md-select[ng-model*="EntryType"]',
+        'md-select[aria-label*="sissekande liik"]',
+        'md-select[aria-label*="Sissekande liik"]',
+        'select[ng-model*="entryType"]',
+        '[ng-model*="entryType"]'
+      ]
+
+      entryTypeSelectors.forEach(selector => {
+        const element = document.querySelector(selector)
+        if (element && !element.dataset.highlightCleanupAdded) {
+          element.dataset.highlightCleanupAdded = 'true'
+          element.addEventListener('click', cleanupHighlights, { once: true })
+          element.addEventListener('focus', cleanupHighlights, { once: true })
+          Logger.debug(`[${this.name}] Added cleanup listener to entry type element: ${selector}`)
+        }
+      })
+
+      // Also look for entry type elements by label text
+      const labels = document.querySelectorAll('label, .md-input-label, md-input-container label')
+      labels.forEach(label => {
+        if (label.textContent.toLowerCase().includes('sissekande liik') ||
+          label.textContent.toLowerCase().includes('sissekannetüüp')) {
+          const parent = label.closest('md-input-container, .md-input-container, md-select, .form-group')
+          if (parent) {
+            const entryTypeElement = parent.querySelector('md-select, select, input')
+            if (entryTypeElement && !entryTypeElement.dataset.highlightCleanupAdded) {
+              entryTypeElement.dataset.highlightCleanupAdded = 'true'
+              entryTypeElement.addEventListener('click', cleanupHighlights, { once: true })
+              entryTypeElement.addEventListener('focus', cleanupHighlights, { once: true })
+              Logger.debug(`[${this.name}] Added cleanup listener to entry type element found by label`)
+            }
+          }
+        }
+      })
     }
 
-    if (this.dialogMutationObserver) {
-      this.dialogMutationObserver.disconnect()
-      this.dialogMutationObserver = null
+    // Add entry type click listeners with a small delay to ensure elements are loaded
+    setTimeout(addEntryTypeClickListeners, 100)
+
+    // Listen for dialog close
+    const dialog = document.querySelector('md-dialog')
+    if (dialog) {
+      const observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+          if (mutation.type === 'childList') {
+            mutation.removedNodes.forEach(node => {
+              if (node.nodeType === Node.ELEMENT_NODE &&
+                (node.matches('md-dialog') || node.querySelector('md-dialog'))) {
+                cleanupHighlights()
+                observer.disconnect()
+              }
+            })
+          }
+        })
+      })
+      observer.observe(document.body, { childList: true, subtree: true })
     }
 
+    // Also clean up after 30 seconds as fallback
+    setTimeout(cleanupHighlights, 30000)
   }
 }

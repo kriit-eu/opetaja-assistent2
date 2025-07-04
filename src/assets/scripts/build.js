@@ -172,8 +172,8 @@ async function copyStaticAssets () {
   console.log('  Copied JournalSyncBannerService.css')
 
   // Copy TahvelLessonTimes.json
-  const lessonTimesSourceDir = path.join(CONFIG.srcDir, 'features', 'lessonDiscrepancies')
-  const lessonTimesDestDir = path.join(CONFIG.distDir, 'src', 'features', 'lessonDiscrepancies')
+  const lessonTimesSourceDir = path.join(CONFIG.srcDir, 'features', 'singleJournal', 'lessonDiscrepancies')
+  const lessonTimesDestDir = path.join(CONFIG.distDir, 'src', 'features', 'singleJournal', 'lessonDiscrepancies')
 
   // Create the destination directory structure
   fs.mkdirSync(lessonTimesDestDir, { recursive: true })
