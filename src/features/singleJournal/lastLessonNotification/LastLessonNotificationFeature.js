@@ -33,6 +33,8 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     console.debug('[LastLessonNotificationFeature] Current URL:', window.location.href)
 
     try {
+      // Wait for the discrepancies table to be created or timeout after 3 seconds
+      await this.#waitForDiscrepanciesTable()
       await this.#showLastLessonNotification()
     } catch (error) {
       console.error('[LastLessonNotificationFeature] Error in activate:', error)
@@ -42,6 +44,28 @@ export default class LastLessonNotificationFeature extends BaseFeature {
   onDeactivate () {
     this._removeBanner()
     super.onDeactivate()
+  }
+
+  async #waitForDiscrepanciesTable () {
+    console.debug('[LastLessonNotificationFeature] Waiting for discrepancies table...')
+    const maxWaitTime = 3000 // 3 seconds
+    const checkInterval = 100 // Check every 100ms
+    let waited = 0
+
+    while (waited < maxWaitTime) {
+      const container = this._findInsertionPoint()
+      const existingTable = container.querySelector('[data-discrepancies-table]')
+      
+      if (existingTable) {
+        console.debug('[LastLessonNotificationFeature] Discrepancies table found, proceeding...')
+        return
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, checkInterval))
+      waited += checkInterval
+    }
+    
+    console.debug('[LastLessonNotificationFeature] Timeout waiting for discrepancies table, proceeding anyway...')
   }
 
   async #showLastLessonNotification () {
@@ -166,7 +190,21 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     `
 
     const container = this._findInsertionPoint()
-    container.insertBefore(banner, container.firstChild)
+    
+    // Check if there's already a discrepancies table and insert after it
+    const existingTable = container.querySelector('[data-discrepancies-table]')
+    console.debug('[LastLessonNotificationFeature] Container:', container)
+    console.debug('[LastLessonNotificationFeature] Existing table found:', !!existingTable)
+    
+    if (existingTable) {
+      // Insert after the discrepancies table
+      console.debug('[LastLessonNotificationFeature] Inserting after discrepancies table')
+      container.insertBefore(banner, existingTable.nextSibling)
+    } else {
+      // Insert at the beginning if no table exists
+      console.debug('[LastLessonNotificationFeature] Inserting at beginning of container')
+      container.insertBefore(banner, container.firstChild)
+    }
   }
 
   _removeBanner () {
