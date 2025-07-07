@@ -23,7 +23,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
             month: '2-digit',
             day: '2-digit'
         }).format(new Date())
-        // this.comparisonDate = "2025-06-22" // Uncomment for testing with a fixed date
+        this.comparisonDate = "2023-06-22" // Uncomment for testing with a fixed date
 
     }
 

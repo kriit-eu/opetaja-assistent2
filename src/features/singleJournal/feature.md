@@ -1,0 +1,1 @@
+pärast seda kui on arvutatud välja viimase tunni toimumise kuupäev siis vaadatakse kas iseseisvad tööd on sissekantud õiges mahus kui on vähem siis ütleb et "iseseisvaid töid on liiga vähe sisse kantud ja kui on liiga palju siis ütleb et "iseseisvaid töid on liiga palju sisse kantud" ja kui on õiges mahus siis ei öelda midagi.

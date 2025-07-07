@@ -1,6 +1,7 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
+import IndependentWorkCapacityFeature from './IndependentWorkCapacityFeature.js'
 
 const HEX = {
   green: ['#28a745', '#218838', '#fff'],
@@ -60,12 +61,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   static SCHOOL_ID_FALLBACK = 9
   static JOURNAL_ENTRY_LESSON_TYPE = 'SISSEKANNE_T'
 
-  constructor () {
+  constructor() {
     super('lessonDiscrepancies', /\/journal\/\d+\/edit/)
     this.name = 'LessonDiscrepanciesFeature'
   }
 
-  async activate () {
+  async activate() {
     this.reset()
     await this.#clearStaleCache()
     await this.#delay(1000)
@@ -74,13 +75,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#setupDialogObserver()
   }
 
-  onDeactivate () {
+  onDeactivate() {
     this.#cleanupMonitoring()
     this.reset()
     super.onDeactivate()
   }
 
-  reset () {
+  reset() {
     this.#tableCreated = false
     this.#currentJournalId = null
     this.#cleanupMonitoring()
@@ -122,14 +123,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return match ? parseInt(match[1], 10) : null
   }
 
-  async #clearStaleCache () {
+  async #clearStaleCache() {
     const journalId = this.#extractJournalId()
     if (journalId) {
       await cacheService.clearJournalCache(journalId)
     }
   }
 
-  async #createLessonDiscrepanciesTable (forceRefresh = false) {
+  async #createLessonDiscrepanciesTable(forceRefresh = false) {
     try {
       const journalId = this.#extractJournalId()
       if (!journalId) return
@@ -142,13 +143,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#lastJournalData = journalData
 
       const discrepancies = await this.#findLessonDiscrepancies(journalData, timetableData)
-
-      // Always check for capacity type problems
       const capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
-      // Create unified display
+      // Check independent work capacity message
+      const indepWorkMessage = await IndependentWorkCapacityFeature.check(this.api, journalId)
+
       existingTable?.remove()
-      this.#insertUnifiedTable(discrepancies, capacityProblems)
+      this.#insertUnifiedTable(discrepancies, capacityProblems, indepWorkMessage)
       this.#tableCreated = true
       this.#currentJournalId = journalId
     } catch (error) {
@@ -156,7 +157,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #fetchJournalAndTimetableData (journalId, forceRefresh = false) {
+  async #fetchJournalAndTimetableData(journalId, forceRefresh = false) {
     const cacheExpiration = forceRefresh ? 0 : 6e4
     const cacheBuster = forceRefresh ? Date.now() : undefined
     const params = cacheBuster ? { _t: cacheBuster } : {}
@@ -177,7 +178,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #getCurrentStudyYearDates () {
+  #getCurrentStudyYearDates() {
     const now = new Date()
     const studyYear = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear()
     return {
@@ -191,7 +192,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {boolean} forceRefresh - Whether to force refresh cache
    * @returns {Promise<Array<TimetableEvent>>} Timetable events
    */
-  async #fetchTimetableData (info, forceRefresh = false) {
+  async #fetchTimetableData(info, forceRefresh = false) {
     try {
       const teacherId = info.journalTeachers?.[0]?.id
       if (!teacherId) return []
@@ -218,7 +219,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #fetchLessonTimes (schoolId = LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK) {
+  async #fetchLessonTimes(schoolId = LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK) {
     try {
       return await new Promise((resolve, reject) => {
         /** @type {any} */
@@ -242,7 +243,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #calculateLessonNumber (timeStart, schoolId) {
+  async #calculateLessonNumber(timeStart, schoolId) {
     const times = await this.#fetchLessonTimes(schoolId)
     if (!timeStart || !times.length) return 1
 
@@ -262,7 +263,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }).number
   }
 
-  #aggregateJournalEntries (entries) {
+  #aggregateJournalEntries(entries) {
     return entries.reduce((aggregated, entry) => {
       if (entry.entryType !== LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE) {
         return aggregated
@@ -279,7 +280,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }, {})
   }
 
-  async #aggregateTimetableEvents (events, schoolId) {
+  async #aggregateTimetableEvents(events, schoolId) {
     const stats = {}
     for (const event of events) {
       const date = this.#formatDate(event.date)
@@ -293,7 +294,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return stats
   }
 
-  async #findLessonDiscrepancies (journal, timetable) {
+  async #findLessonDiscrepancies(journal, timetable) {
     const schoolId = journal.info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
     const journalStats = this.#aggregateJournalEntries(journal.entries)
     const timetableStats = await this.#aggregateTimetableEvents(timetable, schoolId)
@@ -314,7 +315,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return this.#convertDifferencesToDiscrepancies(differences, journal, timetable)
   }
 
-  async #convertDifferencesToDiscrepancies (differences, journal, timetable) {
+  async #convertDifferencesToDiscrepancies(differences, journal, timetable) {
     const discrepancies = []
 
     for (const difference of differences) {
@@ -342,7 +343,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #createMissingLessonDiscrepancies ({ date, tEntries }, journal, discrepancies) {
+  async #createMissingLessonDiscrepancies({ date, tEntries }, journal, discrepancies) {
     const schoolId = journal.info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
     /** @type {Array<{date: string, timeStart: string, timeEnd: string, name: string, rooms: Array, lessonNumber: number, type: string}>} */
     const missingLessons = await Promise.all(tEntries.map(async entry => ({
@@ -371,7 +372,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #createLessonMismatchDiscrepancies (data, journal, discrepancies) {
+  async #createLessonMismatchDiscrepancies(data, journal, discrepancies) {
     const [firstTimetableEntry] = data.tEntries
     if (!firstTimetableEntry) return
 
@@ -414,13 +415,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return `<div style="${style}">${currentPill}${correctPill}</div>`
   }
 
-  #calculateDuplicateIndex (discrepancy) {
+  #calculateDuplicateIndex(discrepancy) {
     // Use the same logic as #findJournalEntryElement to ensure consistency
     const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
     return duplicateInfo.targetIndex
   }
 
-  #findDuplicateMatches (entryId, date) {
+  #findDuplicateMatches(entryId, date) {
     if (!this.#lastJournalData?.entries) {
       Logger.warning(`No journal data available for findDuplicateMatches`)
       return { exactMatches: [], targetIndex: 0 }
@@ -494,7 +495,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       : this.#createDiffPill(current, correct)
   }
 
-  #createButton (id, text, colorKey, data = {}, tooltip = '') {
+  #createButton(id, text, colorKey, data = {}, tooltip = '') {
     const dataAttributes = Object.entries(data)
       .map(([key, value]) => `data-${key}='${JSON.stringify(value)}'`)
       .join(' ')
@@ -502,7 +503,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return `<button id="${id}" style="${createButtonStyle(HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
   }
 
-  #renderMissingEntry (discrepancy) {
+  #renderMissingEntry(discrepancy) {
     return {
       start: `<span style="font-weight:bold;">${discrepancy.lessonNumber}</span>`,
       count: `<span style="font-weight:bold;">${discrepancy.lessonCount}</span>`,
@@ -520,7 +521,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #renderSingleEntryFix (discrepancy) {
+  #renderSingleEntryFix(discrepancy) {
     const duplicateIndex = this.#calculateDuplicateIndex(discrepancy)
     const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
     const hasDuplicates = duplicateInfo.exactMatches.length > 1
@@ -545,7 +546,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #renderMultiEntryFix (discrepancy) {
+  #renderMultiEntryFix(discrepancy) {
     // Check if there are duplicates by looking at the first entry
     const firstEntry = discrepancy.entries?.[0]
     const firstEntryDiscrepancy = firstEntry ? {
@@ -586,7 +587,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #createDiscrepancyRow (discrepancy) {
+  #createDiscrepancyRow(discrepancy) {
     const renderers = {
       missingJournalEntry: this.#renderMissingEntry,
       singleEntryFix: this.#renderSingleEntryFix,
@@ -597,21 +598,21 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return `<tr style="background-color:white"><td style="${CELL_STYLE}">${this.#formatDisplayDate(discrepancy.date)}</td><td style="${CENTER_STYLE}">${start}</td><td style="${CENTER_STYLE}">${count}</td><td style="${CENTER_STYLE}">${action}</td></tr>`
   }
 
-  #findInsertionPoint () {
+  #findInsertionPoint() {
     const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
     return selectors
       .map(selector => document.querySelector(selector))
       .find(element => element && element.getBoundingClientRect().width > 100) || document.body
   }
 
-  #insertUnifiedTable (discrepancies, capacityProblems) {
+  #insertUnifiedTable(discrepancies, capacityProblems, indepWorkMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
       document.querySelector('[data-capacity-problems-table]')?.remove()
       const insertionPoint = this.#findInsertionPoint()
       if (!insertionPoint) return false
 
-      insertionPoint.insertBefore(this.#createUnifiedTableElement(discrepancies, capacityProblems), insertionPoint.firstChild)
+      insertionPoint.insertBefore(this.#createUnifiedTableElement(discrepancies, capacityProblems, indepWorkMessage), insertionPoint.firstChild)
       this.#addDiscrepancyButtonListeners()
       return true
     } catch (error) {
@@ -620,16 +621,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #createUnifiedTableElement (discrepancies, capacityProblems) {
-    // Determine background color based on whether there are any problems
-    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0
-    const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc' // yellow if problems, green if none
+  #createUnifiedTableElement(discrepancies, capacityProblems, indepWorkMessage) {
+    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0 || !!indepWorkMessage
+    const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc'
     const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
-
     const boxStyle = `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
       'margin:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
-
-    // Title bar
     const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
       <div style="display:flex;align-items:center;">
         <span style="font-size:20px;margin-right:10px;">🎓</span>
@@ -639,13 +636,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Probleemid sissekannetega
       </div>
     </div>`
-
-    // Timetable discrepancies section
     const timetableSection = this.#createTimetableSection(discrepancies)
-
-    // Capacity problems section
-    const capacitySection = this.#createCapacitySection(capacityProblems)
-
+    const capacitySection = this.#createCapacitySection(capacityProblems, indepWorkMessage)
     const element = document.createElement('div')
     element.dataset.discrepanciesTable = 'true'
     element.style.cssText = boxStyle
@@ -653,7 +645,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return element
   }
 
-  #createTimetableSection (discrepancies) {
+  #createTimetableSection(discrepancies) {
     if (!discrepancies.length) {
       return '<p style="color:#28a745;margin:0 0 20px 0;">Erinevusi tunniplaaniga pole.</p>'
     }
@@ -681,29 +673,41 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
   }
 
-  #createCapacitySection (capacityProblems) {
-    if (!capacityProblems.length) {
-      return '<p style="color:#28a745;margin:0;">Ebaloogilisi sissekande liigi ja tüüpi kombinatsioone ei leitud.</p>'
+  #createCapacitySection(capacityProblems, indepWorkMessage) {
+    const hasCapacityProblems = capacityProblems.length > 0;
+    const hasIndepWorkMessage = !!indepWorkMessage;
+    let section = '';
+
+    // Capacity problems section (table + header) only if there are problems
+    if (hasCapacityProblems) {
+      const sectionHeader = `<div style="margin-bottom:15px;">
+        <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
+      </div>`;
+      const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;';
+      const CENTER_STYLE = `${CELL_STYLE}text-align:center;`;
+      const sortedEntries = [...capacityProblems].sort((a, b) =>
+        new Date(a.entryDate) - new Date(b.entryDate));
+      let rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('');
+      const tableHead = `<thead><tr style="background:#f9f9f9"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`;
+      section += sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`;
     }
 
-    const sectionHeader = `<div style="margin-bottom:15px;">
-      <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
-    </div>`
+    // Independent work message always in its own section if present
+    if (hasIndepWorkMessage) {
+      section += `<div style="margin-top:18px;margin-bottom:10px;padding:0 8px;">
+        <div style='padding:12px 8px;color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;'>${indepWorkMessage}</div>
+      </div>`;
+    }
 
-    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
-    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
+    // If neither, show green message only
+    if (!hasCapacityProblems && !hasIndepWorkMessage) {
+      section = '<p style="color:#28a745;margin:0;">Ebaloogilisi sissekande liigi ja tüüpi kombinatsioone ei leitud.</p>';
+    }
 
-    const sortedEntries = [...capacityProblems].sort((a, b) =>
-      new Date(a.entryDate) - new Date(b.entryDate))
-
-    const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
-    // noinspection CssUnknownProperty
-    const tableHead = `<thead><tr style="background:#f9f9f9"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
-
-    return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
+    return section;
   }
 
-  #addDiscrepancyButtonListeners () {
+  #addDiscrepancyButtonListeners() {
     const buttons = document.querySelectorAll('[data-discrepancies-table] button')
     buttons.forEach(/** @param {HTMLElement} button */ button => {
       if (button.dataset.handler) {
@@ -712,7 +716,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  async #handleDiscrepancyButtonClick (event, button) {
+  async #handleDiscrepancyButtonClick(event, button) {
     event.preventDefault()
     event.stopPropagation()
     if (button.disabled) return
@@ -730,7 +734,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #captureButtonState (button) {
+  #captureButtonState(button) {
     return {
       text: button.textContent,
       background: button.style.background,
@@ -739,20 +743,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #setButtonProcessingState (button) {
+  #setButtonProcessingState(button) {
     button.disabled = true
     button.style.background = '#6c757d'
     button.style.opacity = '0.6'
     button.style.cursor = 'not-allowed'
   }
 
-  #parseButtonData (button) {
+  #parseButtonData(button) {
     const parsedData = Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
     Logger.debug(`[${this.name}] Parsed button data:`, parsedData)
     return parsedData
   }
 
-  async #executeButtonAction (data) {
+  async #executeButtonAction(data) {
     Logger.debug(`[${this.name}] Executing button action with data:`, data)
 
     const actionHandlers = {
@@ -770,7 +774,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #restoreButtonState (button, originalState) {
+  #restoreButtonState(button, originalState) {
     setTimeout(() => {
       button.disabled = false
       button.textContent = originalState.text
@@ -780,7 +784,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }, 2000)
   }
 
-  async #handleAddMissingEntry (date, start, count, timetableData = {}) {
+  async #handleAddMissingEntry(date, start, count, timetableData = {}) {
     try {
       const addButton = await this.#findAndClickAddButton()
       if (!addButton) throw new Error('Lisa sissekanne not found')
@@ -798,7 +802,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {string} type - Entry type
    * @param {ButtonData} data - Button data object
    */
-  async #handleEditEntry (date, entryId, type, data) {
+  async #handleEditEntry(date, entryId, type, data) {
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
@@ -819,7 +823,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #findAndClickAddButton () {
+  async #findAndClickAddButton() {
     const selectors = [
       'button[ng-click*="addEntry"]',
       'button[ng-click*="lisa"]',
@@ -848,7 +852,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #fillAddForm (date, start, count, timetableData) {
+  async #fillAddForm(date, start, count, timetableData) {
     const formattedDate = this.#formatDisplayDate(date)
     const effectiveStart = timetableData.timetablestart || timetableData.timetableStart || start
     const effectiveCount = timetableData.timetablecount || timetableData.timetableCount || count
@@ -869,7 +873,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#addTeacherCheckboxListeners()
   }
 
-  async #fillEditForm (type, data) {
+  async #fillEditForm(type, data) {
     try {
       if (type === 'singleEntryFix' || type === 'multiEntryFix') {
         // Both single and multi-entry fixes use the same form filling logic
@@ -886,7 +890,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   /**
    * @param {ButtonData} data - Form data object
    */
-  async #fillSingleEntryForm (data) {
+  async #fillSingleEntryForm(data) {
     const currentStart = data.currentstart
     const timetableStart = data.timetablestart
     const currentCount = data.currentcount
@@ -901,11 +905,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #isValidValue (value) {
+  #isValidValue(value) {
     return value !== Infinity && value !== -Infinity && !isNaN(value) && value != null
   }
 
-  #setFieldState (field, state) {
+  #setFieldState(field, state) {
     const colors = {
       processing: '#DAA520',
       success: '#006400',
@@ -914,7 +918,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     field.style.border = `3px solid ${colors[state]}`
   }
 
-  async #fillFieldWithVisualFeedback (selectors, value, logName) {
+  async #fillFieldWithVisualFeedback(selectors, value, logName) {
     const field = this.#findVisibleElement(selectors)
     if (!field) {
       Logger.warning(`[${this.name}] ${logName} field not found`)
@@ -929,7 +933,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return success
   }
 
-  async #fillStartLessonField (value) {
+  async #fillStartLessonField(value) {
     const selectors = [
       'md-select[aria-label*="Algustund"]',
       'md-select[ng-model*="startLessonNr"]',
@@ -938,7 +942,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return this.#fillFieldWithVisualFeedback(selectors, value, 'Start lesson')
   }
 
-  async #fillLessonCountField (value) {
+  async #fillLessonCountField(value) {
     const selectors = [
       'input[aria-label="lessons"]',
       'input[ng-model*="lessons"]',
@@ -948,13 +952,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #fillInputField (field, value) {
+  async #fillInputField(field, value) {
     field.value = value
     field.dispatchEvent(new Event('input', { bubbles: true }))
     return true
   }
 
-  async #selectMdSelectOption (field, value) {
+  async #selectMdSelectOption(field, value) {
     field.click()
     field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
 
@@ -971,7 +975,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return true
   }
 
-  async #getOrWaitForContentId (field) {
+  async #getOrWaitForContentId(field) {
     const existingId = field.getAttribute('aria-owns')
     if (existingId) return existingId
 
@@ -983,7 +987,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #waitForAttributeToAppear (element, attribute, timeout = 3000) {
+  async #waitForAttributeToAppear(element, attribute, timeout = 3000) {
     return new Promise((resolve, reject) => {
       const observer = new MutationObserver(() => {
         const attributeValue = element.getAttribute(attribute)
@@ -1001,7 +1005,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  async #waitForElement (selector, timeout = 3000) {
+  async #waitForElement(selector, timeout = 3000) {
     const existing = document.querySelector(selector)
     if (existing) return existing
 
@@ -1032,12 +1036,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  async #clickElement (element, delay = 500) {
+  async #clickElement(element, delay = 500) {
     await this.#clickElementWithScrollPreservation(element)
     await this.#delay(delay)
   }
 
-  #createScrollPreservation () {
+  #createScrollPreservation() {
     const originalPosition = {
       x: window.scrollX || document.documentElement.scrollLeft,
       y: window.scrollY || document.documentElement.scrollTop,
@@ -1066,7 +1070,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return { restoreScroll, startScrollMonitoring, stopScrollMonitoring }
   }
 
-  async #clickElementWithScrollPreservation (element) {
+  async #clickElementWithScrollPreservation(element) {
     const { restoreScroll, startScrollMonitoring, stopScrollMonitoring } = this.#createScrollPreservation()
 
     try {
@@ -1088,13 +1092,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #findVisibleElement (selectors) {
+  #findVisibleElement(selectors) {
     return selectors
       .map(selector => document.querySelector(selector))
       .find(element => this.#isElementVisible(element))
   }
 
-  async #findJournalEntryElement (entryId, date, duplicateIndex = 0) {
+  async #findJournalEntryElement(entryId, date, duplicateIndex = 0) {
 
     const { exactMatches } = this.#findDuplicateMatches(entryId, date)
 
@@ -1131,7 +1135,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   }
 
-  #parseRowLessonInfo (row) {
+  #parseRowLessonInfo(row) {
     const cells = row.querySelectorAll('td')
     let lessonCount = null
     let entryType = null
@@ -1156,7 +1160,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #clickJournalEntry (element) {
+  async #clickJournalEntry(element) {
     const { restoreScroll, startScrollMonitoring, stopScrollMonitoring } = this.#createScrollPreservation()
 
     try {
@@ -1215,7 +1219,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #performDoubleClick (element) {
+  async #performDoubleClick(element) {
     const rect = element.getBoundingClientRect()
     const doubleClickEvent = new MouseEvent('dblclick', {
       bubbles: true,
@@ -1228,7 +1232,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     await this.#delay(200)
   }
 
-  async #waitForDialogToOpen (timeout = 15000) {
+  async #waitForDialogToOpen(timeout = 15000) {
     return new Promise((resolve, reject) => {
       let observer = null
 
@@ -1268,7 +1272,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  async #waitForDialogContentLoaded (timeout = 15000) {
+  async #waitForDialogContentLoaded(timeout = 15000) {
     return new Promise((resolve, reject) => {
       let observer = null
 
@@ -1308,7 +1312,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #isEditFormOpen () {
+  async #isEditFormOpen() {
     // Method 1: Check for "Algustund" field
     const algustundField = document.querySelector('md-select[aria-label*="Algustund"]')
     if (algustundField && this.#isElementVisible(algustundField)) {
@@ -1340,7 +1344,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return false
   }
 
-  async #checkAuditoriumLearningCheckbox () {
+  async #checkAuditoriumLearningCheckbox() {
     /** @type {HTMLElement} */
     const checkbox = document.querySelector('md-checkbox[ng-model*="selectedCapacityTypes"][aria-label="Auditoorne õpe"]')
 
@@ -1352,7 +1356,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #checkTeacherCheckbox () {
+  async #checkTeacherCheckbox() {
     /** @type {HTMLElement} */
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
 
@@ -1375,7 +1379,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #getTeacherCheckboxState () {
+  #getTeacherCheckboxState() {
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
     const checkboxes = []
     let checkedCount = 0
@@ -1399,7 +1403,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #refreshTableWithRetry (maxRetries = 3) {
+  async #refreshTableWithRetry(maxRetries = 3) {
     if (this.#isRefreshing) return
 
     this.#isRefreshing = true
@@ -1429,12 +1433,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #getCurrentDiscrepancyCount () {
+  #getCurrentDiscrepancyCount() {
     const table = document.querySelector('[data-discrepancies-table]')
     return table ? table.querySelectorAll('tbody tr').length : 0
   }
 
-  async #performRefreshAttempt (journalId) {
+  async #performRefreshAttempt(journalId) {
     await cacheService.clearJournalCache(journalId)
     await cacheService.clearCache()
     this.#tableCreated = false
@@ -1443,13 +1447,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     await this.#createLessonDiscrepanciesTable(true)
   }
 
-  #isRefreshSuccessful (oldCount, newCount, attempt, maxAttempts) {
+  #isRefreshSuccessful(oldCount, newCount, attempt, maxAttempts) {
     return newCount < oldCount ||
       !document.querySelector('[data-discrepancies-table]') ||
       attempt === maxAttempts
   }
 
-  #setupJournalSaveMonitoring () {
+  #setupJournalSaveMonitoring() {
     if (this.#saveMonitoringSetup) return
 
     this.#setupJournalTableMonitoring()
@@ -1457,7 +1461,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#saveMonitoringSetup = true
   }
 
-  #setupJournalTableMonitoring () {
+  #setupJournalTableMonitoring() {
     const journalTable = document.querySelector('table.journalTable')
     if (journalTable) {
       const tableObserver = new MutationObserver(mutations => {
@@ -1490,7 +1494,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #setupJournalDialogSaveMonitoring () {
+  #setupJournalDialogSaveMonitoring() {
     // Only set up monitoring once and store original fetch
     if (!this.#originalFetch) {
       this.#originalFetch = window.fetch
@@ -1522,12 +1526,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   /**
    * Setup observer to monitor for journal entry dialogs being opened and auto-check teacher checkboxes
    */
-  #setupDialogObserver () {
+  #setupDialogObserver() {
     // Dialog observer removed - no longer auto-checking teacher checkbox
     // Teacher validation is now handled in table/background validation
   }
 
-  async #refreshCapacityValidationAfterSave () {
+  async #refreshCapacityValidationAfterSave() {
     try {
 
       // Check if we have a current journal ID
@@ -1555,7 +1559,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #cleanupMonitoring () {
+  #cleanupMonitoring() {
     this.#tableObserver?.disconnect()
     this.#tableObserver = null
 
@@ -1571,7 +1575,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#saveMonitoringSetup = false
   }
 
-  async #getCapacityTypeProblems (journalData) {
+  async #getCapacityTypeProblems(journalData) {
     try {
 
       // First check if there's a discrepancy between planned and used hours for "MAHT_a"
@@ -1601,7 +1605,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #performDetailedCapacityValidation (journalData, auditoorneCapacity, capacityHours) {
+  async #performDetailedCapacityValidation(journalData, auditoorneCapacity, capacityHours) {
 
     const entries = journalData.entries || []
     const journalId = journalData.info?.id
@@ -1628,7 +1632,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return validationResults
   }
 
-  async #validateEntriesWithDetailedData (journalId, targetEntries, journalCapacityHours) {
+  async #validateEntriesWithDetailedData(journalId, targetEntries, journalCapacityHours) {
 
     const validationResults = []
 
@@ -1665,7 +1669,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return validationResults
   }
 
-  #validateSingleEntry (entry, detailedEntry, capacityTypes, journalCapacityHours) {
+  #validateSingleEntry(entry, detailedEntry, capacityTypes, journalCapacityHours) {
 
     // Check if entry requires independent work but journal doesn't have MAHT_i configured
     const journalHasIndependentWork = journalCapacityHours && journalCapacityHours.some(c => c.capacity === 'MAHT_i')
@@ -1759,7 +1763,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }, capacityTypes)
   }
 
-  #performBusinessLogicValidation (entry, detailedEntry, actualState, capacityTypes) {
+  #performBusinessLogicValidation(entry, detailedEntry, actualState, capacityTypes) {
 
     // Log the business rules
 
@@ -1907,7 +1911,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #logValidationSummary (validationResults, auditoorneCapacity) {
+  #logValidationSummary(validationResults, auditoorneCapacity) {
 
 
     // Log detailed results for each entry
@@ -1918,7 +1922,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.#logRootCauseAnalysis(validationResults, auditoorneCapacity)
   }
 
-  #logRootCauseAnalysis (validationResults, _auditoorneCapacity) {
+  #logRootCauseAnalysis(validationResults, _auditoorneCapacity) {
 
     // Investigate potential causes
 
@@ -1973,7 +1977,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {number} entry.id - Entry ID
 
      */
-  #createCapacityProblemRow (entry) {
+  #createCapacityProblemRow(entry) {
     const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
     const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
 
@@ -2044,7 +2048,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     </tr>`
   }
 
-  #addCapacityProblemButtonListeners () {
+  #addCapacityProblemButtonListeners() {
     document.querySelectorAll('[data-discrepancies-table] button').forEach(/** @param {HTMLElement} button */ button => {
       if (button.dataset.handler) {
         button.addEventListener('click', event => this.#handleDiscrepancyButtonClick(event, button))
@@ -2052,7 +2056,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  #highlightProblematicElements (elements, message = '', color = '#ff0000') {
+  #highlightProblematicElements(elements, message = '', color = '#ff0000') {
     // Clean up any existing highlights first
     this.#cleanupHighlights()
 
@@ -2113,7 +2117,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return highlights
   }
 
-  #findProblematicElementsForHighlighting (entryType, validationResult) {
+  #findProblematicElementsForHighlighting(entryType, validationResult) {
     const elements = []
 
     // Find capacity type checkbox elements specifically
@@ -2300,7 +2304,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {string} entryId - Entry ID
    * @param {ButtonData} data - Button data object
    */
-  async #handleFixCapacity (date, entryId, data = {}) {
+  async #handleFixCapacity(date, entryId, data = {}) {
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
@@ -2349,7 +2353,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #continueFixCapacity (element, entryId, _date) {
+  async #continueFixCapacity(element, entryId, _date) {
     try {
 
       // Get the entry to determine its type and validation result for highlighting
@@ -2479,7 +2483,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         const praktiliseCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
           checkbox.getAttribute('aria-label')?.includes('Praktiline töö') ||
           checkbox.textContent.includes('Praktiline töö'))
-        const iseseisvCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+        const iseseivCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
           checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
           checkbox.textContent.includes('Iseseisev õpe'))
 
@@ -2594,7 +2598,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #addTeacherSelectionMonitoring () {
+  #addTeacherSelectionMonitoring() {
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
 
     for (const checkbox of teacherCheckboxes) {
@@ -2618,7 +2622,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #addTeacherCheckboxListeners () {
+  #addTeacherCheckboxListeners() {
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]:not([data-teacher-listener-added])')
 
     for (const checkbox of teacherCheckboxes) {
@@ -2641,7 +2645,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #addDialogCloseListeners () {
+  #addDialogCloseListeners() {
 
     // Remove any existing listeners to avoid duplicates
     if (this.dialogCloseListener) {
@@ -2698,7 +2702,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #cleanupHighlights () {
+  #cleanupHighlights() {
     // Remove only tooltip popups (not checkboxes)
     document.querySelectorAll('[data-capacity-highlight="true"]').forEach(el => {
       if (el.tagName === 'MD-CHECKBOX') {
@@ -2733,7 +2737,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {string} entryId - Entry ID
    * @param {Object} data - Button data object
    */
-  async #handleOpenEntry (entryId, data = {}) {
+  async #handleOpenEntry(entryId, data = {}) {
     try {
       const actualEntryId = entryId || data.entryid
       Logger.debug(`[${this.name}] handleOpenEntry called with entryId=${entryId}, actualEntryId=${actualEntryId}`)
@@ -2764,7 +2768,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   /**
    * Find and highlight the entry type field with a red box
    */
-  #highlightEntryTypeField () {
+  #highlightEntryTypeField() {
     try {
       // Look for entry type related elements
       const entryTypeSelectors = [
@@ -2867,7 +2871,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   /**
    * Add listeners to clean up entry type highlights when dialog is closed or entry type is clicked
    */
-  #addEntryTypeHighlightCleanup () {
+  #addEntryTypeHighlightCleanup() {
     const cleanupHighlights = () => {
       // Remove highlight box
       document.querySelectorAll('[data-entry-type-highlight="true"]').forEach(el => el.remove())
