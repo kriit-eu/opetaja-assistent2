@@ -636,12 +636,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Probleemid sissekannetega
       </div>
     </div>`
+
+    // Move indepWorkMessage above the timetable section
+    let indepWorkSection = ''
+    if (indepWorkMessage) {
+      indepWorkSection = `<div style="display:flex;justify-content:center;margin-bottom:18px;">
+        <div style='width:600px;min-width:430px;box-sizing:border-box;padding:12px 8px;color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;'>${indepWorkMessage}</div>
+      </div>`
+    }
+
     const timetableSection = this.#createTimetableSection(discrepancies)
-    const capacitySection = this.#createCapacitySection(capacityProblems, indepWorkMessage)
+    // Remove indepWorkMessage from capacitySection
+    const capacitySection = this.#createCapacitySection(capacityProblems, null)
     const element = document.createElement('div')
     element.dataset.discrepanciesTable = 'true'
     element.style.cssText = boxStyle
-    element.innerHTML = titleBar + timetableSection + capacitySection
+    element.innerHTML = titleBar + indepWorkSection + timetableSection + capacitySection
     return element
   }
 
@@ -1890,6 +1900,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         errorType = 'missing_auditoorne_checkbox'
       } else if (entry.entryType === 'SISSEKANNE_P') {
         if (!praktiliseValid) {
+
           errorType = 'missing_praktiline_checkbox'
         } else {
           errorType = 'missing_auditoorne_checkbox'

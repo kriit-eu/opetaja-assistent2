@@ -9,16 +9,27 @@ export default class IndependentWorkCapacityFeature {
      * @returns {Promise<string|null>} - Message to display or null
      */
     static async check(api, journalId) {
+        // Only activate if the last-lesson-banner exists and matches the required message
+        const banner = document.getElementById('last-lesson-banner');
+        if (!banner) return null;
+        const bannerText = banner.textContent || '';
+        // Match: NB! Viimane tund toimus dd.mm.yyyy
+        const match = bannerText.match(/NB! Viimane tund toimus (\d{2}\.\d{2}\.\d{4})/);
+        if (!match) return null;
+        // Optionally, you could use match[1] as the last lesson date if needed
+
         try {
             const info = await api.tahvel.get(`/journals/${journalId}`)
             const capacityHours = info.lessonHours?.capacityHours || []
             const indep = capacityHours.find(c => c.capacity === 'MAHT_i')
             if (!indep) return null
             if (typeof indep.usedHours !== 'number' || typeof indep.plannedHours !== 'number') return null
-            if (indep.usedHours < indep.plannedHours) {
-                return 'iseseisvaid töid on liiga vähe sisse kantud'
-            } else if (indep.usedHours > indep.plannedHours) {
-                return 'iseseisvaid töid on liiga palju sisse kantud'
+            const diff = indep.usedHours - indep.plannedHours;
+            const absDiff = Math.abs(diff);
+            if (diff < 0) {
+                return `Iseseisvaid töid on ${absDiff}h liiga vähe`
+            } else if (diff > 0) {
+                return `Iseseisvaid töid on ${absDiff}h liiga palju`
             } else {
                 return null
             }
