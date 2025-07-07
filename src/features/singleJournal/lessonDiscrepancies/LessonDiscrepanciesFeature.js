@@ -60,7 +60,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       extractJournalId: () => this.#extractJournalId(),
       calculateDuplicateIndex: discrepancy => this.#calculateDuplicateIndex(discrepancy),
       findDuplicateMatches: (entryId, date) => this.#findDuplicateMatches(entryId, date),
-      addDiscrepancyButtonListeners: () => this.#addDiscrepancyButtonListeners()
+      addDiscrepancyButtonListeners: () => this.#addDiscrepancyButtonListeners(),
     })
   }
 
@@ -142,7 +142,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     let dateObj
-    
+
     // If the date is in DD.MM.YYYY format, parse it manually
     if (typeof date === 'string' && /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
       const [day, month, year] = date.split('.')
@@ -205,7 +205,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const success = await this.table.createTable({
         discrepancies,
         capacityProblems,
-        forceRefresh
+        forceRefresh,
       })
 
       if (success) {
@@ -666,11 +666,24 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     event.stopPropagation()
     if (button.disabled) return
 
+    Logger.debug(`[${this.name}] Button clicked - starting click handler`)
+    Logger.debug(`[${this.name}] Button element:`, {
+      tagName: button.tagName,
+      className: button.className,
+      textContent: button.textContent,
+      id: button.id,
+      innerHTML: button.innerHTML.substring(0, 200) + (button.innerHTML.length > 200 ? '...' : ''),
+    })
+
     const originalState = this.#captureButtonState(button)
     this.#setButtonProcessingState(button)
 
     try {
       const data = this.#parseButtonData(button)
+      Logger.debug(`[${this.name}] Raw button dataset:`, button.dataset)
+      Logger.debug(`[${this.name}] Parsed button data:`, data)
+      Logger.debug(`[${this.name}] Button data types:`, Object.entries(data).map(([key, value]) => [key, typeof value, value]))
+
       await this.#executeButtonAction(data)
     } catch (error) {
       Logger.error(`[${this.name}] button action error`, error)
@@ -696,24 +709,91 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #parseButtonData (button) {
-    return Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
+    Logger.debug(`[${this.name}] Parsing button data from dataset:`, button.dataset)
+
+    const parsedData = {}
+    for (const [key, value] of Object.entries(button.dataset)) {
+      try {
+        parsedData[key] = JSON.parse(value)
+        Logger.debug(`[${this.name}] Successfully parsed ${key}:`, {
+          originalValue: value,
+          parsedValue: parsedData[key],
+          type: typeof parsedData[key],
+        })
+      } catch (parseError) {
+        Logger.error(`[${this.name}] Failed to parse button data key '${key}' with value '${value}':`, parseError)
+        parsedData[key] = value // Fallback to original value
+      }
+    }
+
+    Logger.debug(`[${this.name}] Final parsed button data:`, parsedData)
+    return parsedData
   }
 
   async #executeButtonAction (data) {
     Logger.debug(`[${this.name}] Executing button action with data:`, data)
+    Logger.debug(`[${this.name}] Action data analysis:`, {
+      handler: data.handler,
+      date: data.date,
+      dateType: typeof data.date,
+      entryId: data.entryId,
+      entryIdType: typeof data.entryId,
+      allKeys: Object.keys(data),
+      allValues: Object.values(data),
+    })
 
     const actionHandlers = {
-      addMissing: () => this.#handleAddMissingEntry(data.date, data.startLesson, data.lessonCount, data),
-      editEntry: () => this.#handleEditEntry(data.date, data.entryId, data.type, data),
-      fixCapacity: () => this.#handleFixCapacity(data.date, data.entryId, data),
-      openEntry: () => this.#handleOpenEntry(data.entryId, data),
+      addMissing: () => {
+        Logger.debug(`[${this.name}] Calling handleAddMissingEntry with:`, {
+          date: data.date,
+          startLesson: data.startLesson,
+          lessonCount: data.lessonCount,
+          data: data,
+        })
+        return this.#handleAddMissingEntry(data.date, data.startLesson, data.lessonCount, data)
+      },
+      editEntry: () => {
+        Logger.debug(`[${this.name}] Calling handleEditEntry with:`, {
+          date: data.date,
+          entryId: data.entryId,
+          type: data.type,
+          data: data,
+        })
+        return this.#handleEditEntry(data.date, data.entryId, data.type, data)
+      },
+      fixCapacity: () => {
+        Logger.debug(`[${this.name}] Calling handleFixCapacity with:`, {
+          date: data.date,
+          dateType: typeof data.date,
+          dateValue: data.date,
+          entryId: data.entryId,
+          entryIdType: typeof data.entryId,
+          entryIdValue: data.entryId,
+          data: data,
+        })
+        // Test date formatting before calling the handler
+        const testFormattedDate = this.#formatDisplayDate(data.date)
+        Logger.debug(`[${this.name}] Date formatting test - input: ${data.date}, output: ${testFormattedDate}`)
+
+        return this.#handleFixCapacity(data.date, data.entryId, data)
+      },
+      openEntry: () => {
+        Logger.debug(`[${this.name}] Calling handleOpenEntry with:`, {
+          entryId: data.entryId,
+          data: data,
+        })
+        return this.#handleOpenEntry(data.entryId, data)
+      },
     }
 
     const handler = actionHandlers[data.handler]
     if (handler) {
+      Logger.debug(`[${this.name}] Handler found for '${data.handler}', executing...`)
       await handler()
+      Logger.debug(`[${this.name}] Handler '${data.handler}' completed`)
     } else {
       Logger.warning(`[${this.name}] Unknown handler: ${data.handler}`)
+      Logger.debug(`[${this.name}] Available handlers:`, Object.keys(actionHandlers))
     }
   }
 
@@ -1513,7 +1593,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.table.insertUnifiedTable(discrepancies, capacityProblems)
 
     } catch (error) {
-      console.error(`[${this.name}] Error refreshing capacity validation:`, error)
+      Logger.error(`[${this.name}] Error refreshing capacity validation:`, error)
     }
   }
 
@@ -1631,7 +1711,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Create a combined entry object with fallback for missing fields
     const combinedEntry = {
       ...entry,
-      entryDate: entry.entryDate || detailedEntry.entryDate || detailedEntry.journalEntryDate || detailedEntry.date
+      entryDate: entry.entryDate || detailedEntry.entryDate || detailedEntry.journalEntryDate || detailedEntry.date,
     }
 
     // Check if entry requires independent work but journal doesn't have MAHT_i configured
@@ -2179,9 +2259,47 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {ButtonData} data - Button data object
    */
   async #handleFixCapacity (date, entryId, data = {}) {
+    Logger.debug(`[${this.name}] handleFixCapacity called with parameters:`, {
+      date: date,
+      dateType: typeof date,
+      dateValue: date,
+      entryId: entryId,
+      entryIdType: typeof entryId,
+      entryIdValue: entryId,
+      data: data,
+      dataKeys: Object.keys(data),
+    })
+
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
+
+      Logger.debug(`[${this.name}] Processing parameters:`, {
+        originalDate: date,
+        originalEntryId: entryId,
+        dataEntryId: data.entryid,
+        actualEntryId: actualEntryId,
+        duplicateIndex: duplicateIndex,
+      })
+
+      // Test date formatting with detailed logging
+      Logger.debug(`[${this.name}] Testing date formatting:`, {
+        inputDate: date,
+        inputType: typeof date,
+        inputValue: date,
+        isNull: date === null,
+        isUndefined: date === undefined,
+        isEmpty: date === '',
+        isString: typeof date === 'string',
+        stringLength: typeof date === 'string' ? date.length : 'N/A',
+      })
+
+      const formattedDate = this.#formatDisplayDate(date)
+      Logger.debug(`[${this.name}] Date formatting result:`, {
+        input: date,
+        output: formattedDate,
+        isInvalidDate: formattedDate === 'Invalid Date',
+      })
 
       // Debug logging for entryId resolution
       Logger.debug(`[${this.name}] handleFixCapacity called with entryId=${entryId}, data.entryid=${data.entryid}, actualEntryId=${actualEntryId}`)
@@ -2193,7 +2311,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
           this.#lastJournalData = journalData
         } catch (refreshError) {
-          console.error(`[${this.name}] Failed to refresh journal data:`, refreshError)
+          Logger.error(`[${this.name}] Failed to refresh journal data:`, refreshError)
         }
       }
 
@@ -2377,7 +2495,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Add listeners to remove highlights when dialog is closed or saved
         this.#addDialogCloseListeners()
       } else {
-        console.warn(`[${this.name}] No elements found to highlight for error type: ${validationResult?.errorType}`)
+        Logger.warning(`[${this.name}] No elements found to highlight for error type: ${validationResult?.errorType}`)
         // Show tooltip anyway to guide user
         if (highlightMessage) {
           const tooltip = document.createElement('div')
