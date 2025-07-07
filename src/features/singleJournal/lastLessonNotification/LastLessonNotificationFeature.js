@@ -55,16 +55,16 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     while (waited < maxWaitTime) {
       const container = this._findInsertionPoint()
       const existingTable = container.querySelector('[data-discrepancies-table]')
-      
+
       if (existingTable) {
         console.debug('[LastLessonNotificationFeature] Discrepancies table found, proceeding...')
         return
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, checkInterval))
       waited += checkInterval
     }
-    
+
     console.debug('[LastLessonNotificationFeature] Timeout waiting for discrepancies table, proceeding anyway...')
   }
 
@@ -190,12 +190,12 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     `
 
     const container = this._findInsertionPoint()
-    
+
     // Check if there's already a discrepancies table and insert after it
     const existingTable = container.querySelector('[data-discrepancies-table]')
     console.debug('[LastLessonNotificationFeature] Container:', container)
     console.debug('[LastLessonNotificationFeature] Existing table found:', !!existingTable)
-    
+
     if (existingTable) {
       // Insert after the discrepancies table
       console.debug('[LastLessonNotificationFeature] Inserting after discrepancies table')

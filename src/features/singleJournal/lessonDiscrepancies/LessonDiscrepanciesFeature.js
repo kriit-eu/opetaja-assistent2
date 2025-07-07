@@ -519,7 +519,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #calculateDuplicateIndex (discrepancy) {
     // Use the same logic as #findJournalEntryElement to ensure consistency
+    Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
     const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
+    Logger.debug(`[${this.name}] calculateDuplicateIndex result: targetIndex=${duplicateInfo.targetIndex}`)
     return duplicateInfo.targetIndex
   }
 
@@ -541,8 +543,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
     }
 
-    // Get all rows that match the date
-    const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
+    // Handle special case for null dates that show as "-"
+    let dateSearchCriteria
+    if (date === 'NO_DATE') {
+      dateSearchCriteria = '-'
+      Logger.debug(`[${this.name}] Searching for null date entries (showing as "-")`)
+    } else {
+      dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
+      Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
+    }
 
     // Try multiple selectors to find journal entry rows
     let allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
@@ -556,9 +565,34 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
-    const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
+    // Filter rows based on date criteria
+    let dateMatchingRows
+    if (date === 'NO_DATE') {
+      // For null dates, we need to be more precise - only get journal entry rows
+      // that have a null date (shown as "-" in the date column)
+      dateMatchingRows = [...allRows].filter(row => {
+        // Check if this is a journal entry row with ng-click
+        const hasEditJournalEntry = row.hasAttribute('ng-click') && row.getAttribute('ng-click').includes('editJournalEntry')
+        if (!hasEditJournalEntry) return false
 
-    Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${datePrefix}`)
+        // Check for a date cell containing only "-"
+        const cells = row.querySelectorAll('td')
+        for (const cell of cells) {
+          const text = cell.textContent.trim()
+          // The date column typically contains just "-" for null dates
+          if (text === '-' && !cell.querySelector('a') && !cell.querySelector('button')) {
+            return true
+          }
+        }
+        return false
+      })
+
+      Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} journal entry rows with null date`)
+    } else {
+      dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
+    }
+
+    Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
 
     // Get the lesson count from targetEntry (could be lessons or lessonCount property)
     const targetLessonCount = targetEntry.lessons || targetEntry.lessonCount || 1
@@ -572,22 +606,63 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       return lessonCount === targetLessonCount && entryType === targetEntry.entryType
     })
 
-    // For single matches, index is always 0
-    if (exactMatches.length <= 1) {
-      Logger.debug(`[${this.name}] Found ${exactMatches.length} exact matches`)
-      return {
-        exactMatches,
-        targetIndex: 0,
-      }
-    }
+    // We still need to calculate the target index even if there are no exact DOM matches
+    // because this method is also used for calculating duplicate indices for button creation
 
     // Find all duplicate entries in API data, sorted by ID (for consistent ordering)
-    const duplicateEntries = this.#lastJournalData.entries.filter(entry => this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate) &&
-      (entry.lessons || entry.lessonCount || 1) === targetLessonCount &&
-      entry.entryType === targetEntry.entryType).sort((a, b) => a.id - b.id)
+    // Handle null dates specially since they need to match by null status, not formatted value
+    const duplicateEntries = this.#lastJournalData.entries.filter(entry => {
+      // For null dates, both entries must have null/undefined entryDate
+      const targetDateIsNull = !targetEntry.entryDate
+      const entryDateIsNull = !entry.entryDate
+
+      let dateMatches = false
+      if (targetDateIsNull && entryDateIsNull) {
+        // Both are null - they match
+        dateMatches = true
+        Logger.debug(`[${this.name}] Both entries have null dates - match: ${entry.id}`)
+      } else if (!targetDateIsNull && !entryDateIsNull) {
+        // Both have dates - compare formatted dates
+        dateMatches = this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate)
+        Logger.debug(`[${this.name}] Comparing formatted dates: ${this.#formatDate(entry.entryDate)} === ${this.#formatDate(targetEntry.entryDate)} = ${dateMatches}`)
+      } else {
+        // One is null, one isn't - no match
+        dateMatches = false
+        Logger.debug(`[${this.name}] Date null mismatch: entry ${entry.id} has ${entry.entryDate}, target has ${targetEntry.entryDate}`)
+      }
+
+      // For independent work entries, both entries often have null lesson counts
+      let lessonCountMatches
+      if (entry.entryType === 'SISSEKANNE_I' && targetEntry.entryType === 'SISSEKANNE_I') {
+        // For independent work, we don't compare lesson counts as they're often null
+        lessonCountMatches = true
+      } else {
+        // For other types, compare lesson counts normally
+        const entryLessonCount = entry.lessons || entry.lessonCount || null
+        const targetLessonCountValue = targetEntry.lessons || targetEntry.lessonCount || targetLessonCount
+        lessonCountMatches = entryLessonCount === targetLessonCountValue
+      }
+
+      const entryTypeMatches = entry.entryType === targetEntry.entryType
+
+      Logger.debug(`[${this.name}] Entry ${entry.id}: dateMatches=${dateMatches}, lessonCountMatches=${lessonCountMatches}, entryTypeMatches=${entryTypeMatches}, entryType=${entry.entryType}`)
+
+      return dateMatches && lessonCountMatches && entryTypeMatches
+    })
+    // Don't sort by ID - keep the natural order from the journal data
+    // which should match the DOM order
 
     // Simple position-based matching: assume DOM order matches API order
     const targetIndex = duplicateEntries.findIndex(entry => entry.id == entryId)
+
+    Logger.debug(`[${this.name}] Duplicate matching results:`)
+    Logger.debug(`[${this.name}] - Target entry ID: ${entryId}`)
+    Logger.debug(`[${this.name}] - Target entry date: ${targetEntry.entryDate}`)
+    Logger.debug(`[${this.name}] - Target entry type: ${targetEntry.entryType}`)
+    Logger.debug(`[${this.name}] - Duplicate entries found: ${duplicateEntries.length}`)
+    Logger.debug(`[${this.name}] - Duplicate entry IDs: [${duplicateEntries.map(e => e.id).join(', ')}]`)
+    Logger.debug(`[${this.name}] - Target index in duplicates: ${targetIndex}`)
+    Logger.debug(`[${this.name}] - DOM exact matches found: ${exactMatches.length}`)
 
     return {
       exactMatches,
@@ -1131,37 +1206,130 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #findJournalEntryElement (entryId, date, duplicateIndex = 0) {
 
-    const { exactMatches } = this.#findDuplicateMatches(entryId, date)
+    const { exactMatches, targetIndex } = this.#findDuplicateMatches(entryId, date)
 
-    Logger.debug(`[${this.name}] findJournalEntryElement: entryId=${entryId}, date=${date}, exactMatches.length=${exactMatches.length}`)
+    Logger.debug(`[${this.name}] findJournalEntryElement: entryId=${entryId}, date=${date}, exactMatches.length=${exactMatches.length}, targetIndex=${targetIndex}`)
 
     if (exactMatches.length === 0) {
       // Fallback: try a broader search if exact matching fails
       Logger.warning(`[${this.name}] No exact matches found, trying fallback search`)
 
-      const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
-      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
-      const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
+      // For null dates, we need to find all independent work entries with "-" date
+      // and use the position-based matching from the journal data
+      if (date === 'NO_DATE' && this.#lastJournalData?.entries) {
+        const targetEntry = this.#lastJournalData.entries.find(entry => entry.id == entryId)
+        if (!targetEntry) {
+          Logger.error(`[${this.name}] Target entry ${entryId} not found in journal data for fallback`)
+          return null
+        }
 
-      Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${datePrefix}`)
+        // Find all null date entries of the same type in the journal data
+        const nullDateEntries = this.#lastJournalData.entries.filter(entry =>
+          !entry.entryDate && entry.entryType === targetEntry.entryType
+        ).sort((a, b) => a.id - b.id)
+
+        const entryPositionInNullDates = nullDateEntries.findIndex(entry => entry.id == entryId)
+
+        Logger.debug(`[${this.name}] Fallback: Found ${nullDateEntries.length} null date entries of type ${targetEntry.entryType}`)
+        Logger.debug(`[${this.name}] Fallback: Target entry position in null dates: ${entryPositionInNullDates}`)
+
+        // Find all rows with "-" date in the DOM - only look at journal entry rows
+        const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
+        if (allRows.length === 0) {
+          Logger.error(`[${this.name}] No journal entry rows found in DOM`)
+          return null
+        }
+
+        // Find all rows that match our criteria (null date + correct type)
+        // Then use position-based matching
+        const nullDateRows = [...allRows].filter(row => {
+          // Check for date cell containing only "-"
+          const cells = row.querySelectorAll('td')
+          let hasNullDate = false
+          let isCorrectEntryType = false
+
+          // Check if this row has the background color for independent work entries
+          const hasIndependentWorkBackground = row.style.background && row.style.background.includes('rgb(240, 244, 195)')
+
+          for (let i = 0; i < cells.length; i++) {
+            const cell = cells[i]
+            const text = cell.textContent.trim()
+
+            // The date column is typically the 3rd column (index 2)
+            if (i === 2 && text === '-') {
+              hasNullDate = true
+            }
+
+            // Check for entry type - for SISSEKANNE_I, we rely on background color
+            if (targetEntry.entryType === 'SISSEKANNE_I') {
+              isCorrectEntryType = hasIndependentWorkBackground
+            } else if (targetEntry.entryType === 'SISSEKANNE_T' && i === 4) {
+              // For lessons, check the type column
+              const spanElement = cell.querySelector('span')
+              if (spanElement && spanElement.textContent.trim() === 'Tund') {
+                isCorrectEntryType = true
+              }
+            } else if (targetEntry.entryType === 'SISSEKANNE_P' && i === 4) {
+              const spanElement = cell.querySelector('span')
+              if (spanElement && spanElement.textContent.includes('Praktiline töö')) {
+                isCorrectEntryType = true
+              }
+            }
+          }
+
+          const matches = hasNullDate && isCorrectEntryType
+          if (matches) {
+            Logger.debug(`[${this.name}] Fallback: Row matches - hasNullDate=${hasNullDate}, isCorrectEntryType=${isCorrectEntryType}, hasIndependentWorkBackground=${hasIndependentWorkBackground}`)
+          }
+
+          return matches
+        })
+
+        Logger.debug(`[${this.name}] Fallback: Found ${nullDateRows.length} DOM rows with "-" date and matching type`)
+
+        if (entryPositionInNullDates >= 0 && entryPositionInNullDates < nullDateRows.length) {
+          Logger.debug(`[${this.name}] Fallback: Using position-based match at index ${entryPositionInNullDates}`)
+          return nullDateRows[entryPositionInNullDates]
+        }
+      }
+
+      // Original fallback logic for non-null dates
+      let dateSearchCriteria
+      if (date === 'NO_DATE') {
+        dateSearchCriteria = '-'
+      } else {
+        dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
+      }
+
+      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
+      const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
+
+      Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
 
       if (dateMatchingRows.length > 0) {
-        // Return the first matching row as a last resort
-        Logger.warning(`[${this.name}] Using fallback row for entryId ${entryId}`)
-        return dateMatchingRows[0]
+        // Use duplicateIndex if provided, otherwise first match
+        const indexToUse = duplicateIndex < dateMatchingRows.length ? duplicateIndex : 0
+        Logger.warning(`[${this.name}] Using fallback row at index ${indexToUse} for entryId ${entryId}`)
+        return dateMatchingRows[indexToUse]
       }
 
       return null
     }
 
     if (exactMatches.length === 1) {
+      Logger.debug(`[${this.name}] Single exact match found, returning it`)
       return exactMatches[0]
     }
 
-    // Multiple matches - use the provided duplicate index
-    if (duplicateIndex < exactMatches.length) {
-      return exactMatches[duplicateIndex]
+    // Multiple matches - use the targetIndex from findDuplicateMatches
+    Logger.debug(`[${this.name}] Multiple exact matches (${exactMatches.length}), using targetIndex ${targetIndex}`)
+    Logger.debug(`[${this.name}] Available matches: ${exactMatches.map((match, idx) => `[${idx}]: ${match.tagName} with text="${match.textContent.slice(0, 50)}..."`).join(', ')}`)
+
+    if (targetIndex < exactMatches.length) {
+      Logger.debug(`[${this.name}] Returning match at index ${targetIndex}`)
+      return exactMatches[targetIndex]
     }
+    Logger.warning(`[${this.name}] Target index ${targetIndex} out of range, returning first match`)
     return exactMatches[0]
 
   }
@@ -1171,20 +1339,51 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     let lessonCount = null
     let entryType = null
 
-    for (const cell of cells) {
+    // Check if this is actually a journal entry row (not a student row)
+    const hasEditJournalEntry = row.hasAttribute('ng-click') && row.getAttribute('ng-click').includes('editJournalEntry')
+    if (!hasEditJournalEntry) {
+      // This is not a journal entry row, return null values
+      return { lessonCount: null, entryType: null }
+    }
+
+    // For independent work entries, check the background color
+    const hasIndependentWorkBackground = row.style.background && row.style.background.includes('rgb(240, 244, 195)')
+
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i]
       const text = cell.textContent.trim()
-      if (/^\d+$/.test(text)) {
-        lessonCount = parseInt(text)
+
+      // Lesson count is typically in column 4 (index 3)
+      if (i === 3) {
+        if (/^\d+$/.test(text)) {
+          lessonCount = parseInt(text)
+        } else if (text === '-') {
+          // For independent work, "-" means no lesson count
+          lessonCount = null
+        }
       }
-      if (text.includes('Tund')) {
-        entryType = 'SISSEKANNE_T'
-      } else if (text.includes('Iseseisev töö')) {
-        entryType = 'SISSEKANNE_I'
-      } else if (text.includes('Praktiline töö')) {
-        entryType = 'SISSEKANNE_P'
-      } else if (text.includes('E-õpe')) {
-        entryType = 'SISSEKANNE_E'
+
+      // Entry type is in column 5 (index 4)
+      if (i === 4) {
+        const spanElement = cell.querySelector('span')
+        if (spanElement) {
+          const spanText = spanElement.textContent.trim()
+          if (spanText === 'Tund') {
+            entryType = 'SISSEKANNE_T'
+          } else if (spanText === 'Iseseisev töö' || hasIndependentWorkBackground) {
+            entryType = 'SISSEKANNE_I'
+          } else if (spanText === 'Praktiline töö') {
+            entryType = 'SISSEKANNE_P'
+          } else if (spanText === 'E-õpe') {
+            entryType = 'SISSEKANNE_E'
+          }
+        }
       }
+    }
+
+    // Additional check for independent work based on background color
+    if (!entryType && hasIndependentWorkBackground) {
+      entryType = 'SISSEKANNE_I'
     }
 
     return {
@@ -2334,6 +2533,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
 
         Logger.error(`[${this.name}] Entry element not found for ID=${actualEntryId}, date=${date}, duplicateIndex=${duplicateIndex}`, debugInfo)
+
+        // Show user-friendly error message
+        alert(`Viga: Ei suutnud leida õiget sissekande rida (ID: ${actualEntryId}). Palun proovige lehte värskendada ja uuesti.`)
 
         throw new Error(`entry element not found - entryId: ${entryId}, actualEntryId: ${actualEntryId}, date: ${date}, duplicateIndex: ${duplicateIndex}`)
       }
