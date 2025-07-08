@@ -36,7 +36,7 @@ export class LessonDiscrepanciesTable {
    * @param {Function} options.findDuplicateMatches - Function to find duplicate matches
    * @param {Function} options.addDiscrepancyButtonListeners - Function to add button listeners
    */
-  constructor({
+  constructor ({
     api,
     extractJournalId,
     calculateDuplicateIndex,
@@ -57,7 +57,7 @@ export class LessonDiscrepanciesTable {
    * Injects CSS styles for the lesson discrepancies table
    * @private
    */
-  #injectCSS() {
+  #injectCSS () {
     const css = `
       .lesson-discrepancy-table-cell {
         padding: 8px;
@@ -92,7 +92,7 @@ export class LessonDiscrepanciesTable {
    * @param {boolean} options.forceRefresh - Whether to force refresh
    * @returns {Promise<boolean>} Success status
    */
-  async createTable({ discrepancies, capacityProblems, forceRefresh = false }) {
+  async createTable ({ discrepancies, capacityProblems, forceRefresh = false }) {
     try {
       const journalId = this.extractJournalId()
       if (!journalId) return false
@@ -126,7 +126,7 @@ export class LessonDiscrepanciesTable {
    * @param {string} independentWorkMessage - Independent work message
    * @returns {boolean} Success status
    */
-  insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessage) {
+  insertUnifiedTable (discrepancies, capacityProblems, independentWorkMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
       document.querySelector('[data-capacity-problems-table]')?.remove()
@@ -154,7 +154,7 @@ export class LessonDiscrepanciesTable {
    * @returns {HTMLElement} The table element
    * @private
    */
-  #createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage) {
+  #createUnifiedTableElement (discrepancies, capacityProblems, independentWorkMessage) {
     const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0 || !!independentWorkMessage
     const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc'
     const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
@@ -193,7 +193,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for timetable section
    * @private
    */
-  #createTimetableSection(discrepancies) {
+  #createTimetableSection (discrepancies) {
     if (!discrepancies.length) {
       return '<p style="color:#28a745;margin:0 0 20px 0;">Erinevusi tunniplaaniga pole.</p>'
     }
@@ -224,7 +224,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for capacity section
    * @private
    */
-  #createCapacitySection(capacityProblems, independentWorkMessage) {
+  #createCapacitySection (capacityProblems, independentWorkMessage) {
     const hasCapacityProblems = capacityProblems.length > 0
     const hasindependentWorkMessage = !!independentWorkMessage
     let section = ''
@@ -262,7 +262,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for the row
    * @private
    */
-  #createDiscrepancyRow(discrepancy) {
+  #createDiscrepancyRow (discrepancy) {
     const renderers = {
       missingJournalEntry: this.#renderMissingEntry,
       singleEntryFix: this.#renderSingleEntryFix,
@@ -283,7 +283,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for the row
    * @private
    */
-  #createCapacityProblemRow(entry) {
+  #createCapacityProblemRow (entry) {
     // Format date without year (DD.MM) - handle null dates properly
     let shortDate = 'Kuupäevata'  // Default for null dates
     if (entry.entryDate) {
@@ -416,7 +416,7 @@ export class LessonDiscrepanciesTable {
    * @returns {Object} Render data with start, count, and action
    * @private
    */
-  #renderMissingEntry(discrepancy) {
+  #renderMissingEntry (discrepancy) {
     return {
       start: `<span style="font-weight:bold;">${discrepancy.lessonNumber}</span>`,
       count: `<span style="font-weight:bold;">${discrepancy.lessonCount}</span>`,
@@ -440,7 +440,7 @@ export class LessonDiscrepanciesTable {
    * @returns {Object} Render data with start, count, and action
    * @private
    */
-  #renderSingleEntryFix(discrepancy) {
+  #renderSingleEntryFix (discrepancy) {
     const duplicateIndex = this.calculateDuplicateIndex(discrepancy)
     const duplicateInfo = this.findDuplicateMatches(discrepancy.entryId, discrepancy.date)
     const hasDuplicates = duplicateInfo.exactMatches.length > 1
@@ -471,7 +471,7 @@ export class LessonDiscrepanciesTable {
    * @returns {Object} Render data with start, count, and action
    * @private
    */
-  #renderMultiEntryFix(discrepancy) {
+  #renderMultiEntryFix (discrepancy) {
     // Check if there are duplicates by looking at the first entry
     const firstEntry = discrepancy.entries?.[0]
     const firstEntryDiscrepancy = firstEntry ? {
@@ -517,7 +517,7 @@ export class LessonDiscrepanciesTable {
    * @returns {HTMLElement} The insertion point element
    * @private
    */
-  #findInsertionPoint() {
+  #findInsertionPoint () {
     const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
     return selectors
       .map(selector => document.querySelector(selector))
@@ -534,7 +534,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for the button
    * @private
    */
-  #createButton(id, text, colorKey, data = {}, tooltip = '') {
+  #createButton (id, text, colorKey, data = {}, tooltip = '') {
     const dataAttributes = Object.entries(data)
       .map(([key, value]) => `data-${key}='${JSON.stringify(value)}'`)
       .join(' ')
@@ -598,25 +598,5 @@ export class LessonDiscrepanciesTable {
     return `<div style="${style}">${currentPill}${correctPill}</div>`
   }
 
-  /**
-   * Starts observing for the last-lesson-banner and creates the table when it appears
-   * @param {Array} discrepancies
-   * @param {Array} capacityProblems
-   */
-  observeAndCreateTable({ discrepancies = [], capacityProblems = [] } = {}) {
-    const createIfBannerExists = () => {
-      if (document.getElementById('last-lesson-banner')) {
-        this.createTable({ discrepancies, capacityProblems, forceRefresh: true })
-        return true
-      }
-      return false
-    }
-    if (createIfBannerExists()) return
-    const observer = new MutationObserver(() => {
-      if (createIfBannerExists()) {
-        observer.disconnect()
-      }
-    })
-    observer.observe(document.body, { childList: true, subtree: true })
-  }
+
 }

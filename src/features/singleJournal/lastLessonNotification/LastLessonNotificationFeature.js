@@ -11,7 +11,7 @@ import { BaseFeature } from '../../../core/BaseFeature.js'
 export default class LastLessonNotificationFeature extends BaseFeature {
   static SCHOOL_ID_FALLBACK = 9
 
-  constructor() {
+  constructor () {
     super('lastLessonNotification', /\/journal\/(\d+)\/edit/)
     this.name = 'LastLessonNotificationFeature'
 
@@ -27,7 +27,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
 
   }
 
-  async activate() {
+  async activate () {
     console.debug('[LastLessonNotificationFeature] activate called')
     console.debug('[LastLessonNotificationFeature] Using comparison date:', this.comparisonDate)
     console.debug('[LastLessonNotificationFeature] Current URL:', window.location.href)
@@ -41,12 +41,12 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     }
   }
 
-  onDeactivate() {
+  onDeactivate () {
     this._removeBanner()
     super.onDeactivate()
   }
 
-  async #waitForDiscrepanciesTable() {
+  async #waitForDiscrepanciesTable () {
     console.debug('[LastLessonNotificationFeature] Waiting for discrepancies table...')
     const maxWaitTime = 3000 // 3 seconds
     const checkInterval = 100 // Check every 100ms
@@ -68,7 +68,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     console.debug('[LastLessonNotificationFeature] Timeout waiting for discrepancies table, proceeding anyway...')
   }
 
-  async #showLastLessonNotification() {
+  async #showLastLessonNotification () {
     const journalId = this.#extractJournalId()
     console.debug('[LastLessonNotificationFeature] journalId:', journalId)
     if (!journalId) {
@@ -134,7 +134,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     }
   }
 
-  _showBanner(date, allPast = false) {
+  _showBanner (date, allPast = false) {
     console.log('[LastLessonNotificationFeature] Last lesson date:', date)
     this._removeBanner()
     const banner = document.createElement('div')
@@ -207,11 +207,11 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     }
   }
 
-  _removeBanner() {
+  _removeBanner () {
     document.getElementById('last-lesson-banner')?.remove()
   }
 
-  _findInsertionPoint() {
+  _findInsertionPoint () {
     // Use the same insertion point logic as LessonDiscrepanciesFeature
     const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
     const container = selectors
@@ -222,7 +222,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     return container
   }
 
-  #formatDisplayDate(date) {
+  #formatDisplayDate (date) {
     const d = new Date(date)
     const day = d.getDate().toString().padStart(2, '0')
     const month = (d.getMonth() + 1).toString().padStart(2, '0')
@@ -230,12 +230,12 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     return `${day}.${month}.${year}`
   }
 
-  #extractJournalId() {
+  #extractJournalId () {
     const match = window.location.href.match(/\/journal\/(\d+)/)
     return match ? parseInt(match[1], 10) : null
   }
 
-  async #fetchData(journalId) {
+  async #fetchData (journalId) {
     console.debug('[LastLessonNotificationFeature] #fetchData called with journalId:', journalId)
 
     // Fetch journal info to get schoolId and teacherId
