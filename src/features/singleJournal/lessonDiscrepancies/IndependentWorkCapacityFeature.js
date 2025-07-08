@@ -33,13 +33,11 @@ export default class IndependentWorkCapacityFeature {
       if (typeof indep.usedHours !== 'number' || typeof indep.plannedHours !== 'number') return null
       const diff = indep.usedHours - indep.plannedHours
       const absDiff = Math.abs(diff)
-      if (diff < 0) {
-        return `Iseseisvaid töid on ${absDiff}h liiga vähe`
-      } else if (diff > 0) {
-        return `Iseseisvaid töid on ${absDiff}h liiga palju`
-      } else {
-        return null
+      if (diff !== 0) {
+        const suffix = diff < 0 ? 'liiga vähe' : 'liiga palju'
+        return `Iseseisvaid töid on ${absDiff}h ${suffix}`
       }
+      return null
     } catch (e) {
       // Fail silently
       return null

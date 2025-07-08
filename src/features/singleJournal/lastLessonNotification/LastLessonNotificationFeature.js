@@ -44,29 +44,6 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     this._removeBanner()
     super.onDeactivate()
   }
-
-  async #waitForDiscrepanciesTable() {
-    console.debug('[LastLessonNotificationFeature] Waiting for discrepancies table...')
-    const maxWaitTime = 3000 // 3 seconds
-    const checkInterval = 100 // Check every 100ms
-    let waited = 0
-
-    while (waited < maxWaitTime) {
-      const container = this._findInsertionPoint()
-      const existingTable = container.querySelector('[data-discrepancies-table]')
-
-      if (existingTable) {
-        console.debug('[LastLessonNotificationFeature] Discrepancies table found, proceeding...')
-        return
-      }
-
-      await new Promise(resolve => setTimeout(resolve, checkInterval))
-      waited += checkInterval
-    }
-
-    console.debug('[LastLessonNotificationFeature] Timeout waiting for discrepancies table, proceeding anyway...')
-  }
-
   async #showLastLessonNotification() {
     const journalId = this.#extractJournalId()
     console.debug('[LastLessonNotificationFeature] journalId:', journalId)
@@ -242,17 +219,6 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     document.getElementById('last-lesson-inline-notification')?.remove()
     document.getElementById('last-lesson-banner')?.remove()
   }
-
-  _findInsertionPoint() {
-    // Use the same insertion point logic as LessonDiscrepanciesFeature
-    const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-    const container =
-      selectors.map(selector => document.querySelector(selector)).find(element => element && element.getBoundingClientRect().width > 100) || document.body
-
-    console.debug('[LastLessonNotificationFeature] Found insertion container:', container)
-    return container
-  }
-
   #formatDisplayDate(date) {
     const d = new Date(date)
     const day = d.getDate().toString().padStart(2, '0')

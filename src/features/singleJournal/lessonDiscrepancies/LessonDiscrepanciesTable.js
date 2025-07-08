@@ -206,7 +206,7 @@ export class LessonDiscrepanciesTable {
     }
 
     // Notifications section (side table)
-    let notificationsSection = ''
+    let notificationsSection
     notificationsSection = `<div style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>`
     notificationsSection += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
       <div style="display:flex;align-items:center;">
@@ -291,14 +291,16 @@ export class LessonDiscrepanciesTable {
         <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
       </div>`
       const sortedEntries = [...capacityProblems].sort((a, b) => new Date(a.entryDate) - new Date(b.entryDate))
-      const rows = sortedEntries.map(entry => {
-        const row = this.#createCapacityProblemRow(entry)
-        return `<tr style="background-color:white">
+      const rows = sortedEntries
+        .map(entry => {
+          const row = this.#createCapacityProblemRow(entry)
+          return `<tr style="background-color:white">
           <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-20">${row.dateWithBadge}</td>
           <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">${row.message}</td>
           <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">${row.action}</td>
         </tr>`
-      }).join('')
+        })
+        .join('')
       const tableHead = `<thead><tr style="background:#f9f9f9">
         <th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th>
         <th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">Märkus</th>
