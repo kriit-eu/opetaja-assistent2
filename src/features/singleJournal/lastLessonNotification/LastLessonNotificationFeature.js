@@ -23,7 +23,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       month: '2-digit',
       day: '2-digit'
     }).format(new Date())
-    // this.comparisonDate = "2023-06-22" // Uncomment for testing with a fixed date
+    // this.comparisonDate = '2024-12-08' // Uncomment for testing with a fixed date
   }
 
   async activate() {
@@ -172,8 +172,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     this._removeBanner()
     const subjectSpan = document.querySelector('.hois-collapse-header .flex-gt-md-50 span')
     if (!subjectSpan) {
-      console.debug('[LastLessonNotificationFeature] Subject span not found, falling back to old banner')
-      this._showLegacyBanner(date, allPast)
+      console.debug('[LastLessonNotificationFeature] Subject span not found, cannot show notification')
       return
     }
     const oldNotif = document.getElementById('last-lesson-inline-notification')
@@ -210,6 +209,17 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       bgColor = '#e9ecef' // gray
       borderColor = '#adb5bd'
     }
+    // Force red if last lesson date equals comparison date
+    if (date !== 'not found in timetable') {
+      const d1 = new Date(date)
+      const d2 = new Date(this.comparisonDate)
+      d1.setHours(0, 0, 0, 0)
+      d2.setHours(0, 0, 0, 0)
+      if (d1.getTime() === d2.getTime()) {
+        bgColor = '#ffcccc'
+        borderColor = '#ff8888'
+      }
+    }
     const notif = document.createElement('span')
     notif.id = 'last-lesson-inline-notification'
     notif.style.cssText = `
@@ -226,73 +236,6 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     `
     notif.textContent = bannerMessage
     subjectSpan.parentNode.insertBefore(notif, subjectSpan.nextSibling)
-  }
-
-  _showLegacyBanner(date, allPast = false) {
-    const banner = document.createElement('div')
-    banner.setAttribute('id', 'last-lesson-banner')
-    let isLastLessonToday = false
-    let isPast = false
-    if (date !== 'not found in timetable') {
-      const d1 = new Date(date)
-      const d2 = new Date(this.comparisonDate)
-      d1.setHours(0, 0, 0, 0)
-      d2.setHours(0, 0, 0, 0)
-      if (d1.getTime() === d2.getTime()) {
-        isLastLessonToday = true
-      } else if (d1.getTime() < d2.getTime()) {
-        isPast = true
-      }
-    }
-    let bgColor = '#fff3cd'
-    let borderColor = '#ffeaa7'
-    if (isLastLessonToday) {
-      bgColor = '#ffcccc'
-      borderColor = '#ff8888'
-    } else if (isPast) {
-      bgColor = '#e9ecef'
-      borderColor = '#adb5bd'
-    }
-    banner.style.cssText = `
-      background: ${bgColor};
-      border: 1px solid ${borderColor};
-      border-radius: 4px;
-      padding: 15px;
-      margin: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,.1);
-      width: 600px;
-      min-width: 430px;
-    `
-    const comparisonDateStr = this.#formatDisplayDate(this.comparisonDate)
-    const todayStr = this.#formatDisplayDate(new Date())
-    const showComparisonDate = comparisonDateStr !== todayStr
-    let bannerMessage
-    if (date === 'not found in timetable') {
-      bannerMessage = `NB! Õppetöö kirjed on olemas, kuid tunniplaani andmeid ei leitud${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
-    } else {
-      const verb = allPast ? 'toimus' : 'toimub'
-      bannerMessage = `Viimane tund ${verb} ${this.#formatDisplayDate(date)}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
-    }
-    const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
-        <div style="display:flex;align-items:center;">
-            <span style="font-size:20px;margin-right:10px;">🎓</span>
-            <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
-        </div>
-        <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-            Viimase tunni teavitus
-        </div>
-    </div>`
-    banner.innerHTML = `
-        ${titleBar}
-        <div style="font-size:16px;font-weight:bold;color:#212529;">${bannerMessage}</div>
-    `
-    const container = this._findInsertionPoint()
-    const existingTable = container.querySelector('[data-discrepancies-table]')
-    if (existingTable) {
-      container.insertBefore(banner, existingTable.nextSibling)
-    } else {
-      container.insertBefore(banner, container.firstChild)
-    }
   }
 
   _removeBanner() {
