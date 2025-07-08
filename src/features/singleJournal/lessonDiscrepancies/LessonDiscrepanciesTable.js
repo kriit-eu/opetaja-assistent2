@@ -223,6 +223,7 @@ export class LessonDiscrepanciesTable {
     flexContainer.style.gap = '16px'
     flexContainer.style.alignItems = 'flex-start'
     flexContainer.style.margin = '0' // Ensure no left margin on flex container
+    flexContainer.setAttribute('data-discrepancies-table', 'true')
     flexContainer.innerHTML = mainTableSection + notificationsSection
     return flexContainer
   }
@@ -367,7 +368,7 @@ export class LessonDiscrepanciesTable {
         message = 'Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees'
       } else if (entry.validationResult.errorType === 'missing_auditoorne_checkbox') {
         message = 'Auditoorne õpe puudub'
-      } else if (entry.validationResult.errorType === 'missing_iseseive_checkbox') {
+      } else if (entry.validationResult.errorType === 'missing_iseseisev_checkbox') {
         message = 'Iseseisev õpe puudub'
       } else if (entry.validationResult.errorType === 'journal_missing_independent_work') {
         message = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid'
@@ -595,11 +596,7 @@ export class LessonDiscrepanciesTable {
    */
   #createButton(id, text, colorKey, data = {}, tooltip = '') {
     const dataAttributes = Object.entries(data)
-      .map(([key, value]) =>
-        key === 'handler'
-          ? `data-handler='${value}'`
-          : `data-${key}='${JSON.stringify(value)}'`
-      )
+      .map(([key, value]) => (key === 'handler' ? `data-handler='${value}'` : `data-${key}='${JSON.stringify(value)}'`))
       .join(' ')
     const titleAttribute = tooltip ? `title="${tooltip}"` : ''
     return `<button id="${id}" style="${LessonDiscrepanciesTable.createButtonStyle(LessonDiscrepanciesTable.HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
