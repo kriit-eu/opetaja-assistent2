@@ -4,10 +4,10 @@ import IndependentWorkCapacityFeature from './IndependentWorkCapacityFeature.js'
 import HighlightMissingGradesFeature from '../highlightMissingGrades/HighlightMissingGradesFeature.js'
 
 /**
- * LessonDiscrepanciesTable class
- * Handles table creation and manipulation for lesson discrepancies
+ * DiscrepanciesTable class
+ * Handles table creation and manipulation for discrepancies
  */
-export class LessonDiscrepanciesTable {
+export class DiscrepanciesTable {
   /**
    * Configuration constants for button colors
    */
@@ -28,7 +28,7 @@ export class LessonDiscrepanciesTable {
     `" onmouseover="this.style.background='${hover}'" onmouseout="this.style.background='${bg}'`
 
   /**
-   * Constructor for LessonDiscrepanciesTable
+   * Constructor for DiscrepanciesTable
    * @param {Object} options - Configuration options
    * @param {Object} options.api - API service instance
    * @param {Function} options.formatDate - Date formatting function
@@ -45,7 +45,7 @@ export class LessonDiscrepanciesTable {
     this.addDiscrepancyButtonListeners = addDiscrepancyButtonListeners
     this.tableCreated = false
     this.currentJournalId = null
-    this.name = 'LessonDiscrepanciesTable'
+    this.name = 'DiscrepanciesTable'
   }
 
   /**
@@ -359,7 +359,7 @@ export class LessonDiscrepanciesTable {
           shortDate = `${dateObj.getDate().toString().padStart(2, '0')}.${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`
         }
       } catch (error) {
-        console.log('[LessonDiscrepanciesTable] Date formatting error for display:', error)
+        console.log('[DiscrepanciesTable] Date formatting error for display:', error)
       }
     }
 
@@ -404,39 +404,39 @@ export class LessonDiscrepanciesTable {
 
     // Get formatted date for button data
     // Handle null/undefined dates specially since they show as "-" in the main table
-    console.log(`[LessonDiscrepanciesTable] Debug: entry object:`, entry)
-    console.log(`[LessonDiscrepanciesTable] Debug: entry.entryDate:`, entry.entryDate, typeof entry.entryDate)
-    console.log(`[LessonDiscrepanciesTable] Debug: entry.id:`, entry.id)
+    console.log(`[DiscrepanciesTable] Debug: entry object:`, entry)
+    console.log(`[DiscrepanciesTable] Debug: entry.entryDate:`, entry.entryDate, typeof entry.entryDate)
+    console.log(`[DiscrepanciesTable] Debug: entry.id:`, entry.id)
 
     let safeFormattedDate = 'NO_DATE' // Special identifier for null dates
     if (entry.entryDate) {
       try {
-        console.log(`[LessonDiscrepanciesTable] Debug: Attempting to parse date:`, entry.entryDate)
+        console.log(`[DiscrepanciesTable] Debug: Attempting to parse date:`, entry.entryDate)
         const dateObj = new Date(entry.entryDate)
-        console.log(`[LessonDiscrepanciesTable] Debug: Date object created:`, dateObj)
-        console.log(`[LessonDiscrepanciesTable] Debug: Date object time:`, dateObj.getTime())
-        console.log(`[LessonDiscrepanciesTable] Debug: isNaN check:`, isNaN(dateObj.getTime()))
+        console.log(`[DiscrepanciesTable] Debug: Date object created:`, dateObj)
+        console.log(`[DiscrepanciesTable] Debug: Date object time:`, dateObj.getTime())
+        console.log(`[DiscrepanciesTable] Debug: isNaN check:`, isNaN(dateObj.getTime()))
 
         if (!isNaN(dateObj.getTime())) {
           const day = dateObj.getDate().toString().padStart(2, '0')
           const month = (dateObj.getMonth() + 1).toString().padStart(2, '0')
           const year = dateObj.getFullYear()
           safeFormattedDate = `${day}.${month}.${year}`
-          console.log(`[LessonDiscrepanciesTable] Debug: Successfully formatted date:`, safeFormattedDate)
+          console.log(`[DiscrepanciesTable] Debug: Successfully formatted date:`, safeFormattedDate)
         } else {
-          console.log(`[LessonDiscrepanciesTable] Debug: Date object is invalid, using NO_DATE`)
+          console.log(`[DiscrepanciesTable] Debug: Date object is invalid, using NO_DATE`)
           safeFormattedDate = 'NO_DATE'
         }
       } catch (error) {
-        console.error('[LessonDiscrepanciesTable] Date formatting error:', error)
+        console.error('[DiscrepanciesTable] Date formatting error:', error)
         safeFormattedDate = 'NO_DATE'
       }
     } else {
-      console.log(`[LessonDiscrepanciesTable] Debug: entry.entryDate is falsy, using NO_DATE:`, entry.entryDate)
+      console.log(`[DiscrepanciesTable] Debug: entry.entryDate is falsy, using NO_DATE:`, entry.entryDate)
       safeFormattedDate = 'NO_DATE'
     }
 
-    console.log(`[LessonDiscrepanciesTable] Debug: Final safeFormattedDate:`, safeFormattedDate)
+    console.log(`[DiscrepanciesTable] Debug: Final safeFormattedDate:`, safeFormattedDate)
 
     // Calculate duplicate index for entries with same date
     const duplicateIndexInput = {
@@ -444,9 +444,9 @@ export class LessonDiscrepanciesTable {
       date: safeFormattedDate,
       entryType: entry.entryType
     }
-    console.log(`[LessonDiscrepanciesTable] Calculating duplicate index for:`, duplicateIndexInput)
+    console.log(`[DiscrepanciesTable] Calculating duplicate index for:`, duplicateIndexInput)
     const duplicateIndex = this.calculateDuplicateIndex(duplicateIndexInput)
-    console.log(`[LessonDiscrepanciesTable] Calculated duplicate index:`, duplicateIndex)
+    console.log(`[DiscrepanciesTable] Calculated duplicate index:`, duplicateIndex)
 
     const action =
       entry.validationResult?.errorType === 'no_teacher_selected'
@@ -621,10 +621,10 @@ export class LessonDiscrepanciesTable {
    */
   #createButton(id, text, colorKey, data = {}, tooltip = '') {
     const dataAttributes = Object.entries(data)
-      .map(([key, value]) => (key === 'handler' ? `data-handler='${value}'` : `data-${key}='${JSON.stringify(value)}'`))
+      .map(([key, value]) => `data-${key.toLowerCase()}="${String(value).replace(/"/g, '&quot;')}"`)
       .join(' ')
     const titleAttribute = tooltip ? `title="${tooltip}"` : ''
-    return `<button id="${id}" style="${LessonDiscrepanciesTable.createButtonStyle(LessonDiscrepanciesTable.HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
+    return `<button id="${id}" style="${DiscrepanciesTable.createButtonStyle(DiscrepanciesTable.HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
   }
 
   /**

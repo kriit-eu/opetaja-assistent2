@@ -34,7 +34,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     try {
       // Only show the last lesson notification banner
       await this.#showLastLessonNotification()
-      // Table creation is now handled by LessonDiscrepanciesTable
+      // Table creation is now handled by DiscrepanciesTable
     } catch (error) {
       console.error('[LastLessonNotificationFeature] Error in activate:', error)
     }

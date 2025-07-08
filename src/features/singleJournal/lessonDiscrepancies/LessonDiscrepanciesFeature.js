@@ -2,9 +2,9 @@ import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
-import { LessonDiscrepanciesTable } from './LessonDiscrepanciesTable.js'
+import { DiscrepanciesTable } from './DiscrepanciesTable.js'
 
-// HEX constant and createButtonStyle function moved to LessonDiscrepanciesTable class
+// HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
 /**
  * @typedef {Object} JournalInfo
@@ -53,7 +53,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.name = 'LessonDiscrepanciesFeature'
 
     // Initialize the table class
-    this.table = new LessonDiscrepanciesTable({
+    this.table = new DiscrepanciesTable({
       api: this.api,
       formatDate: this.#formatDisplayDate,
       extractJournalId: () => this.#extractJournalId(),
@@ -2060,7 +2060,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  // #createCapacityProblemRow method moved to LessonDiscrepanciesTable class
+  // #createCapacityProblemRow method moved to DiscrepanciesTable class
 
   #highlightProblematicElements(elements, message = '', color = '#ff0000') {
     // Clean up any existing highlights first
