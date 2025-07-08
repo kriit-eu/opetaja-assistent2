@@ -347,10 +347,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         return hasDifference
           ? {
-            date,
-            journal: journalData,
-            timetable: timetableData
-          }
+              date,
+              journal: journalData,
+              timetable: timetableData
+            }
           : null
       })
       .filter(Boolean)

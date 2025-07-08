@@ -46,7 +46,7 @@ class ApiService {
    */
   getAuthHeaders() {
     if (!this.authToken) return {}
-    return { 'Authorization': `Bearer ${this.authToken}` }
+    return { Authorization: `Bearer ${this.authToken}` }
   }
 
   /**
@@ -71,7 +71,7 @@ class ApiService {
       headers = {},
       params = {},
       cache = false,
-      cacheExpiration = cacheService.EXPIRATION.MEDIUM,
+      cacheExpiration = cacheService.EXPIRATION.MEDIUM
     } = config
 
     try {
@@ -98,11 +98,11 @@ class ApiService {
         method,
         headers: {
           'Content-Type': 'application/json;charset=UTF-8',
-          'Accept': 'application/json, text/plain, */*',
+          Accept: 'application/json, text/plain, */*',
           ...this.defaultHeaders,
           ...this.getAuthHeaders(),
-          ...headers,
-        },
+          ...headers
+        }
       }
 
       // For Tahvel API, include credentials and add additional headers
@@ -147,25 +147,28 @@ class ApiService {
 
         return new Promise((resolve, reject) => {
           // noinspection JSCheckFunctionSignatures
-          chrome.runtime.sendMessage({
-            action: 'kriitApiRequest',
-            method,
-            url: urlString,
-            headers: requestOptions.headers,
-            body: data,
-          }, response => {
-            if (chrome.runtime.lastError) {
-              Logger.error(`[${this.name}] Background script error:`, chrome.runtime.lastError)
-              reject(new Error(`Background script error: ${chrome.runtime.lastError.message}`))
-              return
-            }
+          chrome.runtime.sendMessage(
+            {
+              action: 'kriitApiRequest',
+              method,
+              url: urlString,
+              headers: requestOptions.headers,
+              body: data
+            },
+            response => {
+              if (chrome.runtime.lastError) {
+                Logger.error(`[${this.name}] Background script error:`, chrome.runtime.lastError)
+                reject(new Error(`Background script error: ${chrome.runtime.lastError.message}`))
+                return
+              }
 
-            if (response.status === 'success') {
-              resolve(response.data)
-            } else {
-              reject(new Error(response.message))
+              if (response.status === 'success') {
+                resolve(response.data)
+              } else {
+                reject(new Error(response.message))
+              }
             }
-          })
+          )
         })
       }
 
@@ -184,7 +187,7 @@ class ApiService {
 
             return await response.json()
           },
-          cacheExpiration,
+          cacheExpiration
         )
       }
 
@@ -251,11 +254,7 @@ class ApiService {
    */
   async get(endpoint, params = {}, options = {}) {
     // Default options
-    const {
-      cache = true,
-      cacheExpiration = cacheService.EXPIRATION.MEDIUM,
-      forceRefresh = false,
-    } = options
+    const { cache = true, cacheExpiration = cacheService.EXPIRATION.MEDIUM, forceRefresh = false } = options
 
     // Log caching decision for debugging
     if (endpoint.includes('journalEntriesByDate')) {
@@ -270,7 +269,7 @@ class ApiService {
       data: null,
       headers: {},
       cache: cache && !forceRefresh,
-      cacheExpiration,
+      cacheExpiration
     })
   }
 
@@ -286,10 +285,10 @@ class ApiService {
       endpoint,
       method: 'POST',
       data,
-      headers: {},      // Add missing required parameters
-      params: {},       // Add missing required parameters
-      cache: false,     // POST requests typically shouldn't be cached
-      cacheExpiration: cacheService.EXPIRATION.MEDIUM,
+      headers: {}, // Add missing required parameters
+      params: {}, // Add missing required parameters
+      cache: false, // POST requests typically shouldn't be cached
+      cacheExpiration: cacheService.EXPIRATION.MEDIUM
     })
   }
 
@@ -337,10 +336,10 @@ class ApiService {
         method: 'PUT',
         data,
         headers,
-        params: {},                                   // required parameter
-        cache: false,                                 // PUT requests shouldn't be cached
+        params: {}, // required parameter
+        cache: false, // PUT requests shouldn't be cached
         cacheExpiration: cacheService.EXPIRATION.MEDIUM,
-        ...options,
+        ...options
       })
 
       Logger.debug(`[${this.name}] PUT request to ${endpoint} completed successfully`)
@@ -350,7 +349,6 @@ class ApiService {
       throw error
     }
   }
-
 }
 
 // Export only the class, no default instance

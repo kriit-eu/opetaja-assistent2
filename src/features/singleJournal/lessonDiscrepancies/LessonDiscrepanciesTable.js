@@ -426,24 +426,24 @@ export class LessonDiscrepanciesTable {
     const action =
       entry.validationResult?.errorType === 'no_teacher_selected'
         ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-          handler: 'fixCapacity',
-          entryid: entry.id,
-          date: safeFormattedDate,
-          duplicateindex: duplicateIndex
-        })
-        : entry.validationResult?.errorType === 'journal_missing_independent_work'
-          ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
-            handler: 'openEntry',
-            entryid: entry.id,
-            date: safeFormattedDate,
-            duplicateindex: duplicateIndex
-          })
-          : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
             handler: 'fixCapacity',
             entryid: entry.id,
             date: safeFormattedDate,
             duplicateindex: duplicateIndex
           })
+        : entry.validationResult?.errorType === 'journal_missing_independent_work'
+          ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
+              handler: 'openEntry',
+              entryid: entry.id,
+              date: safeFormattedDate,
+              duplicateindex: duplicateIndex
+            })
+          : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+              handler: 'fixCapacity',
+              entryid: entry.id,
+              date: safeFormattedDate,
+              duplicateindex: duplicateIndex
+            })
 
     return `<tr style="background-color:white">
       <td class="lesson-discrepancy-table-cell-center">${dateWithBadge}</td>
@@ -524,11 +524,11 @@ export class LessonDiscrepanciesTable {
     const firstEntry = discrepancy.entries?.[0]
     const firstEntryDiscrepancy = firstEntry
       ? {
-        ...discrepancy,
-        entryId: firstEntry.id,
-        journalStart: firstEntry.startLessonNr,
-        journalCount: firstEntry.lessons
-      }
+          ...discrepancy,
+          entryId: firstEntry.id,
+          journalStart: firstEntry.startLessonNr,
+          journalCount: firstEntry.lessons
+        }
       : null
     const duplicateInfo = firstEntryDiscrepancy
       ? this.findDuplicateMatches(firstEntryDiscrepancy.entryId, firstEntryDiscrepancy.date)

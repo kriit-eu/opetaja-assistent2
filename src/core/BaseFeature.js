@@ -15,7 +15,6 @@ function getTahvelBaseUrl() {
     return 'https://test.tahvel.eenet.ee/hois_back'
   }
   return 'https://tahvel.edu.ee/hois_back'
-
 }
 
 /**
@@ -25,7 +24,7 @@ export const api = {
   // Tahvel API instance - baseUrl is dynamic based on current domain
   tahvel: new ApiService({
     name: 'tahvel',
-    baseUrl: getTahvelBaseUrl(),
+    baseUrl: getTahvelBaseUrl()
   }),
 
   // Kriit API instance - baseUrl will be set from user settings
@@ -33,9 +32,9 @@ export const api = {
     name: 'kriit',
     baseUrl: '', // Empty by default, will be set from chrome.storage.sync
     defaultHeaders: {
-      'Accept': 'application/json',
-    },
-  }),
+      Accept: 'application/json'
+    }
+  })
 }
 
 export class BaseFeature {
@@ -87,25 +86,22 @@ export class BaseFeature {
       Logger.debug(`Feature ${this.name} waiting for required elements: ${this.requiredSelectors}`)
 
       // Set up observer for required elements
-      this.elementsObserver = domService.observeForElements(
-        this.requiredSelectors,
-        (elements, selector, error) => {
-          // Clean up the observer
-          this.elementsObserver = null
+      this.elementsObserver = domService.observeForElements(this.requiredSelectors, (elements, selector, error) => {
+        // Clean up the observer
+        this.elementsObserver = null
 
-          if (error) {
-            Logger.warning(`Feature ${this.name} could not find required elements: ${error.message}`)
-            this.onRequiredElementsNotFound(error)
-            return
-          }
+        if (error) {
+          Logger.warning(`Feature ${this.name} could not find required elements: ${error.message}`)
+          this.onRequiredElementsNotFound(error)
+          return
+        }
 
-          if (elements && elements.length > 0) {
-            Logger.debug(`Feature ${this.name} found required elements with selector: ${selector}`)
-            this.onRequiredElementsFound(elements, selector)
-            this.onActivate(elements)
-          }
-        },
-      )
+        if (elements && elements.length > 0) {
+          Logger.debug(`Feature ${this.name} found required elements with selector: ${selector}`)
+          this.onRequiredElementsFound(elements, selector)
+          this.onActivate(elements)
+        }
+      })
     } else {
       // No required elements, activate immediately
       this.onActivate()

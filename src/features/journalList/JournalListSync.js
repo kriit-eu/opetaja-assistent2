@@ -28,7 +28,7 @@ class JournalListSyncFeature extends BaseFeature {
       // Fallback selectors in case the primary one doesn't work
       '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
       '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
-      'a[href^="/#/journal/"]',
+      'a[href^="/#/journal/"]'
     ]
 
     // Match the journal list page URL pattern and pass required selectors
@@ -120,11 +120,13 @@ class JournalListSyncFeature extends BaseFeature {
     this.journalLinks = elements
 
     // Log the first 3 links for debugging
-    Array.from(elements).slice(0, 3).forEach((el, i) => {
-      const href = el.getAttribute('href') || el.getAttribute('ng-href') || ''
-      const text = el.textContent.trim()
-      Logger.debug(`Link ${i + 1}: href=${href}, text=${text}`)
-    })
+    Array.from(elements)
+      .slice(0, 3)
+      .forEach((el, i) => {
+        const href = el.getAttribute('href') || el.getAttribute('ng-href') || ''
+        const text = el.textContent.trim()
+        Logger.debug(`Link ${i + 1}: href=${href}, text=${text}`)
+      })
   }
 
   /**
@@ -242,7 +244,7 @@ class JournalListSyncFeature extends BaseFeature {
             this.getJournalInfo(id),
             this.getJournalEntries(id),
             this.getJournalEntriesWithGrades(id),
-            this.getJournalStudents(id),
+            this.getJournalStudents(id)
           ])
 
           if (!journalInfo) {
@@ -259,29 +261,17 @@ class JournalListSyncFeature extends BaseFeature {
           }
 
           if (journalInfo.studentGroups) {
-            Logger.debug(
-              `Journal ${id} student groups:`,
-              JSON.stringify(journalInfo.studentGroups),
-            )
+            Logger.debug(`Journal ${id} student groups:`, JSON.stringify(journalInfo.studentGroups))
           }
 
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
-          const assignments = this.extractAssignmentsFromEntries(
-            journalEntries,
-            studentMap,
-            journalStudents,
-            studentDetailsMap,
-            journalEntriesWithGrades,
-          )
+          const assignments = this.extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
           let teacherName = ''
           let teacherPersonalCode = ''
 
-          if (
-            journalInfo.journalTeachers &&
-            journalInfo.journalTeachers.length > 0
-          ) {
+          if (journalInfo.journalTeachers && journalInfo.journalTeachers.length > 0) {
             const teacher = journalInfo.journalTeachers[0]
             teacherName = teacher.nameEt || teacher.fullname || ''
 
@@ -308,16 +298,9 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Handle multigroup journals by creating separate entries for each group
           const studentGroups = []
-          if (
-            Array.isArray(journalInfo.studentGroups) &&
-            journalInfo.studentGroups.length > 0
-          ) {
+          if (Array.isArray(journalInfo.studentGroups) && journalInfo.studentGroups.length > 0) {
             studentGroups.push(...journalInfo.studentGroups)
-          } else if (
-            Array.isArray(journalStudents) &&
-            journalStudents.length > 0 &&
-            journalStudents[0].studentGroup
-          ) {
+          } else if (Array.isArray(journalStudents) && journalStudents.length > 0 && journalStudents[0].studentGroup) {
             studentGroups.push(journalStudents[0].studentGroup)
           }
 
@@ -329,7 +312,7 @@ class JournalListSyncFeature extends BaseFeature {
               groupName: '',
               teacherPersonalCode,
               teacherName,
-              assignments,
+              assignments
             }
           }
 
@@ -349,39 +332,41 @@ class JournalListSyncFeature extends BaseFeature {
             Logger.debug(`\n=== Processing group: ${groupName} ===`)
 
             // Filter assignments to include only students from this group
-            const filteredAssignments = assignments.map(assignment => {
-              Logger.debug(`Processing assignment "${assignment.assignmentName}" with ${assignment.results.length} total students`)
+            const filteredAssignments = assignments
+              .map(assignment => {
+                Logger.debug(`Processing assignment "${assignment.assignmentName}" with ${assignment.results.length} total students`)
 
-              const filteredResults = assignment.results.filter(result => {
-                // Find the student in journalStudents to get their group
-                const student = journalStudents.find(js => {
-                  const studentId = studentMap.journalStudentIdToId[js.id.toString()]
-                  const personalCode = studentMap.idToPersonalCode[studentId]
-                  const matches = personalCode === result.studentPersonalCode
+                const filteredResults = assignment.results.filter(result => {
+                  // Find the student in journalStudents to get their group
+                  const student = journalStudents.find(js => {
+                    const studentId = studentMap.journalStudentIdToId[js.id.toString()]
+                    const personalCode = studentMap.idToPersonalCode[studentId]
+                    const matches = personalCode === result.studentPersonalCode
 
-                  if (matches) {
-                    Logger.debug(`  Student ${result.studentPersonalCode} (${result.studentName}) belongs to group: ${js.studentGroup}`)
+                    if (matches) {
+                      Logger.debug(`  Student ${result.studentPersonalCode} (${result.studentName}) belongs to group: ${js.studentGroup}`)
+                    }
+
+                    return matches
+                  })
+
+                  // Include student if they belong to this group
+                  const belongsToGroup = student && student.studentGroup === groupName
+                  if (student && !belongsToGroup) {
+                    Logger.debug(`  Excluding student ${result.studentPersonalCode} (group: ${student.studentGroup}, expected: ${groupName})`)
                   }
 
-                  return matches
+                  return belongsToGroup
                 })
 
-                // Include student if they belong to this group
-                const belongsToGroup = student && student.studentGroup === groupName
-                if (student && !belongsToGroup) {
-                  Logger.debug(`  Excluding student ${result.studentPersonalCode} (group: ${student.studentGroup}, expected: ${groupName})`)
+                Logger.debug(`  Filtered results for group ${groupName}: ${filteredResults.length} students`)
+
+                return {
+                  ...assignment,
+                  results: filteredResults
                 }
-
-                return belongsToGroup
               })
-
-              Logger.debug(`  Filtered results for group ${groupName}: ${filteredResults.length} students`)
-
-              return {
-                ...assignment,
-                results: filteredResults
-              }
-            }).filter(assignment => assignment.results.length > 0) // Only include assignments with students
+              .filter(assignment => assignment.results.length > 0) // Only include assignments with students
 
             Logger.debug(`Group ${groupName} will have ${filteredAssignments.length} assignments`)
 
@@ -391,7 +376,7 @@ class JournalListSyncFeature extends BaseFeature {
               groupName,
               teacherPersonalCode,
               teacherName,
-              assignments: filteredAssignments,
+              assignments: filteredAssignments
             })
           }
 
@@ -404,9 +389,7 @@ class JournalListSyncFeature extends BaseFeature {
 
       const results = await Promise.all(journalPromises)
       // Flatten the results as some journals may return arrays of group entries
-      const journalData = results
-        .filter(r => r !== null)
-        .flatMap(result => Array.isArray(result) ? result : [result])
+      const journalData = results.filter(r => r !== null).flatMap(result => (Array.isArray(result) ? result : [result]))
 
       Logger.debug(`Collected data for ${journalData.length} journals`)
       return journalData
@@ -519,7 +502,9 @@ class JournalListSyncFeature extends BaseFeature {
             if (studentData) {
               // Store the mapping from journalStudentId to studentId for API cache lookups
               this.journalStudentIdToStudentId[journalStudent.id] = journalStudent.studentId
-              Logger.debug(`✓ Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${studentData.personalCode} - ${studentData.name})`)
+              Logger.debug(
+                `✓ Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${studentData.personalCode} - ${studentData.name})`
+              )
             }
 
             return studentData
@@ -634,15 +619,17 @@ class JournalListSyncFeature extends BaseFeature {
       onRetry: () => this.fetchJournalData(),
       onClearCache: () => {
         this.clearCache().then(result => {
-          alert(`Puhastatud ${result.total} vahemälu kirjet:\n` +
-            `- API vahemälu: ${result.api} kirjet\n` +
-            `- Funktsiooni vahemälu: ${result.feature} kirjet\n` +
-            `- Mälu vahemälu: ${result.runtime} kirjet\n\n` +
-            'Klõpsake "Proovi uuesti" värske andmete saamiseks.')
+          alert(
+            `Puhastatud ${result.total} vahemälu kirjet:\n` +
+              `- API vahemälu: ${result.api} kirjet\n` +
+              `- Funktsiooni vahemälu: ${result.feature} kirjet\n` +
+              `- Mälu vahemälu: ${result.runtime} kirjet\n\n` +
+              'Klõpsake "Proovi uuesti" värske andmete saamiseks.'
+          )
         })
       },
       onSettings: () => this.resetKriitApiToken(),
-      onRefresh: () => window.location.reload(),
+      onRefresh: () => window.location.reload()
     }
 
     journalSyncBannerService.showSyncErrorBanner(this.error, options)
@@ -697,7 +684,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Save token to chrome.storage.sync
-    chrome.storage.sync.set({ 'OA_kriitApiToken': token }, () => {
+    chrome.storage.sync.set({ OA_kriitApiToken: token }, () => {
       // Update API service
       this.api.kriit.setAuthToken(token)
 
@@ -707,7 +694,6 @@ class JournalListSyncFeature extends BaseFeature {
       this.fetchJournalData()
     })
   }
-
 
   /**
    * Reset Kriit API token and prompt for a new one
@@ -765,10 +751,9 @@ class JournalListSyncFeature extends BaseFeature {
       feature: 0, // No longer separately tracked as we use CacheService for everything
       runtime: teacherRuntimeCacheSize + moduleTeacherCacheSize,
       students: 0, // Students now handled by CacheService
-      teachers: teacherRuntimeCacheSize + moduleTeacherCacheSize,
+      teachers: teacherRuntimeCacheSize + moduleTeacherCacheSize
     }
   }
-
 
   /**
    * Proceed with the actual Kriit API call
@@ -780,7 +765,7 @@ class JournalListSyncFeature extends BaseFeature {
       this.updateUI()
 
       // Use provided data or collect fresh data
-      const journalData = providedJournalData || await this.collectJournalData()
+      const journalData = providedJournalData || (await this.collectJournalData())
 
       // Check if we have valid data
       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
@@ -1031,17 +1016,17 @@ class JournalListSyncFeature extends BaseFeature {
     // Filter results to only show students with differences
     const resultsWithDifferences = Array.isArray(assignment.results)
       ? assignment.results.filter(result => {
-        const tahvelGrade = result.currentGrade || '(puudub)'
-        const kriitGrade = result.grade || '(puudub)'
+          const tahvelGrade = result.currentGrade || '(puudub)'
+          const kriitGrade = result.grade || '(puudub)'
 
-        // Skip null/empty grades from Kriit entirely
-        if (result.grade === null || result.grade === undefined || result.grade === '') {
-          return false // Don't show in differences
-        }
+          // Skip null/empty grades from Kriit entirely
+          if (result.grade === null || result.grade === undefined || result.grade === '') {
+            return false // Don't show in differences
+          }
 
-        // Direct comparison since both should now be numeric
-        return tahvelGrade !== kriitGrade
-      })
+          // Direct comparison since both should now be numeric
+          return tahvelGrade !== kriitGrade
+        })
       : []
 
     // Skip this assignment if there are no differences
@@ -1050,9 +1035,14 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Create assignment section
-    const assignmentSection = domService.createAndInsertElement('div', {
-      classList: ['ta-sync-assignment-section'],
-    }, '', container)
+    const assignmentSection = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-assignment-section']
+      },
+      '',
+      container
+    )
 
     // Add assignment title
     // Truncate long titles
@@ -1061,37 +1051,51 @@ class JournalListSyncFeature extends BaseFeature {
       formattedTitle = formattedTitle.substring(0, 47) + '...'
     }
 
-    domService.createAndInsertElement('h4', {
-      classList: ['ta-sync-assignment-title'],
-    }, formattedTitle, assignmentSection)
+    domService.createAndInsertElement(
+      'h4',
+      {
+        classList: ['ta-sync-assignment-title']
+      },
+      formattedTitle,
+      assignmentSection
+    )
 
     // Create results container
-    const resultsContainer = domService.createAndInsertElement('div', {
-      classList: ['ta-sync-results-container'],
-    }, '', assignmentSection)
+    const resultsContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-results-container']
+      },
+      '',
+      assignmentSection
+    )
 
     // Render each result with differences
     resultsWithDifferences.forEach(result => {
-      const resultRow = domService.createAndInsertElement('div', {
-        classList: ['ta-sync-result-row'],
-      }, '', resultsContainer)
+      const resultRow = domService.createAndInsertElement(
+        'div',
+        {
+          classList: ['ta-sync-result-row']
+        },
+        '',
+        resultsContainer
+      )
 
       // Student name
-      domService.createAndInsertElement('span', {
-        classList: ['ta-sync-student-name'],
-      }, result.studentName, resultRow)
+      domService.createAndInsertElement(
+        'span',
+        {
+          classList: ['ta-sync-student-name']
+        },
+        result.studentName,
+        resultRow
+      )
 
       // Grade difference
       const tahvelGrade = result.currentGrade || '(puudub)'
       const kriitGrade = result.grade || '(puudub)'
 
-      journalSyncBannerService.createComparisonDisplay(
-        resultRow,
-        tahvelGrade,
-        kriitGrade,
-        'Grade in Tahvel',
-        'Grade in Kriit'
-      )
+      journalSyncBannerService.createComparisonDisplay(resultRow, tahvelGrade, kriitGrade, 'Grade in Tahvel', 'Grade in Kriit')
     })
   }
 
@@ -1102,9 +1106,13 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalInfo(journalId) {
     // Use the built-in API service caching with a long expiration
-    return this.api.tahvel.get(`/journals/${journalId}`, {}, {
-      cacheExpiration: 30 * 24 * 60 * 60 * 1000, // 30 days
-    })
+    return this.api.tahvel.get(
+      `/journals/${journalId}`,
+      {},
+      {
+        cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
+      }
+    )
   }
 
   /**
@@ -1120,8 +1128,8 @@ class JournalListSyncFeature extends BaseFeature {
         {},
         {
           cache: false, // Explicitly disable caching
-          forceRefresh: true, // Force a refresh
-        },
+          forceRefresh: true // Force a refresh
+        }
       )
 
       // The response is paginated with a different structure than journalEntriesByDate
@@ -1132,7 +1140,6 @@ class JournalListSyncFeature extends BaseFeature {
       }
       Logger.warning(`Unexpected response format from journalEntry endpoint: ${JSON.stringify(response)}`)
       return []
-
     } catch (error) {
       Logger.error(`Error fetching journal entries for ${journalId}:`, error)
       return null
@@ -1153,8 +1160,8 @@ class JournalListSyncFeature extends BaseFeature {
         { allStudents: true },
         {
           cache: false, // Explicitly disable caching
-          forceRefresh: true, // Force a refresh
-        },
+          forceRefresh: true // Force a refresh
+        }
       )
 
       if (Array.isArray(response)) {
@@ -1163,7 +1170,6 @@ class JournalListSyncFeature extends BaseFeature {
       }
       Logger.warning(`Unexpected response format from journalEntriesByDate endpoint: ${JSON.stringify(response)}`)
       return []
-
     } catch (error) {
       Logger.error(`Error fetching journal entries with grades for ${journalId}:`, error)
       return null
@@ -1180,9 +1186,13 @@ class JournalListSyncFeature extends BaseFeature {
       Logger.debug(`Fetching journal students for ${journalId}`)
       // Use a shorter cache time (1 hour) to ensure data is relatively fresh
       // Use allStudents=true to get all students including their personal codes
-      const response = await this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, {
-        cacheExpiration: 60 * 60 * 1000, // 1 hour
-      })
+      const response = await this.api.tahvel.get(
+        `/journals/${journalId}/journalStudents`,
+        { allStudents: true },
+        {
+          cacheExpiration: 60 * 60 * 1000 // 1 hour
+        }
+      )
 
       if (response) {
         Logger.debug(`Retrieved ${response.length} students for journal ${journalId}`)
@@ -1259,17 +1269,21 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Check if the student is enrolled in this journal and get their journalStudentId
       let matchingJournalStudent = null
-      const isEnrolled = journalStudents && journalStudents.some(js => {
-        const matches = String(js.studentId) === String(studentId)
-        if (matches) {
-          matchingJournalStudent = js
-          journalStudentId = js.id // This is the ID we need for the journalStudent field
-        }
-        return matches
-      })
+      const isEnrolled =
+        journalStudents &&
+        journalStudents.some(js => {
+          const matches = String(js.studentId) === String(studentId)
+          if (matches) {
+            matchingJournalStudent = js
+            journalStudentId = js.id // This is the ID we need for the journalStudent field
+          }
+          return matches
+        })
 
       if (matchingJournalStudent) {
-        Logger.debug(`Found matching journal student: ID=${matchingJournalStudent.id}, studentId=${matchingJournalStudent.studentId}, name=${matchingJournalStudent.studentName}`)
+        Logger.debug(
+          `Found matching journal student: ID=${matchingJournalStudent.id}, studentId=${matchingJournalStudent.studentId}, name=${matchingJournalStudent.studentName}`
+        )
       } else {
         // If we couldn't find the student in the journal students, try to find them by name
         Logger.debug(`Could not find student with ID ${studentId} in journal students. Trying to find by name...`)
@@ -1277,8 +1291,8 @@ class JournalListSyncFeature extends BaseFeature {
         // Try to find the student by name
         const studentName = studentInfo?.name
         if (studentName) {
-          const matchByName = journalStudents && journalStudents.find(js =>
-            js.studentName && js.studentName.toLowerCase().includes(studentName.toLowerCase()))
+          const matchByName =
+            journalStudents && journalStudents.find(js => js.studentName && js.studentName.toLowerCase().includes(studentName.toLowerCase()))
 
           if (matchByName) {
             matchingJournalStudent = matchByName
@@ -1313,8 +1327,9 @@ class JournalListSyncFeature extends BaseFeature {
             const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
 
             if (entryDetails && entryDetails.journalEntryStudents) {
-              const isInAssignment = entryDetails.journalEntryStudents.some(student =>
-                student.journalStudent && String(student.journalStudent) === String(studentId))
+              const isInAssignment = entryDetails.journalEntryStudents.some(
+                student => student.journalStudent && String(student.journalStudent) === String(studentId)
+              )
 
               if (isInAssignment) {
                 // Get the assignment name
@@ -1323,7 +1338,7 @@ class JournalListSyncFeature extends BaseFeature {
                 enrolledAssignments.push({
                   id: entry.id,
                   name: assignmentName,
-                  date: entry.homeworkDuedate || entry.entryDate,
+                  date: entry.homeworkDuedate || entry.entryDate
                 })
               }
             }
@@ -1346,7 +1361,7 @@ class JournalListSyncFeature extends BaseFeature {
         isEnrolledInJournal: isEnrolled,
         enrolledAssignments,
         journalId,
-        cacheInfo: studentInfo,
+        cacheInfo: studentInfo
       }
     } catch (error) {
       Logger.error(`Error getting detailed student info: ${error.message}`)
@@ -1366,9 +1381,13 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     try {
-      const response = await this.api.tahvel.get(`/studentGroups/${groupId}/students`, {}, {
-        cacheExpiration: 30 * 24 * 60 * 60 * 1000, // 30 days
-      })
+      const response = await this.api.tahvel.get(
+        `/studentGroups/${groupId}/students`,
+        {},
+        {
+          cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
+        }
+      )
 
       if (response && Array.isArray(response)) {
         Logger.debug(`Retrieved ${response.length} students for group ${groupId}`)
@@ -1390,9 +1409,13 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getStudentDetails(studentId) {
     // Use the built-in API service caching with a very long expiration
-    return this.api.tahvel.get(`/students/${studentId}`, {}, {
-      cacheExpiration: 24 * 60 * 60 * 1000
-    })
+    return this.api.tahvel.get(
+      `/students/${studentId}`,
+      {},
+      {
+        cacheExpiration: 24 * 60 * 60 * 1000
+      }
+    )
   }
 
   /**
@@ -1405,7 +1428,7 @@ class JournalListSyncFeature extends BaseFeature {
     const studentMap = {
       idToPersonalCode: {},
       personalCodeToName: {},
-      journalStudentIdToId: {},
+      journalStudentIdToId: {}
     }
 
     // First, map journal student IDs to student IDs
@@ -1432,9 +1455,11 @@ class JournalListSyncFeature extends BaseFeature {
       })
 
       // Log mapping statistics
-      Logger.debug(`Student mapping created: ${Object.keys(studentMap.journalStudentIdToId).length} journal student IDs, ` +
-        `${Object.keys(studentMap.idToPersonalCode).length} personal codes, ` +
-        `${Object.keys(studentMap.personalCodeToName).length} names`)
+      Logger.debug(
+        `Student mapping created: ${Object.keys(studentMap.journalStudentIdToId).length} journal student IDs, ` +
+          `${Object.keys(studentMap.idToPersonalCode).length} personal codes, ` +
+          `${Object.keys(studentMap.personalCodeToName).length} names`
+      )
     } else {
       Logger.warning('No journal students provided for mapping')
     }
@@ -1459,9 +1484,10 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Filter for graded entries only
-    const gradedEntries = journalEntries.filter(entry =>
-      entry.entryType === 'SISSEKANNE_H' || // Graded entry
-      entry.entryType === 'SISSEKANNE_I',     // Independent work
+    const gradedEntries = journalEntries.filter(
+      entry =>
+        entry.entryType === 'SISSEKANNE_H' || // Graded entry
+        entry.entryType === 'SISSEKANNE_I' // Independent work
     )
 
     // Create a map of entry IDs to entries with grades from journalEntriesByDate
@@ -1561,7 +1587,7 @@ class JournalListSyncFeature extends BaseFeature {
             studentPersonalCode: personalCode,
             studentName,
             studentIsActive: studentIsActive,
-            studentIsDeleted: studentIsDeleted,
+            studentIsDeleted: studentIsDeleted
           })
         })
       } else {
@@ -1578,9 +1604,9 @@ class JournalListSyncFeature extends BaseFeature {
           assignmentExternalId: entry.id,
           assignmentName: assignmentName,
           assignmentInstructions: entry.content || '',
-          assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : (entry.entryDate ? entry.entryDate.split('T')[0] : null), // Use homeworkDuedate if available, fall back to entryDate
+          assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
           assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
-          results,
+          results
         })
 
         // Log whether this assignment has results or not
@@ -1648,11 +1674,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Use a type-specific name if nothing else is available
-    return entry.entryType === 'SISSEKANNE_H'
-      ? 'Hindeline töö'
-      : entry.entryType === 'SISSEKANNE_I'
-        ? 'Iseseisev töö'
-        : 'Päeviku sissekanne'
+    return entry.entryType === 'SISSEKANNE_H' ? 'Hindeline töö' : entry.entryType === 'SISSEKANNE_I' ? 'Iseseisev töö' : 'Päeviku sissekanne'
   }
 
   /**
@@ -1746,7 +1768,6 @@ class JournalListSyncFeature extends BaseFeature {
               return // Skip this result entirely
             }
 
-
             // Only sync if grades are actually different
             if (tahvelGrade !== kriitGrade) {
               // Log the types we're getting for debugging
@@ -1768,7 +1789,7 @@ class JournalListSyncFeature extends BaseFeature {
                 journalId: subject.subjectExternalId,
                 assignmentId: assignment.assignmentExternalId,
                 studentPersonalCode: personalCode,
-                grade: gradeStr,
+                grade: gradeStr
               })
             } else {
               Logger.debug(`Grades are the same, skipping: Tahvel="${tahvelGrade}", Kriit="${kriitGrade}"`)
@@ -1871,12 +1892,14 @@ class JournalListSyncFeature extends BaseFeature {
             }
 
             // Log the item we're about to process
-            Logger.debug(`Processing sync item: ${JSON.stringify({
-              journalId: item.journalId,
-              assignmentId: item.assignmentId,
-              studentPersonalCode: item.studentPersonalCode,
-              grade: item.grade,
-            })}`)
+            Logger.debug(
+              `Processing sync item: ${JSON.stringify({
+                journalId: item.journalId,
+                assignmentId: item.assignmentId,
+                studentPersonalCode: item.studentPersonalCode,
+                grade: item.grade
+              })}`
+            )
 
             // Additional validation: check if this grade actually needs updating
             // by fetching the current state from Tahvel
@@ -1900,7 +1923,9 @@ class JournalListSyncFeature extends BaseFeature {
                   const targetGrade = String(item.grade)
 
                   if (currentTahvelGrade === targetGrade) {
-                    Logger.info(`Grade already up to date for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}" - skipping`)
+                    Logger.info(
+                      `Grade already up to date for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}" - skipping`
+                    )
                     successfulSyncs.push({ ...item, skipped: true }) // Count as successful since no action was needed
                     continue
                   }
@@ -1915,12 +1940,7 @@ class JournalListSyncFeature extends BaseFeature {
 
             // Call the sync method with validated data
             Logger.info(`Calling syncGradeToTahvel for student ${item.studentPersonalCode}...`)
-            await this.syncGradeToTahvel(
-              item.journalId,
-              item.assignmentId,
-              item.studentPersonalCode,
-              item.grade,
-            )
+            await this.syncGradeToTahvel(item.journalId, item.assignmentId, item.studentPersonalCode, item.grade)
 
             Logger.info(`Successfully synced grade for student ${item.studentPersonalCode}`)
             // Add to successful syncs
@@ -1928,34 +1948,38 @@ class JournalListSyncFeature extends BaseFeature {
           } catch (error) {
             // Check if this is an inactive student error
             const errorMessage = error.message || 'Unknown error'
-            const isInactiveStudentError = errorMessage.includes('not actively studying') ||
+            const isInactiveStudentError =
+              errorMessage.includes('not actively studying') ||
               errorMessage.includes('changeIsNotAllowedStudentIsNotStudying') ||
               errorMessage.includes('academic leave') ||
               errorMessage.includes('status is inactive')
 
             if (isInactiveStudentError) {
               // Log as warning instead of error for inactive students
-              Logger.warning(`Skipping inactive student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}: ${errorMessage}`)
+              Logger.warning(
+                `Skipping inactive student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}: ${errorMessage}`
+              )
 
               // Add to failed syncs but mark as inactive (not a real error)
               failedSyncs.push({
                 ...item,
                 error: errorMessage,
                 errorType: 'inactive_student',
-                timestamp: new Date().toISOString(),
+                timestamp: new Date().toISOString()
               })
             } else {
               // Log the error with full context for real errors
-              Logger.error(`Failed to sync grade for student ${item.studentPersonalCode || 'unknown'
-              } in assignment ${item.assignmentId || 'unknown'
-              }:`, error)
+              Logger.error(
+                `Failed to sync grade for student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}:`,
+                error
+              )
 
               // Add to failed syncs with detailed error info
               failedSyncs.push({
                 ...item,
                 error: errorMessage,
                 errorType: 'sync_error',
-                timestamp: new Date().toISOString(),
+                timestamp: new Date().toISOString()
               })
             }
           }
@@ -1963,7 +1987,8 @@ class JournalListSyncFeature extends BaseFeature {
           Logger.debug(`Completed processing student ${i + 1}/${syncData.length}. Moving to next student...`)
 
           // Add delay between sync operations to prevent race conditions
-          if (i < syncData.length - 1) { // Don't delay after the last item
+          if (i < syncData.length - 1) {
+            // Don't delay after the last item
             Logger.debug(`Adding 500ms delay before next sync operation...`)
             await new Promise(resolve => setTimeout(resolve, 500))
           }
@@ -2032,19 +2057,27 @@ class JournalListSyncFeature extends BaseFeature {
           this.showSuccessBanner(successMessage)
 
           // Log the successful syncs for debugging
-          Logger.debug(`Successful syncs: ${JSON.stringify(successfulSyncs.map(item => ({
-            student: item.studentPersonalCode,
-            assignment: item.assignmentId,
-            grade: item.grade,
-          })))}`)
+          Logger.debug(
+            `Successful syncs: ${JSON.stringify(
+              successfulSyncs.map(item => ({
+                student: item.studentPersonalCode,
+                assignment: item.assignmentId,
+                grade: item.grade
+              }))
+            )}`
+          )
 
           // Log inactive students for information
           if (inactiveStudentErrors.length > 0) {
-            Logger.info(`Inactive students skipped: ${JSON.stringify(inactiveStudentErrors.map(item => ({
-              student: item.studentPersonalCode,
-              assignment: item.assignmentId,
-              reason: 'Not actively studying',
-            })))}`)
+            Logger.info(
+              `Inactive students skipped: ${JSON.stringify(
+                inactiveStudentErrors.map(item => ({
+                  student: item.studentPersonalCode,
+                  assignment: item.assignmentId,
+                  reason: 'Not actively studying'
+                }))
+              )}`
+            )
           }
 
           // After 3 seconds, refresh data to show updated state
@@ -2052,14 +2085,16 @@ class JournalListSyncFeature extends BaseFeature {
           setTimeout(() => {
             Logger.debug('Timeout triggered, refreshing journal data')
             // Clear all cache before fetching new data to ensure we get fresh results
-            this.clearCache().then(() => {
-              Logger.debug('Cache cleared, now fetching fresh journal data')
-              this.fetchJournalData()
-            }).catch(error => {
-              Logger.error('Error clearing cache:', error)
-              // Still try to fetch data even if cache clearing fails
-              this.fetchJournalData()
-            })
+            this.clearCache()
+              .then(() => {
+                Logger.debug('Cache cleared, now fetching fresh journal data')
+                this.fetchJournalData()
+              })
+              .catch(error => {
+                Logger.error('Error clearing cache:', error)
+                // Still try to fetch data even if cache clearing fails
+                this.fetchJournalData()
+              })
           }, 3000)
         } else if (successfulSyncs.length === 0 && inactiveStudentErrors.length === 0) {
           // All syncs failed with real errors
@@ -2068,11 +2103,14 @@ class JournalListSyncFeature extends BaseFeature {
           this.updateUI()
 
           // Log detailed errors for debugging
-          Logger.error('All syncs failed. Details:', realErrors.map(item => ({
-            student: item.studentPersonalCode,
-            assignment: item.assignmentId,
-            error: item.error,
-          })))
+          Logger.error(
+            'All syncs failed. Details:',
+            realErrors.map(item => ({
+              student: item.studentPersonalCode,
+              assignment: item.assignmentId,
+              error: item.error
+            }))
+          )
         } else {
           // Mixed results
           this.isLoading = false
@@ -2091,32 +2129,40 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Log detailed errors for debugging
           if (realErrors.length > 0) {
-            Logger.error('Some syncs failed with real errors. Details:', realErrors.map(item => ({
-              student: item.studentPersonalCode,
-              assignment: item.assignmentId,
-              error: item.error,
-            })))
+            Logger.error(
+              'Some syncs failed with real errors. Details:',
+              realErrors.map(item => ({
+                student: item.studentPersonalCode,
+                assignment: item.assignmentId,
+                error: item.error
+              }))
+            )
           }
 
           if (inactiveStudentErrors.length > 0) {
-            Logger.info('Some students skipped due to inactive status. Details:', inactiveStudentErrors.map(item => ({
-              student: item.studentPersonalCode,
-              assignment: item.assignmentId,
-              reason: 'Not actively studying',
-            })))
+            Logger.info(
+              'Some students skipped due to inactive status. Details:',
+              inactiveStudentErrors.map(item => ({
+                student: item.studentPersonalCode,
+                assignment: item.assignmentId,
+                reason: 'Not actively studying'
+              }))
+            )
           }
 
           // After 3 seconds, refresh data to show updated state
           setTimeout(() => {
             // Clear all cache before fetching new data to ensure we get fresh results
-            this.clearCache().then(() => {
-              Logger.debug('Cache cleared, now fetching fresh journal data')
-              this.fetchJournalData()
-            }).catch(error => {
-              Logger.error('Error clearing cache:', error)
-              // Still try to fetch data even if cache clearing fails
-              this.fetchJournalData()
-            })
+            this.clearCache()
+              .then(() => {
+                Logger.debug('Cache cleared, now fetching fresh journal data')
+                this.fetchJournalData()
+              })
+              .catch(error => {
+                Logger.error('Error clearing cache:', error)
+                // Still try to fetch data even if cache clearing fails
+                this.fetchJournalData()
+              })
           }, 3000)
         }
       } catch (error) {
@@ -2160,7 +2206,9 @@ class JournalListSyncFeature extends BaseFeature {
     try {
       Logger.info('=== STARTING GRADE SYNC ===')
       Logger.info(`Syncing grade for student ${studentPersonalCode} in assignment ${assignmentId}`)
-      Logger.debug(`Full sync parameters: journalId=${journalId}, assignmentId=${assignmentId}, studentPersonalCode=${studentPersonalCode}, grade=${grade}`)
+      Logger.debug(
+        `Full sync parameters: journalId=${journalId}, assignmentId=${assignmentId}, studentPersonalCode=${studentPersonalCode}, grade=${grade}`
+      )
 
       // Validate input parameters
       if (!journalId) {
@@ -2204,14 +2252,20 @@ class JournalListSyncFeature extends BaseFeature {
 
       // If we found the student in cache, check their status
       if (studentCacheEntry) {
-        Logger.debug(`Found student ${studentCacheEntry.name} (${studentPersonalCode}) in cache. Active: ${studentCacheEntry.isActive}, Deleted: ${studentCacheEntry.isDeleted}`)
+        Logger.debug(
+          `Found student ${studentCacheEntry.name} (${studentPersonalCode}) in cache. Active: ${studentCacheEntry.isActive}, Deleted: ${studentCacheEntry.isDeleted}`
+        )
 
         if (!studentCacheEntry.isActive || studentCacheEntry.isDeleted) {
           const statusReason = studentCacheEntry.isDeleted ? 'deleted' : 'inactive'
-          throw new Error(`Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`)
+          throw new Error(
+            `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
+          )
         }
       } else {
-        Logger.warning(`Student ${studentPersonalCode} not found in cache during proactive check. Will proceed with sync attempt but may fail if student is inactive.`)
+        Logger.warning(
+          `Student ${studentPersonalCode} not found in cache during proactive check. Will proceed with sync attempt but may fail if student is inactive.`
+        )
       }
 
       if (!grade) {
@@ -2277,7 +2331,9 @@ class JournalListSyncFeature extends BaseFeature {
         for (const journalStudent of journalStudentsForMatching) {
           if (journalStudent.student && journalStudent.student.idcode === targetPersonalCode) {
             matchingStudentId = journalStudent.studentId
-            Logger.debug(`Found exact matching student in journal students: ${journalStudent.student.fullname || journalStudent.studentName} (${journalStudent.student.idcode})`)
+            Logger.debug(
+              `Found exact matching student in journal students: ${journalStudent.student.fullname || journalStudent.studentName} (${journalStudent.student.idcode})`
+            )
             break
           }
         }
@@ -2286,8 +2342,9 @@ class JournalListSyncFeature extends BaseFeature {
       // If we found the student in our global cache, find that student in the entry data
       let studentEntry = null
       if (matchingStudentId) {
-        studentEntry = entryData.journalEntryStudents.find(student =>
-          student.journalStudent && String(student.journalStudent) === String(matchingStudentId))
+        studentEntry = entryData.journalEntryStudents.find(
+          student => student.journalStudent && String(student.journalStudent) === String(matchingStudentId)
+        )
 
         if (studentEntry) {
           Logger.debug(`Found matching student entry in assignment data: ${studentEntry.journalStudent}`)
@@ -2296,7 +2353,9 @@ class JournalListSyncFeature extends BaseFeature {
           const cachedStudent = await this.getCachedStudent(matchingStudentId)
           const studentName = cachedStudent ? cachedStudent.name : 'Unknown'
 
-          Logger.warning(`Student ${studentName} (${targetPersonalCode}) with ID ${matchingStudentId} found in global cache but not in assignment API response`)
+          Logger.warning(
+            `Student ${studentName} (${targetPersonalCode}) with ID ${matchingStudentId} found in global cache but not in assignment API response`
+          )
           Logger.warning(`This may indicate an API discrepancy - student exists in database but not returned by /journalEntry/${assignmentId}`)
 
           // Get detailed student info to find the correct journalStudentId
@@ -2323,7 +2382,7 @@ class JournalListSyncFeature extends BaseFeature {
               isRemark: false,
               journalEntryStudentHistories: [],
               lessonAbsences: [],
-              verbalGrade: null,
+              verbalGrade: null
             }
 
             Logger.info(`Created student entry with journalStudentId ${info.journalStudentId} to handle API discrepancy`)
@@ -2332,11 +2391,15 @@ class JournalListSyncFeature extends BaseFeature {
             // If we couldn't find a journalStudentId, check if the student is active
             if (cachedStudent && !cachedStudent.isActive) {
               Logger.warning(`Student ${studentName} (${targetPersonalCode}) is not active. Status: ${cachedStudent.isActive ? 'Active' : 'Inactive'}`)
-              throw new Error(`Cannot add student ${studentName} (${targetPersonalCode}) to the assignment because they are not actively studying. The student may be on academic leave or their status is inactive.`)
+              throw new Error(
+                `Cannot add student ${studentName} (${targetPersonalCode}) to the assignment because they are not actively studying. The student may be on academic leave or their status is inactive.`
+              )
             }
 
             // If we couldn't find a journalStudentId, throw an error
-            throw new Error(`❌ Student ${studentName} (${targetPersonalCode}) exists in the journal but has no valid journal student ID. This may indicate a data integrity issue. Please contact support.`)
+            throw new Error(
+              `❌ Student ${studentName} (${targetPersonalCode}) exists in the journal but has no valid journal student ID. This may indicate a data integrity issue. Please contact support.`
+            )
           }
         }
       }
@@ -2407,8 +2470,7 @@ class JournalListSyncFeature extends BaseFeature {
             const cachedPersonalCode = String(cachedStudent.personalCode)
 
             // Check if the personal codes are similar (one contains the other)
-            if (cachedPersonalCode.includes(targetPersonalCode) ||
-              targetPersonalCode.includes(cachedPersonalCode)) {
+            if (cachedPersonalCode.includes(targetPersonalCode) || targetPersonalCode.includes(cachedPersonalCode)) {
               Logger.debug(`Found student with similar personal code: ${cachedStudent.name} (${cachedPersonalCode})`)
               studentEntry = student
               break
@@ -2427,7 +2489,9 @@ class JournalListSyncFeature extends BaseFeature {
           // If we still don't have a match, DO NOT use a random student as fallback
           // Instead, throw an error to prevent updating the wrong student's grade
           if (!studentEntry) {
-            throw new Error(`Could not find student with personal code ${studentPersonalCode} or any similar personal code. Refusing to update a different student's grade for safety reasons.`)
+            throw new Error(
+              `Could not find student with personal code ${studentPersonalCode} or any similar personal code. Refusing to update a different student's grade for safety reasons.`
+            )
           }
         }
 
@@ -2475,7 +2539,9 @@ class JournalListSyncFeature extends BaseFeature {
         if (!studentEntry.journalStudent) {
           // We need to wait for the journalStudentId from getDetailedStudentInfo
           Logger.warning(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update.`)
-          throw new Error(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update. This might be because the student is not enrolled in this journal.`)
+          throw new Error(
+            `No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update. This might be because the student is not enrolled in this journal.`
+          )
         }
 
         // Log the current grade for debugging
@@ -2485,7 +2551,9 @@ class JournalListSyncFeature extends BaseFeature {
         // If we're using a fallback student, log a warning
         const cachedStudentForFallback = await this.getCachedStudent(studentEntry.journalStudent)
         if (cachedStudentForFallback && String(cachedStudentForFallback.personalCode) !== String(studentPersonalCode)) {
-          Logger.warning(`WARNING: Using fallback student ${cachedStudentForFallback.name} (${cachedStudentForFallback.personalCode}) instead of requested student with personal code ${studentPersonalCode}`)
+          Logger.warning(
+            `WARNING: Using fallback student ${cachedStudentForFallback.name} (${cachedStudentForFallback.personalCode}) instead of requested student with personal code ${studentPersonalCode}`
+          )
         }
 
         // Prepare the update data - following the exact structure used by the Angular app
@@ -2503,7 +2571,7 @@ class JournalListSyncFeature extends BaseFeature {
             extraval2: null,
             nameEt: `Hinne ${grade}`,
             nameEn: `Grade ${grade}`,
-            valid: true,
+            valid: true
           },
           verbalGrade: null,
           removeStudentHistory: true, // Don't remove history for grade updates
@@ -2519,13 +2587,14 @@ class JournalListSyncFeature extends BaseFeature {
           journalEntryStudentHistories: [],
           hasWholeDayAcceptedAbsence: false,
           wholeDayAbsenceCode: null,
-          gradeValue: null,
+          gradeValue: null
         }
 
         // Create the update data with ONLY the student we're updating
         // This prevents 412 errors caused by inactive students in the assignment
-        const existingStudentIndex = entryData.journalEntryStudents.findIndex(student =>
-          student.journalStudent && Number(student.journalStudent) === Number(updatedStudentEntry.journalStudent))
+        const existingStudentIndex = entryData.journalEntryStudents.findIndex(
+          student => student.journalStudent && Number(student.journalStudent) === Number(updatedStudentEntry.journalStudent)
+        )
 
         let finalStudentEntry
         if (existingStudentIndex !== -1) {
@@ -2534,12 +2603,14 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Get the original student entry
           const originalStudentEntry = entryData.journalEntryStudents[existingStudentIndex]
-          Logger.debug(`Original student entry: ${JSON.stringify({
-            id: originalStudentEntry.id,
-            journalStudent: originalStudentEntry.journalStudent,
-            addInfo: originalStudentEntry.addInfo,
-            grade: originalStudentEntry.grade?.code || 'No grade',
-          })}`)
+          Logger.debug(
+            `Original student entry: ${JSON.stringify({
+              id: originalStudentEntry.id,
+              journalStudent: originalStudentEntry.journalStudent,
+              addInfo: originalStudentEntry.addInfo,
+              grade: originalStudentEntry.grade?.code || 'No grade'
+            })}`
+          )
 
           // Only update the grade, keeping all other fields intact
           finalStudentEntry = {
@@ -2548,7 +2619,7 @@ class JournalListSyncFeature extends BaseFeature {
             // Make sure to keep the original ID
             id: originalStudentEntry.id,
             // Don't remove student history when updating existing student
-            removeStudentHistory: true,
+            removeStudentHistory: true
           }
         } else {
           // If the student is not in the entry, use the new entry
@@ -2560,7 +2631,9 @@ class JournalListSyncFeature extends BaseFeature {
         const cachedStudentForStatus = await this.getCachedStudent(finalStudentEntry.journalStudent)
         if (cachedStudentForStatus && (!cachedStudentForStatus.isActive || cachedStudentForStatus.isDeleted)) {
           const statusReason = cachedStudentForStatus.isDeleted ? 'deleted' : 'inactive'
-          throw new Error(`Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`)
+          throw new Error(
+            `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
+          )
         }
 
         // Create array with only the student we're updating to avoid 412 errors from inactive students
@@ -2593,7 +2666,7 @@ class JournalListSyncFeature extends BaseFeature {
         // Create the update data with filtered students that include names
         const updateData = {
           ...entryData,
-          journalEntryStudents: studentsWithNames,
+          journalEntryStudents: studentsWithNames
         }
 
         // Make sure we include all the fields that the Angular app includes
@@ -2644,7 +2717,9 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Student entry structure: ${Object.keys(updatedStudentEntry).join(', ')}`)
 
         // Log the number of students in the update (should be 1 now)
-        Logger.info(`Sending update with ${updateData.journalEntryStudents.length} student (${existingStudentIndex !== -1 ? 'updating existing' : 'adding new'} student)`)
+        Logger.info(
+          `Sending update with ${updateData.journalEntryStudents.length} student (${existingStudentIndex !== -1 ? 'updating existing' : 'adding new'} student)`
+        )
 
         // Enhanced logging: Log the specific student being updated
         Logger.info('=== STUDENT BEING UPDATED ===')
@@ -2656,7 +2731,9 @@ class JournalListSyncFeature extends BaseFeature {
           const isDeleted = cachedStudentInfo ? cachedStudentInfo.isDeleted : 'Unknown'
           const gradeCode = student.grade?.code || 'No grade'
 
-          Logger.info(`Student: ${studentName} (${personalCode}) - Active: ${isActive}, Deleted: ${isDeleted}, Grade: ${gradeCode}, JournalStudentId: ${student.journalStudent}`)
+          Logger.info(
+            `Student: ${studentName} (${personalCode}) - Active: ${isActive}, Deleted: ${isDeleted}, Grade: ${gradeCode}, JournalStudentId: ${student.journalStudent}`
+          )
         }
         Logger.info('=== END STUDENT BEING UPDATED ===')
 
@@ -2694,15 +2771,16 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Check for common error cases
           if (error.message.includes('403')) {
-            errorMessage = 'Permission denied. You may not have rights to modify this journal. This is expected if you are not the teacher of this journal.'
+            errorMessage =
+              'Permission denied. You may not have rights to modify this journal. This is expected if you are not the teacher of this journal.'
 
             // Log more details about the permission issue
-            Logger.warning(`Permission denied when updating journal ${journalId}, assignment ${assignmentId}. This is expected if you are not the teacher of this journal.`)
+            Logger.warning(
+              `Permission denied when updating journal ${journalId}, assignment ${assignmentId}. This is expected if you are not the teacher of this journal.`
+            )
 
             // Add more context to the error message
-            const teacherInfo = entryData.teacherSelection
-              ? entryData.teacherSelection.map(t => t.nameEt || t.fullname || t.id).join(', ')
-              : 'Unknown'
+            const teacherInfo = entryData.teacherSelection ? entryData.teacherSelection.map(t => t.nameEt || t.fullname || t.id).join(', ') : 'Unknown'
 
             Logger.debug(`Journal teachers: ${teacherInfo}`)
             errorMessage += ` Journal teachers: ${teacherInfo}`
@@ -2732,8 +2810,10 @@ class JournalListSyncFeature extends BaseFeature {
             Logger.warning(`Server returned 412 error when updating assignment ${assignmentId}`)
 
             // Check if the error message contains specific error codes
-            if (error.message.includes('changeIsNotAllowedStudentIsNotStudying') ||
-              error.message.includes('journal.messages.changeIsNotAllowedStudentIsNotStudying')) {
+            if (
+              error.message.includes('changeIsNotAllowedStudentIsNotStudying') ||
+              error.message.includes('journal.messages.changeIsNotAllowedStudentIsNotStudying')
+            ) {
               errorMessage = `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student may be on academic leave or their status is inactive in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
 
               // Check the student's status in our cache
@@ -2753,7 +2833,9 @@ class JournalListSyncFeature extends BaseFeature {
               // Log the student names that are actually being sent in the request payload
               Logger.debug('=== STUDENTS IN REQUEST PAYLOAD ===')
               updateData.journalEntryStudents.forEach((student, index) => {
-                Logger.debug(`Student ${index + 1} in payload: Name="${student.studentName || 'Not set'}", PersonalCode="${student.studentPersonalCode || 'Not set'}", JournalStudentId=${student.journalStudent}`)
+                Logger.debug(
+                  `Student ${index + 1} in payload: Name="${student.studentName || 'Not set'}", PersonalCode="${student.studentPersonalCode || 'Not set'}", JournalStudentId=${student.journalStudent}`
+                )
               })
               Logger.debug('=== END STUDENTS IN REQUEST PAYLOAD ===')
 
@@ -2821,7 +2903,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Log the response type and content for debugging
-        Logger.debug(`Response type: ${typeof response}, Content: ${JSON.stringify(response)}`)      // === DETAILED DEBUG INFORMATION (shown at end to avoid scrolling) ===
+        Logger.debug(`Response type: ${typeof response}, Content: ${JSON.stringify(response)}`) // === DETAILED DEBUG INFORMATION (shown at end to avoid scrolling) ===
         Logger.debug('=== DETAILED DEBUG INFORMATION ===')
         Logger.debug(`Assignment ${assignmentId} has ${entryData.journalEntryStudents.length} students`)
         Logger.debug('Cache summary skipped - using API cache service')
@@ -2983,28 +3065,20 @@ async function getTeacherPersonalCodeCached(api, teacher) {
     try {
       Logger.debug(`Fetching teacher personal code for ${teacherName} (ID: ${teacherId}) with endpoint: ${endpoint}`)
 
-      const teacherSearchResult = await fetchCachedData(
-        api,
-        endpoint,
-        ONE_WEEK_MS
-      )
+      const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
-      if (
-        teacherSearchResult?.content &&
-        Array.isArray(teacherSearchResult.content) &&
-        teacherSearchResult.content.length > 0
-      ) {
+      if (teacherSearchResult?.content && Array.isArray(teacherSearchResult.content) && teacherSearchResult.content.length > 0) {
         let foundTeacher = teacherSearchResult.content.find(t => t.id === teacherId)
 
         if (!foundTeacher) {
-          foundTeacher = teacherSearchResult.content.find(t =>
-            t.name === teacherName ||
-            t.name === teacher.fullname)
+          foundTeacher = teacherSearchResult.content.find(t => t.name === teacherName || t.name === teacher.fullname)
         }
 
         if (!foundTeacher) {
           foundTeacher = teacherSearchResult.content[0]
-          Logger.warning(`No exact match found for teacher ${teacherName} (ID: ${teacherId}). Using first result: ${foundTeacher.name} (ID: ${foundTeacher.id})`)
+          Logger.warning(
+            `No exact match found for teacher ${teacherName} (ID: ${teacherId}). Using first result: ${foundTeacher.name} (ID: ${foundTeacher.id})`
+          )
         }
 
         const teacherData = {
@@ -3029,7 +3103,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
       // Cache the fallback data too to prevent repeated requests
       globalModuleTeacherCache[cacheKey] = fallbackData
       return fallbackData
-
     } catch (error) {
       Logger.warning(`Failed to get teacher personal code for ${teacherName}: ${error.message}`)
       const errorData = { personalCode: '', name: teacherName, id: teacherId }
@@ -3055,7 +3128,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
  */
 export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = []) {
   try {
-
     // Ensure we have journal IDs to process
     if (!journalIds || journalIds.length === 0) {
       Logger.warning('No journal IDs provided to getTahvelSubjectsWithAssignmentsAndGrades')
@@ -3127,8 +3199,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
             Object.values(studentDetailsMap).forEach(studentDetails => {
               if (studentDetails) {
                 // Find this student's journal student ID
-                const journalStudentId = Object.keys(studentDetailsMap).find(id =>
-                  studentDetailsMap[id] === studentDetails)
+                const journalStudentId = Object.keys(studentDetailsMap).find(id => studentDetailsMap[id] === studentDetails)
 
                 // Check if this student has results for this assignment
                 const studentResults = studentResultsMap[journalStudentId]

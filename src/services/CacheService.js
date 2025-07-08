@@ -10,15 +10,15 @@ const CACHE_EXPIRATION = {
   SHORT: 60 * 1000, // 1 minute
   MEDIUM: 5 * 60 * 1000, // 5 minutes
   LONG: 30 * 60 * 1000, // 30 minutes
-  VERY_LONG: 24 * 60 * 60 * 1000, // 24 hours
+  VERY_LONG: 24 * 60 * 60 * 1000 // 24 hours
 }
 
 // In-memory cache for the current page session
 const memoryCache = {}
 
 // Size thresholds for logging cache statistics (not limits)
-const CACHE_SIZE_WARNING = 1000000      // 1MB
-const CACHE_SIZE_LARGE = 5000000        // 5MB
+const CACHE_SIZE_WARNING = 1000000 // 1MB
+const CACHE_SIZE_LARGE = 5000000 // 5MB
 
 const cacheService = {
   /**
@@ -42,7 +42,6 @@ const cacheService = {
       }
       // Memory cache expired, remove it
       delete memoryCache[cacheKey]
-
     }
 
     // Try storage cache
@@ -62,17 +61,13 @@ const cacheService = {
           if (useMemoryCache) {
             memoryCache[cacheKey] = {
               data: storageData.data,
-              timestamp: timestamp,
+              timestamp: timestamp
             }
           }
 
           // Calculate age in days for better logging
           const ageInDays = (now - timestamp) / (24 * 60 * 60 * 1000)
-          const ageText = ageInDays < 0.001
-            ? 'just now'
-            : ageInDays < 0.04
-              ? `${Math.round(ageInDays * 24 * 60)} minutes`
-              : `${ageInDays.toFixed(1)} days`
+          const ageText = ageInDays < 0.001 ? 'just now' : ageInDays < 0.04 ? `${Math.round(ageInDays * 24 * 60)} minutes` : `${ageInDays.toFixed(1)} days`
 
           // Extract item description from key for better logging
           const itemDescription = key.includes('journalEntriesByDate')
@@ -139,8 +134,7 @@ const cacheService = {
     // Clear storage cache
     return new Promise(resolve => {
       chrome.storage.local.get(null, items => {
-        const keysToRemove = Object.keys(items).filter(key =>
-          key.startsWith(CACHE_PREFIX))
+        const keysToRemove = Object.keys(items).filter(key => key.startsWith(CACHE_PREFIX))
 
         if (keysToRemove.length > 0) {
           chrome.storage.local.remove(keysToRemove, () => {
@@ -175,8 +169,7 @@ const cacheService = {
     // Clear storage cache
     return new Promise(resolve => {
       chrome.storage.local.get(null, items => {
-        const keysToRemove = Object.keys(items).filter(key =>
-          key.startsWith(CACHE_PREFIX) && this.isJournalRelatedCache(key, journalId))
+        const keysToRemove = Object.keys(items).filter(key => key.startsWith(CACHE_PREFIX) && this.isJournalRelatedCache(key, journalId))
 
         if (keysToRemove.length > 0) {
           chrome.storage.local.remove(keysToRemove, () => {
@@ -204,20 +197,10 @@ const cacheService = {
     const cleanKey = key.replace(CACHE_PREFIX, '')
 
     // Journal-related patterns (but exclude timetable data)
-    const journalPatterns = [
-      'journalEntriesByDate',
-      'journalEntry',
-      'journalStudents',
-      '/journals/',
-    ]
+    const journalPatterns = ['journalEntriesByDate', 'journalEntry', 'journalStudents', '/journals/']
 
     // Timetable-related patterns to exclude
-    const timetablePatterns = [
-      'timetableEvents',
-      'timetable',
-      '/schools/',
-      '/teachers/',
-    ]
+    const timetablePatterns = ['timetableEvents', 'timetable', '/schools/', '/teachers/']
 
     // Check if it's timetable-related (should not be cleared)
     for (const pattern of timetablePatterns) {
@@ -253,7 +236,7 @@ const cacheService = {
     const memoryStats = {
       count: Object.keys(memoryCache).length,
       size: 0,
-      items: [],
+      items: []
     }
 
     // Calculate memory cache size
@@ -268,7 +251,7 @@ const cacheService = {
       memoryStats.items.push({
         key: cacheKey,
         size,
-        timestamp: memoryCache[key].timestamp,
+        timestamp: memoryCache[key].timestamp
       })
     }
 
@@ -278,12 +261,11 @@ const cacheService = {
         const storageStats = {
           count: 0,
           size: 0,
-          items: [],
+          items: []
         }
 
         // Filter items with our cache prefix
-        const cacheKeys = Object.keys(items).filter(key =>
-          key.startsWith(CACHE_PREFIX))
+        const cacheKeys = Object.keys(items).filter(key => key.startsWith(CACHE_PREFIX))
 
         storageStats.count = cacheKeys.length
 
@@ -304,7 +286,7 @@ const cacheService = {
             key: cacheKey,
             size,
             ageInMinutes,
-            timestamp,
+            timestamp
           })
         }
 
@@ -316,7 +298,7 @@ const cacheService = {
           resolve({
             memory: memoryStats,
             storage: storageStats,
-            totalBytesInUse: bytesInUse,
+            totalBytesInUse: bytesInUse
           })
         })
       })
@@ -326,7 +308,7 @@ const cacheService = {
   /**
    * Cache expiration constants
    */
-  EXPIRATION: CACHE_EXPIRATION,
+  EXPIRATION: CACHE_EXPIRATION
 }
 
 export { cacheService }

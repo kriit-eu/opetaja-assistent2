@@ -14,13 +14,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Handle cache statistics request
   if (message.action === 'getCacheStats') {
-    cacheService.getStats().then(stats => {
-      Logger.debug('Cache stats retrieved:', stats)
-      sendResponse({ status: 'success', stats })
-    }).catch(error => {
-      Logger.error('Error getting cache stats:', error)
-      sendResponse({ status: 'error', message: error.message })
-    })
+    cacheService
+      .getStats()
+      .then(stats => {
+        Logger.debug('Cache stats retrieved:', stats)
+        sendResponse({ status: 'success', stats })
+      })
+      .catch(error => {
+        Logger.error('Error getting cache stats:', error)
+        sendResponse({ status: 'error', message: error.message })
+      })
 
     // Return true to indicate we will send a response asynchronously
     return true

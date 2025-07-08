@@ -39,7 +39,7 @@ const navigationService = {
     // Start observing the document for changes
     observer.observe(document, {
       childList: true,
-      subtree: true,
+      subtree: true
     })
   },
 
@@ -52,7 +52,7 @@ const navigationService = {
         console.error('Error in navigation listener:', error)
       }
     })
-  },
+  }
 }
 
 export { navigationService }

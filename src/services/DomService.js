@@ -54,7 +54,7 @@ const domService = {
         return {
           disconnect: () => {
             Logger.debug('Dummy observer disconnected (elements found immediately)')
-          },
+          }
         }
       }
     }
@@ -84,7 +84,7 @@ const domService = {
       childList: true,
       subtree: true,
       attributes: false,
-      characterData: false,
+      characterData: false
     })
 
     // Set a timeout to stop the observer after the specified time
@@ -101,7 +101,7 @@ const domService = {
       disconnect: () => {
         clearTimeout(timeoutId)
         observer.disconnect()
-      },
+      }
     }
   },
 
@@ -162,7 +162,7 @@ const domService = {
     style.textContent = css
     document.head.appendChild(style)
     return style
-  },
+  }
 }
 
 export { domService }

@@ -22,7 +22,7 @@ export async function loadFeatures() {
   // Define all available features - load them conditionally
   const allAvailableFeatures = {
     journalList: [],
-    singleJournal: [], // TODO: Add features when implemented
+    singleJournal: [] // TODO: Add features when implemented
   }
 
   // Only import and instantiate features that should be loaded
@@ -74,7 +74,7 @@ export async function loadFeatures() {
   // Create a copy of the features structure for returning
   const featureGroups = {
     journalList: [...allAvailableFeatures.journalList],
-    singleJournal: [...allAvailableFeatures.singleJournal],
+    singleJournal: [...allAvailableFeatures.singleJournal]
   }
 
   // Flatten all features into a single array

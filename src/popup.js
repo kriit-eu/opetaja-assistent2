@@ -78,11 +78,14 @@ function initPopup() {
 
   // Set version from manifest
   try {
-    chrome.runtime.getManifest().then(manifest => {
-      versionElement.textContent = manifest.version
-    }).catch(error => {
-      console.error('Error getting manifest:', error)
-    })
+    chrome.runtime
+      .getManifest()
+      .then(manifest => {
+        versionElement.textContent = manifest.version
+      })
+      .catch(error => {
+        console.error('Error getting manifest:', error)
+      })
   } catch (error) {
     console.error('Error accessing manifest:', error)
   }
@@ -117,7 +120,7 @@ function initPopup() {
     } else {
       const today = new Date()
       comparisonDateInput.value = formatDisplayDate(today)
-      chrome.storage.local.set({ 'OA_comparisonDate': comparisonDateInput.value })
+      chrome.storage.local.set({ OA_comparisonDate: comparisonDateInput.value })
     }
   })
 
@@ -129,7 +132,7 @@ function initPopup() {
       const today = new Date()
       const todayStr = formatDisplayDate(today)
       comparisonDateInput.value = todayStr
-      chrome.storage.local.set({ 'OA_comparisonDate': todayStr })
+      chrome.storage.local.set({ OA_comparisonDate: todayStr })
       comparisonDateInput.style.borderColor = ''
       showError('')
       return
@@ -140,7 +143,7 @@ function initPopup() {
     } else {
       comparisonDateInput.style.borderColor = ''
       showError('')
-      chrome.storage.local.set({ 'OA_comparisonDate': val })
+      chrome.storage.local.set({ OA_comparisonDate: val })
     }
   })
 
@@ -227,12 +230,14 @@ function toggleDebugMode(enabled) {
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'toggleDebugMode',
-          enabled: enabled,
-        }).catch(error => {
-          console.error('Error sending message:', error)
-        })
+        chrome.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'toggleDebugMode',
+            enabled: enabled
+          })
+          .catch(error => {
+            console.error('Error sending message:', error)
+          })
       }
     })
   })
@@ -253,12 +258,14 @@ function toggleKriitEnabled(enabled, settingsContainer) {
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'kriitEnabledChanged',
-          enabled: enabled,
-        }).catch(error => {
-          console.error('Error sending message:', error)
-        })
+        chrome.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'kriitEnabledChanged',
+            enabled: enabled
+          })
+          .catch(error => {
+            console.error('Error sending message:', error)
+          })
       }
     })
   })
@@ -281,33 +288,38 @@ function saveKriitSettings(apiUrl, apiKey, statusElement) {
   }
 
   // Save settings to chrome.storage.sync
-  chrome.storage.sync.set({
-    [KRIIT_ENABLED_KEY]: true, // Enable Kriit integration when settings are saved
-    [KRIIT_API_URL_KEY]: apiUrl || DEFAULT_KRIIT_API_URL,
-    [KRIIT_API_KEY_KEY]: apiKey,
-  }, function() {
-    console.log('Kriit API settings saved')
+  chrome.storage.sync.set(
+    {
+      [KRIIT_ENABLED_KEY]: true, // Enable Kriit integration when settings are saved
+      [KRIIT_API_URL_KEY]: apiUrl || DEFAULT_KRIIT_API_URL,
+      [KRIIT_API_KEY_KEY]: apiKey
+    },
+    function() {
+      console.log('Kriit API settings saved')
 
-    // Show success message
-    statusElement.textContent = 'Salvestatud!'
-    setTimeout(() => {
-      statusElement.textContent = ''
-    }, 2000)
+      // Show success message
+      statusElement.textContent = 'Salvestatud!'
+      setTimeout(() => {
+        statusElement.textContent = ''
+      }, 2000)
 
-    // Notify content script about the settings change
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'kriitSettingsUpdated',
-          enabled: true,
-          apiUrl: apiUrl,
-          apiKey: apiKey,
-        }).catch(error => {
-          console.error('Error sending message:', error)
-        })
-      }
-    })
-  })
+      // Notify content script about the settings change
+      chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+        if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
+          chrome.tabs
+            .sendMessage(tabs[0].id, {
+              action: 'kriitSettingsUpdated',
+              enabled: true,
+              apiUrl: apiUrl,
+              apiKey: apiKey
+            })
+            .catch(error => {
+              console.error('Error sending message:', error)
+            })
+        }
+      })
+    }
+  )
 }
 
 /**
@@ -477,21 +489,24 @@ function showFutureSubjects() {
   }
 
   // Send message to background script to fetch future subjects
-  chrome.runtime.sendMessage({
-    action: 'getFutureSubjects',
-    comparisonDate: isoDate
-  }, function(response) {
-    subjectsLoading.style.display = 'none'
+  chrome.runtime.sendMessage(
+    {
+      action: 'getFutureSubjects',
+      comparisonDate: isoDate
+    },
+    function(response) {
+      subjectsLoading.style.display = 'none'
 
-    if (!response || response.status !== 'success') {
-      subjectsContent.innerHTML = '<div style="color: red;">Viga: ' + (response?.message || 'Tundmatu viga') + '</div>'
+      if (!response || response.status !== 'success') {
+        subjectsContent.innerHTML = '<div style="color: red;">Viga: ' + (response?.message || 'Tundmatu viga') + '</div>'
+        subjectsContent.style.display = 'block'
+        return
+      }
+
+      displaySubjects(response.data, isoDate)
       subjectsContent.style.display = 'block'
-      return
     }
-
-    displaySubjects(response.data, isoDate)
-    subjectsContent.style.display = 'block'
-  })
+  )
 }
 
 /**
@@ -544,8 +559,7 @@ function displaySubjects(subjects, comparisonDate) {
   })
 
   // Sort subjects by next lesson date
-  const sortedSubjects = Object.entries(subjectStats)
-    .sort(([, a], [, b]) => a.nextLesson - b.nextLesson)
+  const sortedSubjects = Object.entries(subjectStats).sort(([, a], [, b]) => a.nextLesson - b.nextLesson)
 
   // Create HTML
   const selectedDateStr = formatDisplayDate(compareDate)
@@ -608,11 +622,13 @@ function clearCache() {
         // Notify content script about the cache clear
         chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
           if (tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'cacheClearedFromPopup',
-            }).catch(error => {
-              console.error('Error sending message:', error)
-            })
+            chrome.tabs
+              .sendMessage(tabs[0].id, {
+                action: 'cacheClearedFromPopup'
+              })
+              .catch(error => {
+                console.error('Error sending message:', error)
+              })
           }
         })
       })

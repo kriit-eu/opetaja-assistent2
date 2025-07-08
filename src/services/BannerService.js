@@ -22,8 +22,8 @@ export class BannerService {
   }
 
   /**
-     * Load CSS styles for the banner service (lazy loading)
-     */
+   * Load CSS styles for the banner service (lazy loading)
+   */
   loadStyles() {
     if (this.stylesLoaded || typeof document === 'undefined') {
       return
@@ -151,9 +151,9 @@ export class BannerService {
   }
 
   /**
-     * Get the banner container element
-     * @returns {Element} The banner container element or document.body as fallback
-     */
+   * Get the banner container element
+   * @returns {Element} The banner container element or document.body as fallback
+   */
   getBannerContainer() {
     const container = document.querySelector(this.containerSelector)
     if (!container) {
@@ -164,8 +164,8 @@ export class BannerService {
   }
 
   /**
-     * Remove current banner from the DOM
-     */
+   * Remove current banner from the DOM
+   */
   removeBanner() {
     if (this.currentBanner && this.currentBanner.parentNode) {
       this.currentBanner.parentNode.removeChild(this.currentBanner)
@@ -178,49 +178,75 @@ export class BannerService {
   }
 
   /**
-     * Show loading banner
-     * @param {string} message - Loading message to display
-     */
+   * Show loading banner
+   * @param {string} message - Loading message to display
+   */
   showLoadingBanner(message = 'Töötlen andmeid, palun oota...') {
     this.loadStyles()
     const container = this.getBannerContainer()
     this.removeBanner()
 
-    this.currentBanner = domService.createAndInsertElement('div', {
-      classList: ['ta-banner', 'ta-banner-loading'],
-    }, '', container, 'afterbegin')
+    this.currentBanner = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner', 'ta-banner-loading']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
 
     // Add loading text
-    this.loadingText = domService.createAndInsertElement('div', {
-      classList: ['ta-banner-loading-text'],
-    }, message, this.currentBanner)
+    this.loadingText = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner-loading-text']
+      },
+      message,
+      this.currentBanner
+    )
 
     // Add progress container (initially hidden)
-    this.progressContainer = domService.createAndInsertElement('div', {
-      classList: ['ta-banner-progress-container'],
-      style: 'display: none;',
-    }, '', this.currentBanner)
+    this.progressContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner-progress-container'],
+        style: 'display: none;'
+      },
+      '',
+      this.currentBanner
+    )
 
     // Add progress bar
-    this.progressBar = domService.createAndInsertElement('div', {
-      classList: ['ta-banner-progress-bar'],
-      style: 'width: 0%;',
-    }, '', this.progressContainer)
+    this.progressBar = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner-progress-bar'],
+        style: 'width: 0%;'
+      },
+      '',
+      this.progressContainer
+    )
 
     // Add progress text
-    this.progressText = domService.createAndInsertElement('div', {
-      classList: ['ta-banner-progress-text'],
-    }, '0 / 0', this.progressContainer)
+    this.progressText = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner-progress-text']
+      },
+      '0 / 0',
+      this.progressContainer
+    )
 
     Logger.debug('Loading banner created and displayed')
   }
 
   /**
-     * Update progress UI during sync
-     * @param {number} current - Current progress
-     * @param {number} total - Total items
-     * @param {string} loadingMessage - Optional loading message to update
-     */
+   * Update progress UI during sync
+   * @param {number} current - Current progress
+   * @param {number} total - Total items
+   * @param {string} loadingMessage - Optional loading message to update
+   */
   updateProgressUI(current, total, loadingMessage = null) {
     // Log progress even if UI elements are missing
     Logger.debug(`Progress: ${current}/${total} (${Math.round((current / total) * 100)}%)`)
@@ -254,12 +280,12 @@ export class BannerService {
   }
 
   /**
-     * Show success banner
-     * @param {string} message - Success message
-     * @param {Object} options - Additional options
-     * @param {Function} options.onRefresh - Callback for refresh button
-     * @param {Function} options.onClose - Callback for close button
-     */
+   * Show success banner
+   * @param {string} message - Success message
+   * @param {Object} options - Additional options
+   * @param {Function} options.onRefresh - Callback for refresh button
+   * @param {Function} options.onClose - Callback for close button
+   */
   showSuccessBanner(message, options = {}) {
     this.loadStyles()
     Logger.info('=== SHOWING SUCCESS BANNER ===')
@@ -273,160 +299,236 @@ export class BannerService {
 
     this.removeBanner()
 
-    this.currentBanner = domService.createAndInsertElement('div', {
-      classList: ['ta-banner', 'ta-banner-success'],
-    }, '', container, 'afterbegin')
+    this.currentBanner = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner', 'ta-banner-success']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
 
     // Add success icon
-    domService.createAndInsertElement('div', {
-      style: 'font-size: 1.5rem; margin-bottom: 10px;',
-    }, '✅', this.currentBanner)
+    domService.createAndInsertElement(
+      'div',
+      {
+        style: 'font-size: 1.5rem; margin-bottom: 10px;'
+      },
+      '✅',
+      this.currentBanner
+    )
 
     // Add success message
-    domService.createAndInsertElement('div', {
-      style: 'font-weight: bold; margin-bottom: 10px;',
-    }, message, this.currentBanner)
+    domService.createAndInsertElement(
+      'div',
+      {
+        style: 'font-weight: bold; margin-bottom: 10px;'
+      },
+      message,
+      this.currentBanner
+    )
 
     // Add refresh button if callback provided
     if (options.onRefresh) {
-      domService.createAndInsertElement('button', {
-        classList: ['ta-banner-button'],
-        onclick: options.onRefresh,
-        style: 'margin-right: 10px; background-color: #28a745; border-color: #28a745; color: white;',
-      }, 'Refresh', this.currentBanner)
+      domService.createAndInsertElement(
+        'button',
+        {
+          classList: ['ta-banner-button'],
+          onclick: options.onRefresh,
+          style: 'margin-right: 10px; background-color: #28a745; border-color: #28a745; color: white;'
+        },
+        'Refresh',
+        this.currentBanner
+      )
     }
 
     // Add close button if callback provided
     if (options.onClose) {
-      domService.createAndInsertElement('button', {
-        classList: ['ta-banner-button'],
-        onclick: options.onClose,
-        style: 'background-color: transparent; border-color: #28a745; color: #28a745;',
-      }, 'Close', this.currentBanner)
+      domService.createAndInsertElement(
+        'button',
+        {
+          classList: ['ta-banner-button'],
+          onclick: options.onClose,
+          style: 'background-color: transparent; border-color: #28a745; color: #28a745;'
+        },
+        'Close',
+        this.currentBanner
+      )
     }
 
     Logger.info('Success banner created and displayed')
   }
 
   /**
-     * Show error banner
-     * @param {string} error - Error message
-     * @param {Object} options - Additional options
-     * @param {Function} options.onRetry - Callback for retry button
-     * @param {Function} options.onRefresh - Callback for refresh button
-     */
+   * Show error banner
+   * @param {string} error - Error message
+   * @param {Object} options - Additional options
+   * @param {Function} options.onRetry - Callback for retry button
+   * @param {Function} options.onRefresh - Callback for refresh button
+   */
   showErrorBanner(error, options = {}) {
     this.loadStyles()
     const container = this.getBannerContainer()
     this.removeBanner()
 
-    this.currentBanner = domService.createAndInsertElement('div', {
-      classList: ['ta-banner', 'ta-banner-error'],
-    }, '', container, 'afterbegin')
+    this.currentBanner = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-banner', 'ta-banner-error']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
 
     // Add error icon
-    domService.createAndInsertElement('div', {
-      style: 'font-size: 1.5rem; margin-bottom: 10px;',
-    }, '❌', this.currentBanner)
+    domService.createAndInsertElement(
+      'div',
+      {
+        style: 'font-size: 1.5rem; margin-bottom: 10px;'
+      },
+      '❌',
+      this.currentBanner
+    )
 
     // Add error title
-    domService.createAndInsertElement('h3', {
-      classList: ['ta-banner-error-title'],
-    }, 'Error', this.currentBanner)
+    domService.createAndInsertElement(
+      'h3',
+      {
+        classList: ['ta-banner-error-title']
+      },
+      'Error',
+      this.currentBanner
+    )
 
     // Add error message
-    domService.createAndInsertElement('p', {
-      classList: ['ta-banner-error-message'],
-    }, error, this.currentBanner)
+    domService.createAndInsertElement(
+      'p',
+      {
+        classList: ['ta-banner-error-message']
+      },
+      error,
+      this.currentBanner
+    )
 
     // Add retry button if callback provided
     if (options.onRetry) {
-      domService.createAndInsertElement('button', {
-        classList: ['ta-banner-button', 'ta-banner-error-button'],
-        onclick: options.onRetry,
-        style: 'margin-right: 10px;',
-      }, 'Retry', this.currentBanner)
+      domService.createAndInsertElement(
+        'button',
+        {
+          classList: ['ta-banner-button', 'ta-banner-error-button'],
+          onclick: options.onRetry,
+          style: 'margin-right: 10px;'
+        },
+        'Retry',
+        this.currentBanner
+      )
     }
 
     // Add refresh button if callback provided
     if (options.onRefresh) {
-      domService.createAndInsertElement('button', {
-        classList: ['ta-banner-button'],
-        onclick: options.onRefresh,
-      }, 'Refresh', this.currentBanner)
+      domService.createAndInsertElement(
+        'button',
+        {
+          classList: ['ta-banner-button'],
+          onclick: options.onRefresh
+        },
+        'Refresh',
+        this.currentBanner
+      )
     }
 
     Logger.debug('Error banner created and displayed')
   }
 
-
   /**
-     * Get the current banner element (for custom content injection)
-     * @returns {Element|null} Current banner element
-     */
+   * Get the current banner element (for custom content injection)
+   * @returns {Element|null} Current banner element
+   */
   getCurrentBanner() {
     return this.currentBanner
   }
 
   /**
-     * Check if a banner is currently displayed
-     * @returns {boolean} True if banner exists
-     */
+   * Check if a banner is currently displayed
+   * @returns {boolean} True if banner exists
+   */
   hasBanner() {
     return this.currentBanner !== null
   }
 
   /**
-     * Clean up resources
-     */
+   * Clean up resources
+   */
   destroy() {
     this.removeBanner()
     styleService.removeCSS('banner-service-styles')
   }
 
   /**
-     * Utility method to create a container element with specified classes
-     * @param {Element} parent - Parent element to append the container to
-     * @param {Array} classList - Array of CSS classes to apply
-     * @returns {Element} The created container element
-     */
+   * Utility method to create a container element with specified classes
+   * @param {Element} parent - Parent element to append the container to
+   * @param {Array} classList - Array of CSS classes to apply
+   * @returns {Element} The created container element
+   */
   createContainer(parent, classList = []) {
-    return domService.createAndInsertElement('div', {
-      classList: classList,
-    }, '', parent)
+    return domService.createAndInsertElement(
+      'div',
+      {
+        classList: classList
+      },
+      '',
+      parent
+    )
   }
 
   /**
-     * Utility method to create a section with a title
-     * @param {Element} parent - Parent element to append the section to
-     * @param {string} title - Title for the section
-     * @param {Array} classList - Array of CSS classes to apply
-     * @returns {Element} The created section element
-     */
+   * Utility method to create a section with a title
+   * @param {Element} parent - Parent element to append the section to
+   * @param {string} title - Title for the section
+   * @param {Array} classList - Array of CSS classes to apply
+   * @returns {Element} The created section element
+   */
   createSection(parent, title, classList = []) {
-    const section = domService.createAndInsertElement('div', {
-      classList: classList,
-    }, '', parent)
+    const section = domService.createAndInsertElement(
+      'div',
+      {
+        classList: classList
+      },
+      '',
+      parent
+    )
 
     if (title) {
-      domService.createAndInsertElement('h3', {
-        classList: ['ta-banner-title'],
-      }, title, section)
+      domService.createAndInsertElement(
+        'h3',
+        {
+          classList: ['ta-banner-title']
+        },
+        title,
+        section
+      )
     }
 
     return section
   }
 
   /**
-     * Utility method to create a message element
-     * @param {Element} parent - Parent element to append the message to
-     * @param {string} message - Message text to display
-     * @param {Array} classList - Array of CSS classes to apply
-     */
+   * Utility method to create a message element
+   * @param {Element} parent - Parent element to append the message to
+   * @param {string} message - Message text to display
+   * @param {Array} classList - Array of CSS classes to apply
+   */
   createMessage(parent, message, classList = ['ta-banner-message']) {
-    domService.createAndInsertElement('div', {
-      classList: classList,
-    }, message, parent)
+    domService.createAndInsertElement(
+      'div',
+      {
+        classList: classList
+      },
+      message,
+      parent
+    )
   }
 }
 

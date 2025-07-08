@@ -13,7 +13,7 @@ export const LogLevel = {
   WARNING: '✨',
   ERROR: '✨',
   DEBUG: '✨',
-  FEATURE: '✨',
+  FEATURE: '✨'
 }
 
 // Debug mode configuration
@@ -167,5 +167,5 @@ export default {
   LogLevel,
   isDebugMode,
   enableDebugMode,
-  disableDebugMode,
+  disableDebugMode
 }

@@ -9,7 +9,6 @@ import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
 
-
 console.log('👀 Watching for changes in src directory...')
 
 // Track the last rebuild time to prevent multiple rebuilds in quick succession

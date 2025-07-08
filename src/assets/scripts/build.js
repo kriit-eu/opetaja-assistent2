@@ -33,11 +33,7 @@ const CONFIG = {
   ],
 
   // Files to bundle with Bun
-  bundleFiles: [
-    'content.js',
-    'background.js',
-    'popup.js'
-  ],
+  bundleFiles: ['content.js', 'background.js', 'popup.js'],
 
   // Build mode
   isProd: isProd,
@@ -88,13 +84,7 @@ async function bundleJavaScript() {
   const files = CONFIG.bundleFiles.map(file => path.join(CONFIG.srcDir, file))
 
   return new Promise((resolve, reject) => {
-    const bunBuild = spawn('bun', [
-      'build',
-      ...files,
-      '--outdir',
-      CONFIG.distDir,
-      ...CONFIG.bundleOptions
-    ])
+    const bunBuild = spawn('bun', ['build', ...files, '--outdir', CONFIG.distDir, ...CONFIG.bundleOptions])
 
     bunBuild.stdout.on('data', data => {
       console.log(`  ${data.toString().trim()}`)
@@ -128,10 +118,7 @@ async function convertIcons() {
     for (const icon of CONFIG.icons) {
       console.log(`  Converting ${icon.name} (${icon.size}x${icon.size})...`)
 
-      await sharp(CONFIG.iconSource)
-        .resize(icon.size, icon.size)
-        .png()
-        .toFile(path.join(CONFIG.distDir, icon.name))
+      await sharp(CONFIG.iconSource).resize(icon.size, icon.size).png().toFile(path.join(CONFIG.distDir, icon.name))
     }
   } catch (error) {
     console.error('Error converting icons:', error)
