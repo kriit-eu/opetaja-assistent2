@@ -1,20 +1,10 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
+import { styleService } from '../../../services/StyleService.js'
+import { LessonDiscrepanciesTable } from './LessonDiscrepanciesTable.js'
 
-const HEX = {
-  green: ['#28a745', '#218838', '#fff'],
-  amber: ['#ffc107', '#e0a800', '#212529'],
-  blue: ['#17a2b8', '#138496', '#fff'],
-}
-
-const createButtonStyle = ([bg, hover, color]) =>
-  `background:${bg};color:${color};border:none;padding:4px 8px;border-radius:3px;` +
-  'font-size:12px;font-weight:bold;cursor:pointer;' +
-  `" onmouseover="this.style.background='${hover}'" onmouseout="this.style.background='${bg}'`
-
-const CELL_STYLE = 'padding:6px 8px;border:1px solid #dee2e6;font-size:14px;'
-const CENTER_STYLE = CELL_STYLE + 'text-align:center;'
+// HEX constant and createButtonStyle function moved to LessonDiscrepanciesTable class
 
 /**
  * @typedef {Object} JournalInfo
@@ -55,7 +45,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #originalFetch = null
   #problematicEntriesCache = null
   #dialogCloseObserver = null
-  #dialogWasPresent = false
 
   static SCHOOL_ID_FALLBACK = 9
   static JOURNAL_ENTRY_LESSON_TYPE = 'SISSEKANNE_T'
@@ -63,9 +52,20 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   constructor () {
     super('lessonDiscrepancies', /\/journal\/\d+\/edit/)
     this.name = 'LessonDiscrepanciesFeature'
+
+    // Initialize the table class
+    this.table = new LessonDiscrepanciesTable({
+      api: this.api,
+      formatDate: this.#formatDisplayDate,
+      extractJournalId: () => this.#extractJournalId(),
+      calculateDuplicateIndex: discrepancy => this.#calculateDuplicateIndex(discrepancy),
+      findDuplicateMatches: (entryId, date) => this.#findDuplicateMatches(entryId, date),
+      addDiscrepancyButtonListeners: () => this.#addDiscrepancyButtonListeners(),
+    })
   }
 
   async activate () {
+    // CSS injection is now handled by the table class
     this.reset()
     await this.#clearStaleCache()
     await this.#delay(1000)
@@ -77,6 +77,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   onDeactivate () {
     this.#cleanupMonitoring()
     this.reset()
+    styleService.removeCSS('lesson-discrepancies-styles')
     super.onDeactivate()
   }
 
@@ -91,6 +92,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #formatDate = date => {
     try {
+      // Handle null, undefined, or empty values
+      if (!date) {
+        return null
+      }
       return new Date(date).toISOString().split('T')[0]
     } catch {
       return null
@@ -98,7 +103,32 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #formatDisplayDate = date => {
-    const dateObj = new Date(date)
+    // Handle null, undefined, or empty values
+    if (!date) {
+      return 'Invalid Date'
+    }
+
+    // If the date is already in DD.MM.YYYY format, return it as-is
+    if (typeof date === 'string' && /^\d{2}\.\d{2}\.\d{4}$/.test(date)) {
+      return date
+    }
+
+    let dateObj
+
+    // If the date is in DD.MM.YYYY format, parse it manually
+    if (typeof date === 'string' && /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
+      const [day, month, year] = date.split('.')
+      dateObj = new Date(year, month - 1, day)
+    } else {
+      // For other formats (ISO, etc.), use Date constructor
+      dateObj = new Date(date)
+    }
+
+    // Check if the date is valid
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid Date'
+    }
+
     const day = dateObj.getDate().toString().padStart(2, '0')
     const month = (dateObj.getMonth() + 1).toString().padStart(2, '0')
     const year = dateObj.getFullYear()
@@ -134,23 +164,26 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const journalId = this.#extractJournalId()
       if (!journalId) return
 
-      const existingTable = document.querySelector('[data-discrepancies-table]')
-      if (!forceRefresh && this.#tableCreated && this.#currentJournalId === journalId && existingTable) return
-      if (existingTable) this.#tableCreated = false
-
-      const { journalData, timetableData } = await this.#fetchJournalAndTimetableData(journalId, forceRefresh)
+      const {
+        journalData,
+        timetableData,
+      } = await this.#fetchJournalAndTimetableData(journalId, forceRefresh)
       this.#lastJournalData = journalData
 
       const discrepancies = await this.#findLessonDiscrepancies(journalData, timetableData)
-
-      // Always check for capacity type problems
       const capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
-      // Create unified display
-      existingTable?.remove()
-      this.#insertUnifiedTable(discrepancies, capacityProblems)
-      this.#tableCreated = true
-      this.#currentJournalId = journalId
+      // Use the table class to create the table
+      const success = await this.table.createTable({
+        discrepancies,
+        capacityProblems,
+        forceRefresh,
+      })
+
+      if (success) {
+        this.#tableCreated = true
+        this.#currentJournalId = journalId
+      }
     } catch (error) {
       Logger.error(`[${this.name}] table error`, error)
     }
@@ -164,15 +197,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const info = await this.api.tahvel.get(`/journals/${journalId}`, params, {
       cache: true,
-      cacheExpiration: 864e5
+      cacheExpiration: 864e5,
     })
     const entries = await this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, entriesParams, {
       cache: true,
-      cacheExpiration
+      cacheExpiration,
     })
     const timetable = await this.#fetchTimetableData(info, forceRefresh)
     return {
-      journalData: { info, entries: entries ?? [] },
+      journalData: {
+        info,
+        entries: entries ?? [],
+      },
       timetableData: timetable ?? [],
     }
   }
@@ -197,7 +233,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (!teacherId) return []
 
       const schoolId = info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
-      const { from: defaultFrom, thru: defaultThru } = this.#getCurrentStudyYearDates()
+      const {
+        from: defaultFrom,
+        thru: defaultThru,
+      } = this.#getCurrentStudyYearDates()
       const from = info.studyYearStartDate ?? defaultFrom
       const thru = info.studyYearEndDate ?? defaultThru
       const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherId}&thru=${thru}`
@@ -209,7 +248,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       /** @type {{timetableEvents?: Array<TimetableEvent>}} */
       const data = await this.api.tahvel.get(endpoint, params, {
         cache: true,
-        cacheExpiration
+        cacheExpiration,
       })
       return data?.timetableEvents?.filter(event => event.journalId === info.id) ?? []
     } catch (error) {
@@ -269,7 +308,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
 
       const date = this.#formatDate(entry.entryDate)
-      aggregated[date] ??= { count: 0, start: Infinity, entries: [] }
+      aggregated[date] ??= {
+        count: 0,
+        start: Infinity,
+        entries: [],
+      }
       aggregated[date].count += (entry.lessons ?? 1)
 
       const startLessonNumber = Number(entry.startLessonNr ?? 1)
@@ -283,7 +326,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const stats = {}
     for (const event of events) {
       const date = this.#formatDate(event.date)
-      stats[date] ??= { count: 0, start: Infinity }
+      stats[date] ??= {
+        count: 0,
+        start: Infinity,
+      }
 
       const lessonNumber = await this.#calculateLessonNumber(event.timeStart, schoolId)
       const validLessonNumber = Number(lessonNumber)
@@ -302,12 +348,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const differences = allDates
       .map(date => {
-        const journalData = journalStats[date] ?? { count: 0, start: Infinity, entries: [] }
-        const timetableData = timetableStats[date] ?? { count: 0, start: Infinity }
+        const journalData = journalStats[date] ?? {
+          count: 0,
+          start: Infinity,
+          entries: [],
+        }
+        const timetableData = timetableStats[date] ?? {
+          count: 0,
+          start: Infinity,
+        }
         const hasDifference = journalData.count !== timetableData.count ||
           journalData.start !== timetableData.start
 
-        return hasDifference ? { date, journal: journalData, timetable: timetableData } : null
+        return hasDifference ? {
+          date,
+          journal: journalData,
+          timetable: timetableData,
+        } : null
       })
       .filter(Boolean)
 
@@ -318,13 +375,27 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const discrepancies = []
 
     for (const difference of differences) {
-      const { date, journal: journalData, timetable: timetableData } = difference
-      const { count: journalCount, start: journalStart, entries } = journalData
-      const { count: timetableCount, start: timetableStart } = timetableData
+      const {
+        date,
+        journal: journalData,
+        timetable: timetableData,
+      } = difference
+      const {
+        count: journalCount,
+        start: journalStart,
+        entries,
+      } = journalData
+      const {
+        count: timetableCount,
+        start: timetableStart,
+      } = timetableData
       const timetableEntries = timetable.filter(event => this.#formatDate(event.date) === date)
 
       if (!journalCount && timetableCount) {
-        await this.#createMissingLessonDiscrepancies({ date, tEntries: timetableEntries }, journal, discrepancies)
+        await this.#createMissingLessonDiscrepancies({
+          date,
+          tEntries: timetableEntries,
+        }, journal, discrepancies)
       } else if (journalCount && timetableCount) {
         await this.#createLessonMismatchDiscrepancies({
           date,
@@ -342,7 +413,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
 
-  async #createMissingLessonDiscrepancies ({ date, tEntries }, journal, discrepancies) {
+  async #createMissingLessonDiscrepancies ({
+    date,
+    tEntries,
+  }, journal, discrepancies) {
     const schoolId = journal.info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
     /** @type {Array<{date: string, timeStart: string, timeEnd: string, name: string, rooms: Array, lessonNumber: number, type: string}>} */
     const missingLessons = await Promise.all(tEntries.map(async entry => ({
@@ -403,45 +477,41 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #createPill = (text, color, backgroundColor, textDecoration = 'none') =>
-    `<span style="background-color:${backgroundColor};color:${color};font-weight:bold;font-size:14px;padding:4px 8px;text-decoration:${textDecoration};">${text}</span>`
-
-  #createDiffPill = (current, correct) => {
-    // Add strikethrough to the red (current) value
-    const currentPill = this.#createPill(current, '#721c24', '#f8d7da', 'line-through')
-    const correctPill = this.#createPill(correct, '#155724', '#d1edcc')
-    const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
-    return `<div style="${style}">${currentPill}${correctPill}</div>`
-  }
-
   #calculateDuplicateIndex (discrepancy) {
     // Use the same logic as #findJournalEntryElement to ensure consistency
+    Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
     const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
+    Logger.debug(`[${this.name}] calculateDuplicateIndex result: targetIndex=${duplicateInfo.targetIndex}`)
     return duplicateInfo.targetIndex
   }
 
   #findDuplicateMatches (entryId, date) {
     if (!this.#lastJournalData?.entries) {
       Logger.warning(`No journal data available for findDuplicateMatches`)
-      return { exactMatches: [], targetIndex: 0 }
+      return {
+        exactMatches: [],
+        targetIndex: 0,
+      }
     }
 
     const targetEntry = this.#lastJournalData.entries.find(entry => entry.id == entryId)
     if (!targetEntry) {
       Logger.warning(`Target entry ${entryId} not found in journal data`)
-      return { exactMatches: [], targetIndex: 0 }
+      return {
+        exactMatches: [],
+        targetIndex: 0,
+      }
     }
 
-    Logger.debug(`[${this.name}] Target entry for ${entryId}:`, {
-      id: targetEntry.id,
-      entryType: targetEntry.entryType,
-      lessons: targetEntry.lessons,
-      lessonCount: targetEntry.lessonCount,
-      entryDate: targetEntry.entryDate
-    })
-
-    // Get all rows that match the date
-    const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
+    // Handle special case for null dates that show as "-"
+    let dateSearchCriteria
+    if (date === 'NO_DATE') {
+      dateSearchCriteria = '-'
+      Logger.debug(`[${this.name}] Searching for null date entries (showing as "-")`)
+    } else {
+      dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
+      Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
+    }
 
     // Try multiple selectors to find journal entry rows
     let allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
@@ -455,252 +525,109 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
-    const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
+    // Filter rows based on date criteria
+    let dateMatchingRows
+    if (date === 'NO_DATE') {
+      // For null dates, we need to be more precise - only get journal entry rows
+      // that have a null date (shown as "-" in the date column)
+      dateMatchingRows = [...allRows].filter(row => {
+        // Check if this is a journal entry row with ng-click
+        const hasEditJournalEntry = row.hasAttribute('ng-click') && row.getAttribute('ng-click').includes('editJournalEntry')
+        if (!hasEditJournalEntry) return false
 
-    Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${datePrefix}`)
+        // Check for a date cell containing only "-"
+        const cells = row.querySelectorAll('td')
+        for (const cell of cells) {
+          const text = cell.textContent.trim()
+          // The date column typically contains just "-" for null dates
+          if (text === '-' && !cell.querySelector('a') && !cell.querySelector('button')) {
+            return true
+          }
+        }
+        return false
+      })
+
+      Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} journal entry rows with null date`)
+    } else {
+      dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
+    }
+
+    Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
 
     // Get the lesson count from targetEntry (could be lessons or lessonCount property)
     const targetLessonCount = targetEntry.lessons || targetEntry.lessonCount || 1
 
     // Filter by lesson count and type to get the exact matches in DOM order
     const exactMatches = dateMatchingRows.filter(row => {
-      const { lessonCount, entryType } = this.#parseRowLessonInfo(row)
-      Logger.debug(`[${this.name}] Row info:`, { lessonCount, entryType, targetLessonCount, targetEntryType: targetEntry.entryType })
+      const {
+        lessonCount,
+        entryType,
+      } = this.#parseRowLessonInfo(row)
       return lessonCount === targetLessonCount && entryType === targetEntry.entryType
     })
 
-    // For single matches, index is always 0
-    if (exactMatches.length <= 1) {
-      Logger.debug(`[${this.name}] Found ${exactMatches.length} exact matches`)
-      return { exactMatches, targetIndex: 0 }
-    }
+    // We still need to calculate the target index even if there are no exact DOM matches
+    // because this method is also used for calculating duplicate indices for button creation
 
     // Find all duplicate entries in API data, sorted by ID (for consistent ordering)
-    const duplicateEntries = this.#lastJournalData.entries.filter(entry => this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate) &&
-      (entry.lessons || entry.lessonCount || 1) === targetLessonCount &&
-      entry.entryType === targetEntry.entryType).sort((a, b) => a.id - b.id)
+    // Handle null dates specially since they need to match by null status, not formatted value
+    const duplicateEntries = this.#lastJournalData.entries.filter(entry => {
+      // For null dates, both entries must have null/undefined entryDate
+      const targetDateIsNull = !targetEntry.entryDate
+      const entryDateIsNull = !entry.entryDate
+
+      let dateMatches
+      if (targetDateIsNull && entryDateIsNull) {
+        // Both are null - they match
+        dateMatches = true
+        Logger.debug(`[${this.name}] Both entries have null dates - match: ${entry.id}`)
+      } else if (!targetDateIsNull && !entryDateIsNull) {
+        // Both have dates - compare formatted dates
+        dateMatches = this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate)
+        Logger.debug(`[${this.name}] Comparing formatted dates: ${this.#formatDate(entry.entryDate)} === ${this.#formatDate(targetEntry.entryDate)} = ${dateMatches}`)
+      } else {
+        // One is null, one isn't - no match
+        dateMatches = false
+        Logger.debug(`[${this.name}] Date null mismatch: entry ${entry.id} has ${entry.entryDate}, target has ${targetEntry.entryDate}`)
+      }
+
+      // For independent work entries, both entries often have null lesson counts
+      let lessonCountMatches
+      if (entry.entryType === 'SISSEKANNE_I' && targetEntry.entryType === 'SISSEKANNE_I') {
+        // For independent work, we don't compare lesson counts as they're often null
+        lessonCountMatches = true
+      } else {
+        // For other types, compare lesson counts normally
+        const entryLessonCount = entry.lessons || entry.lessonCount || null
+        const targetLessonCountValue = targetEntry.lessons || targetEntry.lessonCount || targetLessonCount
+        lessonCountMatches = entryLessonCount === targetLessonCountValue
+      }
+
+      const entryTypeMatches = entry.entryType === targetEntry.entryType
+
+      Logger.debug(`[${this.name}] Entry ${entry.id}: dateMatches=${dateMatches}, lessonCountMatches=${lessonCountMatches}, entryTypeMatches=${entryTypeMatches}, entryType=${entry.entryType}`)
+
+      return dateMatches && lessonCountMatches && entryTypeMatches
+    })
+    // Don't sort by ID - keep the natural order from the journal data
+    // which should match the DOM order
 
     // Simple position-based matching: assume DOM order matches API order
     const targetIndex = duplicateEntries.findIndex(entry => entry.id == entryId)
 
-    return { exactMatches, targetIndex: Math.max(0, targetIndex) }
-  }
-
-  #createSmartDisplay = (currentValue, correctValue) => {
-    const current = Number(currentValue)
-    const correct = Number(correctValue)
-    return current === correct
-      ? `<span style="font-size:14px;font-weight:bold;">${current}</span>`
-      : this.#createDiffPill(current, correct)
-  }
-
-  #createButton (id, text, colorKey, data = {}, tooltip = '') {
-    const dataAttributes = Object.entries(data)
-      .map(([key, value]) => `data-${key}='${JSON.stringify(value)}'`)
-      .join(' ')
-    const titleAttribute = tooltip ? `title="${tooltip}"` : ''
-    return `<button id="${id}" style="${createButtonStyle(HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
-  }
-
-  #renderMissingEntry (discrepancy) {
-    return {
-      start: `<span style="font-weight:bold;">${discrepancy.lessonNumber}</span>`,
-      count: `<span style="font-weight:bold;">${discrepancy.lessonCount}</span>`,
-      action: this.#createButton(`add-missing-${discrepancy.date}-${discrepancy.lessonNumber}`, 'Lisa', 'green', {
-        handler: 'addMissing',
-        date: discrepancy.date,
-        startLesson: discrepancy.lessonNumber,
-        lessonCount: discrepancy.lessonCount,
-        timetableStart: discrepancy.lessonNumber,
-        timetableCount: discrepancy.lessonCount,
-        timeStart: discrepancy.timeStart,
-        timeEnd: discrepancy.timeEnd,
-        rooms: discrepancy.rooms,
-      }),
-    }
-  }
-
-  #renderSingleEntryFix (discrepancy) {
-    const duplicateIndex = this.#calculateDuplicateIndex(discrepancy)
-    const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
-    const hasDuplicates = duplicateInfo.exactMatches.length > 1
-
-    const humanIndex = duplicateIndex + 1
-    const buttonText = hasDuplicates ? `Muuda #${humanIndex}` : 'Muuda'
-    const tooltip = `Entry ID: ${discrepancy.entryId}, Duplicate Index: ${duplicateIndex}`
-    return {
-      start: this.#createSmartDisplay(discrepancy.journalStart, discrepancy.timetableStart),
-      count: this.#createSmartDisplay(discrepancy.journalCount, discrepancy.timetableCount),
-      action: this.#createButton(`edit-single-${discrepancy.date}-${discrepancy.entryId}`, buttonText, 'amber', {
-        handler: 'editEntry',
-        type: 'singleEntryFix',
-        date: discrepancy.date,
-        entryId: discrepancy.entryId,
-        timetableStart: discrepancy.timetableStart,
-        timetableCount: discrepancy.timetableCount,
-        currentStart: discrepancy.journalStart,
-        currentCount: discrepancy.journalCount,
-        duplicateIndex: duplicateIndex,
-      }, tooltip),
-    }
-  }
-
-  #renderMultiEntryFix (discrepancy) {
-    // Check if there are duplicates by looking at the first entry
-    const firstEntry = discrepancy.entries?.[0]
-    const firstEntryDiscrepancy = firstEntry ? {
-      ...discrepancy,
-      entryId: firstEntry.id,
-      journalStart: firstEntry.startLessonNr,
-      journalCount: firstEntry.lessons,
-    } : null
-    const duplicateInfo = firstEntryDiscrepancy
-      ? this.#findDuplicateMatches(firstEntryDiscrepancy.entryId, firstEntryDiscrepancy.date)
-      : { exactMatches: [] }
-    const hasDuplicates = duplicateInfo.exactMatches.length > 1
-
-    const buttons = (discrepancy.entries ?? []).map(entry => {
-      const entryDiscrepancy = {
-        ...discrepancy,
-        entryId: entry.id,
-        journalStart: entry.startLessonNr,
-        journalCount: entry.lessons
-      }
-      const duplicateIndex = this.#calculateDuplicateIndex(entryDiscrepancy)
-      const humanIndex = duplicateIndex + 1
-      const buttonText = hasDuplicates ? `Muuda ${entry.startLessonNr}. (${entry.lessons}t) #${humanIndex}` : `Muuda ${entry.startLessonNr}. (${entry.lessons}t)`
-      const tooltip = `Entry ID: ${entry.id}, Duplicate Index: ${duplicateIndex}`
-      return this.#createButton(`edit-entry-${discrepancy.date}-${entry.id}`, buttonText, 'amber', {
-        handler: 'editEntry',
-        type: 'multiEntryFix',
-        date: discrepancy.date,
-        entryId: entry.id,
-        duplicateIndex: duplicateIndex,
-      }, tooltip)
-    }).join('')
+    Logger.debug(`[${this.name}] Duplicate matching results:`)
+    Logger.debug(`[${this.name}] - Target entry ID: ${entryId}`)
+    Logger.debug(`[${this.name}] - Target entry date: ${targetEntry.entryDate}`)
+    Logger.debug(`[${this.name}] - Target entry type: ${targetEntry.entryType}`)
+    Logger.debug(`[${this.name}] - Duplicate entries found: ${duplicateEntries.length}`)
+    Logger.debug(`[${this.name}] - Duplicate entry IDs: [${duplicateEntries.map(e => e.id).join(', ')}]`)
+    Logger.debug(`[${this.name}] - Target index in duplicates: ${targetIndex}`)
+    Logger.debug(`[${this.name}] - DOM exact matches found: ${exactMatches.length}`)
 
     return {
-      start: this.#createSmartDisplay(discrepancy.journalStart, discrepancy.timetableStart),
-      count: this.#createSmartDisplay(discrepancy.journalCount, discrepancy.timetableCount),
-      action: `<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:4px;">${buttons}</div>`,
+      exactMatches,
+      targetIndex: Math.max(0, targetIndex),
     }
-  }
-
-  #createDiscrepancyRow (discrepancy) {
-    const renderers = {
-      missingJournalEntry: this.#renderMissingEntry,
-      singleEntryFix: this.#renderSingleEntryFix,
-      multiEntryFix: this.#renderMultiEntryFix,
-    }
-    const renderer = renderers[discrepancy.type] || this.#renderSingleEntryFix
-    const { start, count, action } = renderer.call(this, discrepancy)
-    return `<tr style="background-color:white"><td style="${CELL_STYLE}">${this.#formatDisplayDate(discrepancy.date)}</td><td style="${CENTER_STYLE}">${start}</td><td style="${CENTER_STYLE}">${count}</td><td style="${CENTER_STYLE}">${action}</td></tr>`
-  }
-
-  #findInsertionPoint () {
-    const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-    return selectors
-      .map(selector => document.querySelector(selector))
-      .find(element => element && element.getBoundingClientRect().width > 100) || document.body
-  }
-
-  #insertUnifiedTable (discrepancies, capacityProblems) {
-    try {
-      document.querySelector('[data-discrepancies-table]')?.remove()
-      document.querySelector('[data-capacity-problems-table]')?.remove()
-      const insertionPoint = this.#findInsertionPoint()
-      if (!insertionPoint) return false
-
-      insertionPoint.insertBefore(this.#createUnifiedTableElement(discrepancies, capacityProblems), insertionPoint.firstChild)
-      this.#addDiscrepancyButtonListeners()
-      return true
-    } catch (error) {
-      Logger.error(`[${this.name}] insert unified table`, error)
-      return false
-    }
-  }
-
-  #createUnifiedTableElement (discrepancies, capacityProblems) {
-    // Determine background color based on whether there are any problems
-    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0
-    const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc' // yellow if problems, green if none
-    const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
-
-    const boxStyle = `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
-      'margin:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
-
-    // Title bar
-    const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
-      <div style="display:flex;align-items:center;">
-        <span style="font-size:20px;margin-right:10px;">🎓</span>
-        <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
-      </div>
-      <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-        Probleemid sissekannetega
-      </div>
-    </div>`
-
-    // Timetable discrepancies section
-    const timetableSection = this.#createTimetableSection(discrepancies)
-
-    // Capacity problems section
-    const capacitySection = this.#createCapacitySection(capacityProblems)
-
-    const element = document.createElement('div')
-    element.dataset.discrepanciesTable = 'true'
-    element.style.cssText = boxStyle
-    element.innerHTML = titleBar + timetableSection + capacitySection
-    return element
-  }
-
-  #createTimetableSection (discrepancies) {
-    if (!discrepancies.length) {
-      return '<p style="color:#28a745;margin:0 0 20px 0;">Erinevusi tunniplaaniga pole.</p>'
-    }
-
-    const sectionHeader = `<div style="margin-bottom:15px;">
-      <h4 style="margin:0 0 10px 0;color:#495057;">Erinevused tunniplaaniga</h4>
-    </div>`
-
-    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
-    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
-
-    const sortedDiscrepancies = [...discrepancies].sort((a, b) => {
-      const dateComparison = new Date(a.date) - new Date(b.date)
-      if (dateComparison !== 0) return dateComparison
-
-      const aLessonNumber = a.lessonNumber ?? a.timetableStart ?? 0
-      const bLessonNumber = b.lessonNumber ?? b.timetableStart ?? 0
-      return aLessonNumber - bLessonNumber
-    })
-
-    const rows = sortedDiscrepancies.map(discrepancy => this.#createDiscrepancyRow(discrepancy)).join('')
-    // noinspection CssUnknownProperty
-    const tableHead = `<thead><tr style="background:#f8f9fa"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:25%">Algustund</th><th style="${CENTER_STYLE}width:25%">Tundide arv</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
-
-    return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
-  }
-
-  #createCapacitySection (capacityProblems) {
-    if (!capacityProblems.length) {
-      return '<p style="color:#28a745;margin:0;">Ebaloogilisi sissekande liigi ja tüüpi kombinatsioone ei leitud.</p>'
-    }
-
-    const sectionHeader = `<div style="margin-bottom:15px;">
-      <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
-    </div>`
-
-    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
-    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
-
-    const sortedEntries = [...capacityProblems].sort((a, b) =>
-      new Date(a.entryDate) - new Date(b.entryDate))
-
-    const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
-    // noinspection CssUnknownProperty
-    const tableHead = `<thead><tr style="background:#f9f9f9"><th style="${CELL_STYLE}width:20%">Kuupäev</th><th style="${CENTER_STYLE}width:50%">Märkus</th><th style="${CENTER_STYLE}width:30%">Tegevus</th></tr></thead>`
-
-    return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
   }
 
   #addDiscrepancyButtonListeners () {
@@ -717,11 +644,24 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     event.stopPropagation()
     if (button.disabled) return
 
+    Logger.debug(`[${this.name}] Button clicked - starting click handler`)
+    Logger.debug(`[${this.name}] Button element:`, {
+      tagName: button.tagName,
+      className: button.className,
+      textContent: button.textContent,
+      id: button.id,
+      innerHTML: button.innerHTML.substring(0, 200) + (button.innerHTML.length > 200 ? '...' : ''),
+    })
+
     const originalState = this.#captureButtonState(button)
     this.#setButtonProcessingState(button)
 
     try {
       const data = this.#parseButtonData(button)
+      Logger.debug(`[${this.name}] Raw button dataset:`, button.dataset)
+      Logger.debug(`[${this.name}] Parsed button data:`, data)
+      Logger.debug(`[${this.name}] Button data types:`, Object.entries(data).map(([key, value]) => [key, typeof value, value]))
+
       await this.#executeButtonAction(data)
     } catch (error) {
       Logger.error(`[${this.name}] button action error`, error)
@@ -747,26 +687,91 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #parseButtonData (button) {
-    const parsedData = Object.fromEntries(Object.entries(button.dataset).map(([key, value]) => [key, JSON.parse(value)]))
-    Logger.debug(`[${this.name}] Parsed button data:`, parsedData)
+    Logger.debug(`[${this.name}] Parsing button data from dataset:`, button.dataset)
+
+    const parsedData = {}
+    for (const [key, value] of Object.entries(button.dataset)) {
+      try {
+        parsedData[key] = JSON.parse(value)
+        Logger.debug(`[${this.name}] Successfully parsed ${key}:`, {
+          originalValue: value,
+          parsedValue: parsedData[key],
+          type: typeof parsedData[key],
+        })
+      } catch (parseError) {
+        Logger.error(`[${this.name}] Failed to parse button data key '${key}' with value '${value}':`, parseError)
+        parsedData[key] = value // Fallback to original value
+      }
+    }
+
+    Logger.debug(`[${this.name}] Final parsed button data:`, parsedData)
     return parsedData
   }
 
   async #executeButtonAction (data) {
     Logger.debug(`[${this.name}] Executing button action with data:`, data)
+    Logger.debug(`[${this.name}] Action data analysis:`, {
+      handler: data.handler,
+      date: data.date,
+      dateType: typeof data.date,
+      entryId: data.entryId,
+      entryIdType: typeof data.entryId,
+      allKeys: Object.keys(data),
+      allValues: Object.values(data),
+    })
 
     const actionHandlers = {
-      addMissing: () => this.#handleAddMissingEntry(data.date, data.startLesson, data.lessonCount, data),
-      editEntry: () => this.#handleEditEntry(data.date, data.entryId, data.type, data),
-      fixCapacity: () => this.#handleFixCapacity(data.date, data.entryId, data),
-      openEntry: () => this.#handleOpenEntry(data.entryId, data),
+      addMissing: () => {
+        Logger.debug(`[${this.name}] Calling handleAddMissingEntry with:`, {
+          date: data.date,
+          startLesson: data.startLesson,
+          lessonCount: data.lessonCount,
+          data: data,
+        })
+        return this.#handleAddMissingEntry(data.date, data.startLesson, data.lessonCount, data)
+      },
+      editEntry: () => {
+        Logger.debug(`[${this.name}] Calling handleEditEntry with:`, {
+          date: data.date,
+          entryId: data.entryId,
+          type: data.type,
+          data: data,
+        })
+        return this.#handleEditEntry(data.date, data.entryId, data.type, data)
+      },
+      fixCapacity: () => {
+        Logger.debug(`[${this.name}] Calling handleFixCapacity with:`, {
+          date: data.date,
+          dateType: typeof data.date,
+          dateValue: data.date,
+          entryId: data.entryId,
+          entryIdType: typeof data.entryId,
+          entryIdValue: data.entryId,
+          data: data,
+        })
+        // Test date formatting before calling the handler
+        const testFormattedDate = this.#formatDisplayDate(data.date)
+        Logger.debug(`[${this.name}] Date formatting test - input: ${data.date}, output: ${testFormattedDate}`)
+
+        return this.#handleFixCapacity(data.date, data.entryId, data)
+      },
+      openEntry: () => {
+        Logger.debug(`[${this.name}] Calling handleOpenEntry with:`, {
+          entryId: data.entryId,
+          data: data,
+        })
+        return this.#handleOpenEntry(data.entryId, data)
+      },
     }
 
     const handler = actionHandlers[data.handler]
     if (handler) {
+      Logger.debug(`[${this.name}] Handler found for '${data.handler}', executing...`)
       await handler()
+      Logger.debug(`[${this.name}] Handler '${data.handler}' completed`)
     } else {
       Logger.warning(`[${this.name}] Unknown handler: ${data.handler}`)
+      Logger.debug(`[${this.name}] Available handlers:`, Object.keys(actionHandlers))
     }
   }
 
@@ -1063,11 +1068,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
     }
 
-    return { restoreScroll, startScrollMonitoring, stopScrollMonitoring }
+    return {
+      restoreScroll,
+      startScrollMonitoring,
+      stopScrollMonitoring,
+    }
   }
 
   async #clickElementWithScrollPreservation (element) {
-    const { restoreScroll, startScrollMonitoring, stopScrollMonitoring } = this.#createScrollPreservation()
+    const {
+      restoreScroll,
+      startScrollMonitoring,
+      stopScrollMonitoring,
+    } = this.#createScrollPreservation()
 
     try {
       startScrollMonitoring()
@@ -1096,37 +1109,130 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #findJournalEntryElement (entryId, date, duplicateIndex = 0) {
 
-    const { exactMatches } = this.#findDuplicateMatches(entryId, date)
+    const { exactMatches, targetIndex } = this.#findDuplicateMatches(entryId, date)
 
-    Logger.debug(`[${this.name}] findJournalEntryElement: entryId=${entryId}, date=${date}, exactMatches.length=${exactMatches.length}`)
+    Logger.debug(`[${this.name}] findJournalEntryElement: entryId=${entryId}, date=${date}, exactMatches.length=${exactMatches.length}, targetIndex=${targetIndex}`)
 
     if (exactMatches.length === 0) {
       // Fallback: try a broader search if exact matching fails
       Logger.warning(`[${this.name}] No exact matches found, trying fallback search`)
 
-      const datePrefix = this.#formatDisplayDate(date).slice(0, 5)
-      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
-      const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(datePrefix))
+      // For null dates, we need to find all independent work entries with "-" date
+      // and use the position-based matching from the journal data
+      if (date === 'NO_DATE' && this.#lastJournalData?.entries) {
+        const targetEntry = this.#lastJournalData.entries.find(entry => entry.id == entryId)
+        if (!targetEntry) {
+          Logger.error(`[${this.name}] Target entry ${entryId} not found in journal data for fallback`)
+          return null
+        }
 
-      Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${datePrefix}`)
+        // Find all null date entries of the same type in the journal data
+        const nullDateEntries = this.#lastJournalData.entries.filter(entry =>
+          !entry.entryDate && entry.entryType === targetEntry.entryType
+        ).sort((a, b) => a.id - b.id)
+
+        const entryPositionInNullDates = nullDateEntries.findIndex(entry => entry.id == entryId)
+
+        Logger.debug(`[${this.name}] Fallback: Found ${nullDateEntries.length} null date entries of type ${targetEntry.entryType}`)
+        Logger.debug(`[${this.name}] Fallback: Target entry position in null dates: ${entryPositionInNullDates}`)
+
+        // Find all rows with "-" date in the DOM - only look at journal entry rows
+        const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
+        if (allRows.length === 0) {
+          Logger.error(`[${this.name}] No journal entry rows found in DOM`)
+          return null
+        }
+
+        // Find all rows that match our criteria (null date + correct type)
+        // Then use position-based matching
+        const nullDateRows = [...allRows].filter(row => {
+          // Check for date cell containing only "-"
+          const cells = row.querySelectorAll('td')
+          let hasNullDate = false
+          let isCorrectEntryType = false
+
+          // Check if this row has the background color for independent work entries
+          const hasIndependentWorkBackground = row.style.background && row.style.background.includes('rgb(240, 244, 195)')
+
+          for (let i = 0; i < cells.length; i++) {
+            const cell = cells[i]
+            const text = cell.textContent.trim()
+
+            // The date column is typically the 3rd column (index 2)
+            if (i === 2 && text === '-') {
+              hasNullDate = true
+            }
+
+            // Check for entry type - for SISSEKANNE_I, we rely on background color
+            if (targetEntry.entryType === 'SISSEKANNE_I') {
+              isCorrectEntryType = hasIndependentWorkBackground
+            } else if (targetEntry.entryType === 'SISSEKANNE_T' && i === 4) {
+              // For lessons, check the type column
+              const spanElement = cell.querySelector('span')
+              if (spanElement && spanElement.textContent.trim() === 'Tund') {
+                isCorrectEntryType = true
+              }
+            } else if (targetEntry.entryType === 'SISSEKANNE_P' && i === 4) {
+              const spanElement = cell.querySelector('span')
+              if (spanElement && spanElement.textContent.includes('Praktiline töö')) {
+                isCorrectEntryType = true
+              }
+            }
+          }
+
+          const matches = hasNullDate && isCorrectEntryType
+          if (matches) {
+            Logger.debug(`[${this.name}] Fallback: Row matches - hasNullDate=${hasNullDate}, isCorrectEntryType=${isCorrectEntryType}, hasIndependentWorkBackground=${hasIndependentWorkBackground}`)
+          }
+
+          return matches
+        })
+
+        Logger.debug(`[${this.name}] Fallback: Found ${nullDateRows.length} DOM rows with "-" date and matching type`)
+
+        if (entryPositionInNullDates >= 0 && entryPositionInNullDates < nullDateRows.length) {
+          Logger.debug(`[${this.name}] Fallback: Using position-based match at index ${entryPositionInNullDates}`)
+          return nullDateRows[entryPositionInNullDates]
+        }
+      }
+
+      // Original fallback logic for non-null dates
+      let dateSearchCriteria
+      if (date === 'NO_DATE') {
+        dateSearchCriteria = '-'
+      } else {
+        dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
+      }
+
+      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
+      const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
+
+      Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
 
       if (dateMatchingRows.length > 0) {
-        // Return the first matching row as a last resort
-        Logger.warning(`[${this.name}] Using fallback row for entryId ${entryId}`)
-        return dateMatchingRows[0]
+        // Use duplicateIndex if provided, otherwise first match
+        const indexToUse = duplicateIndex < dateMatchingRows.length ? duplicateIndex : 0
+        Logger.warning(`[${this.name}] Using fallback row at index ${indexToUse} for entryId ${entryId}`)
+        return dateMatchingRows[indexToUse]
       }
 
       return null
     }
 
     if (exactMatches.length === 1) {
+      Logger.debug(`[${this.name}] Single exact match found, returning it`)
       return exactMatches[0]
     }
 
-    // Multiple matches - use the provided duplicate index
-    if (duplicateIndex < exactMatches.length) {
-      return exactMatches[duplicateIndex]
+    // Multiple matches - use the targetIndex from findDuplicateMatches
+    Logger.debug(`[${this.name}] Multiple exact matches (${exactMatches.length}), using targetIndex ${targetIndex}`)
+    Logger.debug(`[${this.name}] Available matches: ${exactMatches.map((match, idx) => `[${idx}]: ${match.tagName} with text="${match.textContent.slice(0, 50)}..."`).join(', ')}`)
+
+    if (targetIndex < exactMatches.length) {
+      Logger.debug(`[${this.name}] Returning match at index ${targetIndex}`)
+      return exactMatches[targetIndex]
     }
+    Logger.warning(`[${this.name}] Target index ${targetIndex} out of range, returning first match`)
     return exactMatches[0]
 
   }
@@ -1136,28 +1242,66 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     let lessonCount = null
     let entryType = null
 
-    for (const cell of cells) {
+    // Check if this is actually a journal entry row (not a student row)
+    const hasEditJournalEntry = row.hasAttribute('ng-click') && row.getAttribute('ng-click').includes('editJournalEntry')
+    if (!hasEditJournalEntry) {
+      // This is not a journal entry row, return null values
+      return { lessonCount: null, entryType: null }
+    }
+
+    // For independent work entries, check the background color
+    const hasIndependentWorkBackground = row.style.background && row.style.background.includes('rgb(240, 244, 195)')
+
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i]
       const text = cell.textContent.trim()
-      if (/^\d+$/.test(text)) {
-        lessonCount = parseInt(text)
+
+      // Lesson count is typically in column 4 (index 3)
+      if (i === 3) {
+        if (/^\d+$/.test(text)) {
+          lessonCount = parseInt(text)
+        } else if (text === '-') {
+          // For independent work, "-" means no lesson count
+          lessonCount = null
+        }
       }
-      if (text.includes('Tund')) {
-        entryType = 'SISSEKANNE_T'
-      } else if (text.includes('Iseseisev töö')) {
-        entryType = 'SISSEKANNE_I'
-      } else if (text.includes('Praktiline töö')) {
-        entryType = 'SISSEKANNE_P'
-      } else if (text.includes('E-õpe')) {
-        entryType = 'SISSEKANNE_E'
+
+      // Entry type is in column 5 (index 4)
+      if (i === 4) {
+        const spanElement = cell.querySelector('span')
+        if (spanElement) {
+          const spanText = spanElement.textContent.trim()
+          if (spanText === 'Tund') {
+            entryType = 'SISSEKANNE_T'
+          } else if (spanText === 'Iseseisev töö' || hasIndependentWorkBackground) {
+            entryType = 'SISSEKANNE_I'
+          } else if (spanText === 'Praktiline töö') {
+            entryType = 'SISSEKANNE_P'
+          } else if (spanText === 'E-õpe') {
+            entryType = 'SISSEKANNE_E'
+          }
+        }
       }
     }
 
-    return { lessonCount, entryType }
+    // Additional check for independent work based on background color
+    if (!entryType && hasIndependentWorkBackground) {
+      entryType = 'SISSEKANNE_I'
+    }
+
+    return {
+      lessonCount,
+      entryType,
+    }
   }
 
 
   async #clickJournalEntry (element) {
-    const { restoreScroll, startScrollMonitoring, stopScrollMonitoring } = this.#createScrollPreservation()
+    const {
+      restoreScroll,
+      startScrollMonitoring,
+      stopScrollMonitoring,
+    } = this.#createScrollPreservation()
 
     try {
       startScrollMonitoring()
@@ -1353,7 +1497,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #checkTeacherCheckbox () {
-    /** @type {HTMLElement} */
+    /** @type {NodeListOf<HTMLElement>} */
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
 
     for (const checkbox of teacherCheckboxes) {
@@ -1387,7 +1531,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       checkboxes.push({
         element: checkbox,
         checked,
-        label: checkbox.getAttribute('aria-label') || checkbox.textContent.trim()
+        label: checkbox.getAttribute('aria-label') || checkbox.textContent.trim(),
       })
     })
 
@@ -1395,7 +1539,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       hasTeacher: checkedCount > 0,
       checkboxCount: teacherCheckboxes.length,
       checkedCount,
-      checkboxes
+      checkboxes,
     }
   }
 
@@ -1548,10 +1692,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const discrepancies = []
 
       // Update unified display
-      this.#insertUnifiedTable(discrepancies, capacityProblems)
+      this.table.insertUnifiedTable(discrepancies, capacityProblems)
 
     } catch (error) {
-      console.error(`[${this.name}] Error refreshing capacity validation:`, error)
+      Logger.error(`[${this.name}] Error refreshing capacity validation:`, error)
     }
   }
 
@@ -1640,7 +1784,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, {
           cache: false,
-          cacheExpiration: 0
+          cacheExpiration: 0,
         })
 
 
@@ -1666,13 +1810,18 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #validateSingleEntry (entry, detailedEntry, capacityTypes, journalCapacityHours) {
+    // Create a combined entry object with fallback for missing fields
+    const combinedEntry = {
+      ...entry,
+      entryDate: entry.entryDate || detailedEntry.entryDate || detailedEntry.journalEntryDate || detailedEntry.date,
+    }
 
     // Check if entry requires independent work but journal doesn't have MAHT_i configured
     const journalHasIndependentWork = journalCapacityHours && journalCapacityHours.some(c => c.capacity === 'MAHT_i')
 
     if (entry.entryType === 'SISSEKANNE_I' && !journalHasIndependentWork) {
       return {
-        entry,
+        entry: combinedEntry,
         detailedData: detailedEntry,
         isValid: false,
         errorType: 'journal_missing_independent_work',
@@ -1684,7 +1833,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         },
         expectedState: {
           auditoorne: false,
-          iseseiv: true,
+          iseseisev: true,
           praktiline: false,
           teacher: true,
           reasoning: 'Journal must have MAHT_i capacity configured for independent work entries',
@@ -1697,7 +1846,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Handle edge cases
     if (capacityTypes === null || capacityTypes === undefined) {
       return {
-        entry,
+        entry: combinedEntry,
         detailedData: detailedEntry,
         isValid: false,
         errorType: 'null_capacity_types',
@@ -1709,7 +1858,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         },
         expectedState: {
           auditoorne: true,
-          iseseiv: false,
+          iseseisev: false,
           praktiline: false,
           teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
@@ -1719,7 +1868,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     if (!Array.isArray(capacityTypes)) {
       return {
-        entry,
+        entry: combinedEntry,
         detailedData: detailedEntry,
         isValid: false,
         errorType: 'invalid_capacity_types_format',
@@ -1731,7 +1880,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         },
         expectedState: {
           auditoorne: true,
-          iseseiv: false,
+          iseseisev: false,
           praktiline: false,
           teacher: true,
           reasoning: 'SISSEKANNE_T/P entries should have auditoorne õpe',
@@ -1751,9 +1900,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Using includes() as the primary method
 
-    return this.#performBusinessLogicValidation(entry, detailedEntry, {
+    return this.#performBusinessLogicValidation(combinedEntry, detailedEntry, {
       auditoorne: hasAuditoorneIncludes,
-      iseseiv: hasIseseisvIncludes,
+      iseseisev: hasIseseisvIncludes,
       praktiline: hasPraktiliseIncludes,
       teacher: hasTeacher,
     }, capacityTypes)
@@ -1770,7 +1919,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const expectedState = {
       auditoorne: shouldHaveAuditoorne,
-      iseseiv: shouldHaveIseseisev,
+      iseseisev: shouldHaveIseseisev,
       praktiline: shouldHavePraktiline,
       teacher: true, // All entries should have a teacher selected
       reasoning: shouldHaveAuditoorne
@@ -1811,7 +1960,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: both checkboxes selected
-    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseiv
+    const hasBothCheckboxes = actualState.auditoorne && actualState.iseseisev
     if (hasBothCheckboxes) {
       return {
         entry,
@@ -1826,7 +1975,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_T (lesson) with MAHT_i (independent work)
-    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseiv && !actualState.auditoorne
+    const isLessonWithIndependentWork = entry.entryType === 'SISSEKANNE_T' && actualState.iseseisev && !actualState.auditoorne
     if (isLessonWithIndependentWork) {
       return {
         entry,
@@ -1841,7 +1990,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
 
     // Check for error condition: SISSEKANNE_I (independent work) with MAHT_a (auditory learning)
-    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseiv
+    const isIndependentWorkWithAuditory = entry.entryType === 'SISSEKANNE_I' && actualState.auditoorne && !actualState.iseseisev
     if (isIndependentWorkWithAuditory) {
       return {
         entry,
@@ -1872,7 +2021,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Validate against expected state
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
-    const iseseisvValid = actualState.iseseiv === expectedState.iseseiv
+    const iseseisvValid = actualState.iseseisev === expectedState.iseseisev
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
     const teacherValid = actualState.teacher === expectedState.teacher
     const isValid = auditoorneValid && iseseisvValid && praktiliseValid && teacherValid
@@ -1886,6 +2035,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         errorType = 'missing_auditoorne_checkbox'
       } else if (entry.entryType === 'SISSEKANNE_P') {
         if (!praktiliseValid) {
+
           errorType = 'missing_praktiline_checkbox'
         } else {
           errorType = 'missing_auditoorne_checkbox'
@@ -1960,97 +2110,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     })
   }
 
-  /**
-   * @param {Object} entry - Journal entry
-   * @param {string} entry.entryDate - Entry date
-   * @param {string} entry.entryType - Entry type (SISSEKANNE_T, SISSEKANNE_I, SISSEKANNE_P)
-   * @param {number} [entry.startLessonNr] - Start lesson number
-   * @param {Array} [entry.lessons] - Array of lesson objects
-
-   * @param {number} [entry.lessons[].lessonNr] - Lesson number
-   * @param {Object} [entry.validationResult] - Validation result object
-   * @param {string} [entry.validationResult.errorType] - Error type
-   * @param {number} entry.id - Entry ID
-
-     */
-  #createCapacityProblemRow (entry) {
-    const CELL_STYLE = 'padding:8px;border-bottom:1px solid #e0e0e0;'
-    const CENTER_STYLE = `${CELL_STYLE}text-align:center;`
-
-    // Format date without year (DD.MM)
-    const dateObj = new Date(entry.entryDate)
-    const shortDate = `${dateObj.getDate().toString().padStart(2, '0')}.${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`
-    const startLesson = entry.startLessonNr || entry.lessons?.[0]?.lessonNr || ''
-    const dateWithLesson = startLesson ? `${shortDate} (${startLesson}.)` : shortDate
-
-    // Determine badge color based on entry type
-    let badgeColor = '#e0e0e0' // light gray default for SISSEKANNE_T
-    if (entry.entryType === 'SISSEKANNE_I') {
-      badgeColor = '#f0f4c3' // light yellow-green for independent work
-    } else if (entry.entryType === 'SISSEKANNE_P') {
-      badgeColor = '#b2dfdb' // light teal for practical work
-    }
-
-    const dateWithBadge = `<span style="background-color:${badgeColor};padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid #ccc;">${dateWithLesson}</span>`
-
-    // Determine the correct message based on the validation result
-    let message = 'Auditoorne õpe puudub'
-    if (entry.validationResult) {
-      if (entry.validationResult.errorType === 'no_teacher_selected') {
-        message = 'Õpetaja pole valitud'
-      } else if (entry.validationResult.errorType === 'both_checkboxes_selected') {
-        message = 'Auditoorne õpe ja iseseisva õppe linnukesed on samaaegselt sees'
-      } else if (entry.validationResult.errorType === 'lesson_with_independent_work') {
-        message = 'Sissekande liik on tund, aga ainult iseseisva õppe linnuke on sees'
-      } else if (entry.validationResult.errorType === 'lesson_without_auditoorne') {
-        message = 'Sissekande liik on tund, aga auditoorne õpe linnuke pole sees'
-      } else if (entry.validationResult.errorType === 'independent_work_with_auditory') {
-        message = 'Iseseisev tööl ei saa olla auditoorne õpe linnuke sees'
-      } else if (entry.validationResult.errorType === 'praktiline_too_without_praktiline_checkbox') {
-        message = 'Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees'
-      } else if (entry.validationResult.errorType === 'missing_auditoorne_checkbox') {
-        message = 'Auditoorne õpe puudub'
-      } else if (entry.validationResult.errorType === 'missing_iseseisev_checkbox') {
-        message = 'Iseseisev õpe puudub'
-      } else if (entry.validationResult.errorType === 'journal_missing_independent_work') {
-        message = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid'
-      } else if (entry.validationResult.errorType === 'missing_praktiline_checkbox') {
-        message = 'Praktiline töö puudub'
-      }
-    }
-
-    const action = entry.validationResult?.errorType === 'no_teacher_selected'
-      ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-        handler: 'fixCapacity',
-        entryId: entry.id,
-        date: this.#formatDate(entry.entryDate),
-      })
-      : entry.validationResult?.errorType === 'journal_missing_independent_work'
-        ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
-          handler: 'openEntry',
-          entryId: entry.id,
-          date: this.#formatDate(entry.entryDate),
-        })
-        : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-          handler: 'fixCapacity',
-          entryId: entry.id,
-          date: this.#formatDate(entry.entryDate),
-        })
-
-    return `<tr style="background-color:white">
-      <td style="${CENTER_STYLE}">${dateWithBadge}</td>
-      <td style="${CENTER_STYLE}">${message}</td>
-      <td style="${CENTER_STYLE}">${action}</td>
-    </tr>`
-  }
-
-  #addCapacityProblemButtonListeners () {
-    document.querySelectorAll('[data-discrepancies-table] button').forEach(/** @param {HTMLElement} button */ button => {
-      if (button.dataset.handler) {
-        button.addEventListener('click', event => this.#handleDiscrepancyButtonClick(event, button))
-      }
-    })
-  }
+  // #createCapacityProblemRow method moved to LessonDiscrepanciesTable class
 
   #highlightProblematicElements (elements, message = '', color = '#ff0000') {
     // Clean up any existing highlights first
@@ -2301,9 +2361,47 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
    * @param {ButtonData} data - Button data object
    */
   async #handleFixCapacity (date, entryId, data = {}) {
+    Logger.debug(`[${this.name}] handleFixCapacity called with parameters:`, {
+      date: date,
+      dateType: typeof date,
+      dateValue: date,
+      entryId: entryId,
+      entryIdType: typeof entryId,
+      entryIdValue: entryId,
+      data: data,
+      dataKeys: Object.keys(data),
+    })
+
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
+
+      Logger.debug(`[${this.name}] Processing parameters:`, {
+        originalDate: date,
+        originalEntryId: entryId,
+        dataEntryId: data.entryid,
+        actualEntryId: actualEntryId,
+        duplicateIndex: duplicateIndex,
+      })
+
+      // Test date formatting with detailed logging
+      Logger.debug(`[${this.name}] Testing date formatting:`, {
+        inputDate: date,
+        inputType: typeof date,
+        inputValue: date,
+        isNull: date === null,
+        isUndefined: date === undefined,
+        isEmpty: date === '',
+        isString: typeof date === 'string',
+        stringLength: typeof date === 'string' ? date.length : 'N/A',
+      })
+
+      const formattedDate = this.#formatDisplayDate(date)
+      Logger.debug(`[${this.name}] Date formatting result:`, {
+        input: date,
+        output: formattedDate,
+        isInvalidDate: formattedDate === 'Invalid Date',
+      })
 
       // Debug logging for entryId resolution
       Logger.debug(`[${this.name}] handleFixCapacity called with entryId=${entryId}, data.entryid=${data.entryid}, actualEntryId=${actualEntryId}`)
@@ -2315,7 +2413,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
           this.#lastJournalData = journalData
         } catch (refreshError) {
-          console.error(`[${this.name}] Failed to refresh journal data:`, refreshError)
+          Logger.error(`[${this.name}] Failed to refresh journal data:`, refreshError)
         }
       }
 
@@ -2338,6 +2436,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
 
         Logger.error(`[${this.name}] Entry element not found for ID=${actualEntryId}, date=${date}, duplicateIndex=${duplicateIndex}`, debugInfo)
+
+        // Show user-friendly error message
+        alert(`Viga: Ei suutnud leida õiget sissekande rida (ID: ${actualEntryId}). Palun proovige lehte värskendada ja uuesti.`)
 
         throw new Error(`entry element not found - entryId: ${entryId}, actualEntryId: ${actualEntryId}, date: ${date}, duplicateIndex: ${duplicateIndex}`)
       }
@@ -2479,14 +2580,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         const praktiliseCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
           checkbox.getAttribute('aria-label')?.includes('Praktiline töö') ||
           checkbox.textContent.includes('Praktiline töö'))
-        const iseseisvCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+        const iseseisevCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
           checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
           checkbox.textContent.includes('Iseseisev õpe'))
 
         // Uncheck and highlight Iseseisev õpe in red if checked
-        if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseivCheckbox)
-          this.#highlightProblematicElements([iseseivCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisevCheckbox)
+          this.#highlightProblematicElements([iseseisevCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
         }
         // Check and highlight Praktiline töö in green if not checked
         if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') !== 'true') {
@@ -2499,7 +2600,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Add listeners to remove highlights when dialog is closed or saved
         this.#addDialogCloseListeners()
       } else {
-        console.warn(`[${this.name}] No elements found to highlight for error type: ${validationResult?.errorType}`)
+        Logger.warning(`[${this.name}] No elements found to highlight for error type: ${validationResult?.errorType}`)
         // Show tooltip anyway to guide user
         if (highlightMessage) {
           const tooltip = document.createElement('div')
@@ -2533,7 +2634,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') ||
         checkbox.textContent.includes('Auditoorne õpe'))
-      const iseseivCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
+      const iseseisevCheckbox = Array.from(capacityTypeCheckboxes).find(checkbox =>
         checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
         checkbox.getAttribute('aria-label')?.includes('Individuaalne õpe') ||
         checkbox.textContent.includes('Iseseisv õpe') ||
@@ -2552,11 +2653,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           this.#highlightProblematicElements([auditoorneCheckbox], 'Auditoorne õpe on automaatselt sisse lülitatud! Palun salvestage muudatused käsitsi.', '#4CAF50')
           this.#addDialogCloseListeners()
         }
-        return // Exit early - no auto-saving
       } else if (entryType === 'SISSEKANNE_I') {
-        // For independent work entries: ensure iseseivCheckbox is checked, others are unchecked
-        if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') !== 'true') {
-          await this.#clickElement(iseseivCheckbox)
+        // For independent work entries: ensure iseseisevCheckbox is checked, others are unchecked
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(iseseisevCheckbox)
         }
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
@@ -2572,16 +2672,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
         }
-        if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseivCheckbox)
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisevCheckbox)
         }
       } else {
         // For regular lesson entries (SISSEKANNE_T): ensure auditoorne õpe is checked, others are unchecked
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(auditoorneCheckbox)
         }
-        if (iseseivCheckbox && iseseivCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseivCheckbox)
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisevCheckbox)
         }
         if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(praktiliseCheckbox)
@@ -2595,6 +2695,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #addTeacherSelectionMonitoring () {
+    /** @type {NodeListOf<HTMLElement>} */
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
 
     for (const checkbox of teacherCheckboxes) {
@@ -2619,6 +2720,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #addTeacherCheckboxListeners () {
+    /** @type {NodeListOf<HTMLElement>} */
     const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]:not([data-teacher-listener-added])')
 
     for (const checkbox of teacherCheckboxes) {
@@ -2699,29 +2801,31 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #cleanupHighlights () {
-    // Remove only tooltip popups (not checkboxes)
     document.querySelectorAll('[data-capacity-highlight="true"]').forEach(el => {
-      if (el.tagName === 'MD-CHECKBOX') {
+      /** @type {HTMLElement} */ const checkbox = el
+
+      if (checkbox.tagName === 'MD-CHECKBOX') {
         // Restore original styles and remove highlight attribute
-        if (el.dataset.originalBorder !== undefined) {
-          el.style.border = el.dataset.originalBorder
-          delete el.dataset.originalBorder
+        if (checkbox.dataset.originalBorder !== undefined) {
+          checkbox.style.border = checkbox.dataset.originalBorder
+          delete checkbox.dataset.originalBorder
         } else {
-          el.style.border = ''
+          checkbox.style.border = ''
         }
-        if (el.dataset.originalBoxShadow !== undefined) {
-          el.style.boxShadow = el.dataset.originalBoxShadow
-          delete el.dataset.originalBoxShadow
+
+        if (checkbox.dataset.originalBoxShadow !== undefined) {
+          checkbox.style.boxShadow = checkbox.dataset.originalBoxShadow
+          delete checkbox.dataset.originalBoxShadow
         } else {
-          el.style.boxShadow = ''
+          checkbox.style.boxShadow = ''
         }
-        el.removeAttribute('data-capacity-highlight')
+
+        checkbox.removeAttribute('data-capacity-highlight')
       } else {
-        // Remove tooltip or other non-checkbox highlight
-        el.remove()
+        checkbox.remove()
       }
     })
-    // Clean up dialog close observer if present
+
     if (this.#dialogCloseObserver) {
       this.#dialogCloseObserver.disconnect()
       this.#dialogCloseObserver = null
@@ -2773,7 +2877,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         'md-select[aria-label*="sissekande liik"]',
         'md-select[aria-label*="Sissekande liik"]',
         'select[ng-model*="entryType"]',
-        '[ng-model*="entryType"]'
+        '[ng-model*="entryType"]',
       ]
 
       let entryTypeElement = null
@@ -2819,8 +2923,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         // Position the highlight box over the element
         const rect = entryTypeElement.getBoundingClientRect()
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft
+        const scrollTop = window.scrollY
+        const scrollLeft = window.scrollX
 
         highlightBox.style.top = (rect.top + scrollTop - 2) + 'px'
         highlightBox.style.left = (rect.left + scrollLeft - 2) + 'px'
@@ -2883,10 +2987,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         'md-select[aria-label*="sissekande liik"]',
         'md-select[aria-label*="Sissekande liik"]',
         'select[ng-model*="entryType"]',
-        '[ng-model*="entryType"]'
+        '[ng-model*="entryType"]',
       ]
 
       entryTypeSelectors.forEach(selector => {
+        /** @type {HTMLElement | null} */
         const element = document.querySelector(selector)
         if (element && !element.dataset.highlightCleanupAdded) {
           element.dataset.highlightCleanupAdded = 'true'
@@ -2903,6 +3008,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           label.textContent.toLowerCase().includes('sissekannetüüp')) {
           const parent = label.closest('md-input-container, .md-input-container, md-select, .form-group')
           if (parent) {
+            /** @type {HTMLElement | null} */
             const entryTypeElement = parent.querySelector('md-select, select, input')
             if (entryTypeElement && !entryTypeElement.dataset.highlightCleanupAdded) {
               entryTypeElement.dataset.highlightCleanupAdded = 'true'
@@ -2925,16 +3031,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         mutations.forEach(mutation => {
           if (mutation.type === 'childList') {
             mutation.removedNodes.forEach(node => {
-              if (node.nodeType === Node.ELEMENT_NODE &&
-                (node.matches('md-dialog') || node.querySelector('md-dialog'))) {
-                cleanupHighlights()
-                observer.disconnect()
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                /** @type {Element} */
+                const el = node
+
+                if (el.matches('md-dialog') || el.querySelector('md-dialog')) {
+                  cleanupHighlights()
+                  observer.disconnect()
+                }
               }
             })
           }
         })
       })
-      observer.observe(document.body, { childList: true, subtree: true })
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      })
     }
 
     // Also clean up after 30 seconds as fallback
