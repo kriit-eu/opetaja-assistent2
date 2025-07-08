@@ -121,7 +121,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #formatDate = date => {
     try {
       // Handle null, undefined, or empty values
-      if (!date || date === null || date === undefined) {
+      if (!date) {
         return null
       }
       return new Date(date).toISOString().split('T')[0]
@@ -132,7 +132,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #formatDisplayDate = date => {
     // Handle null, undefined, or empty values
-    if (!date || date === null || date === undefined) {
+    if (!date) {
       return 'Invalid Date'
     }
 
@@ -616,7 +616,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const targetDateIsNull = !targetEntry.entryDate
       const entryDateIsNull = !entry.entryDate
 
-      let dateMatches = false
+      let dateMatches
       if (targetDateIsNull && entryDateIsNull) {
         // Both are null - they match
         dateMatches = true
