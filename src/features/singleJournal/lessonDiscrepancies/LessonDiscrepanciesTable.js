@@ -38,14 +38,12 @@ export class LessonDiscrepanciesTable {
    */
   constructor ({
     api,
-    formatDate,
     extractJournalId,
     calculateDuplicateIndex,
     findDuplicateMatches,
     addDiscrepancyButtonListeners,
   }) {
     this.api = api
-    this.formatDate = formatDate
     this.extractJournalId = extractJournalId
     this.calculateDuplicateIndex = calculateDuplicateIndex
     this.findDuplicateMatches = findDuplicateMatches
