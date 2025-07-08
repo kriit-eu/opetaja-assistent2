@@ -17,7 +17,7 @@ class ApiService {
    * @param {Object} config.defaultHeaders - Default headers to include in all requests
    * @param {string} config.authToken - Authentication token for API requests
    */
-  constructor (config = {}) {
+  constructor(config = {}) {
     this.name = config.name || 'api'
     this.baseUrl = config.baseUrl || ''
     this.defaultHeaders = config.defaultHeaders || {}
@@ -28,7 +28,7 @@ class ApiService {
    * Set the base URL for API requests
    * @param {string} url - The base URL for the API
    */
-  setBaseUrl (url) {
+  setBaseUrl(url) {
     this.baseUrl = url
   }
 
@@ -36,7 +36,7 @@ class ApiService {
    * Set the authentication token
    * @param {string} token - The authentication token
    */
-  setAuthToken (token) {
+  setAuthToken(token) {
     this.authToken = token
   }
 
@@ -44,7 +44,7 @@ class ApiService {
    * Get the authentication headers
    * @returns {Object} Authentication headers
    */
-  getAuthHeaders () {
+  getAuthHeaders() {
     if (!this.authToken) return {}
     return { 'Authorization': `Bearer ${this.authToken}` }
   }
@@ -62,7 +62,7 @@ class ApiService {
    * @param {number} config.cacheExpiration - Cache expiration time in milliseconds
    * @returns {Promise<any>} Response data
    */
-  async request (config) {
+  async request(config) {
     const {
       baseUrl = this.baseUrl,
       endpoint,
@@ -175,7 +175,7 @@ class ApiService {
 
         return cacheService.getOrFetch(
           cacheKey,
-          async () => {
+          async() => {
             const response = await fetch(urlString, requestOptions)
 
             if (!response.ok) {
@@ -249,7 +249,7 @@ class ApiService {
    * @param {number} options.cacheExpiration - Cache expiration time in milliseconds
    * @returns {Promise<any>} Response data
    */
-  async get (endpoint, params = {}, options = {}) {
+  async get(endpoint, params = {}, options = {}) {
     // Default options
     const {
       cache = true,
@@ -280,7 +280,7 @@ class ApiService {
    * @param {Object} data - Request body data
    * @returns {Promise<any>} Response data
    */
-  async post (endpoint, data = {}) {
+  async post(endpoint, data = {}) {
     return this.request({
       baseUrl: this.baseUrl,
       endpoint,
@@ -300,7 +300,7 @@ class ApiService {
    * @param {Object} options - Additional options
    * @returns {Promise<any>} Response data
    */
-  async put (endpoint, data = {}, options = {}) {
+  async put(endpoint, data = {}, options = {}) {
     // For Tahvel API, we need to include CSRF token
     const headers = {}
 

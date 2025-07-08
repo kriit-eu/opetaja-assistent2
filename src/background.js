@@ -115,7 +115,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {string} comparisonDate - The comparison date in YYYY-MM-DD format
  * @returns {Promise<Array>} Array of future lesson subjects
  */
-async function getFutureSubjects (comparisonDate) {
+async function getFutureSubjects(comparisonDate) {
   try {
     // Get the active tab
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })

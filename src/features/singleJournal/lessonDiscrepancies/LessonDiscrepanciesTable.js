@@ -14,7 +14,7 @@ export class LessonDiscrepanciesTable {
   static HEX = {
     green: ['#28a745', '#218838', '#fff'],
     amber: ['#ffc107', '#e0a800', '#212529'],
-    blue: ['#17a2b8', '#138496', '#fff'],
+    blue: ['#17a2b8', '#138496', '#fff']
   }
 
   /**
@@ -37,13 +37,7 @@ export class LessonDiscrepanciesTable {
    * @param {Function} options.findDuplicateMatches - Function to find duplicate matches
    * @param {Function} options.addDiscrepancyButtonListeners - Function to add button listeners
    */
-  constructor ({
-    api,
-    extractJournalId,
-    calculateDuplicateIndex,
-    findDuplicateMatches,
-    addDiscrepancyButtonListeners,
-  }) {
+  constructor({ api, extractJournalId, calculateDuplicateIndex, findDuplicateMatches, addDiscrepancyButtonListeners }) {
     this.api = api
     this.extractJournalId = extractJournalId
     this.calculateDuplicateIndex = calculateDuplicateIndex
@@ -58,7 +52,7 @@ export class LessonDiscrepanciesTable {
    * Injects CSS styles for the lesson discrepancies table
    * @private
    */
-  #injectCSS () {
+  #injectCSS() {
     const css = `
       .lesson-discrepancy-table-cell {
         padding: 8px;
@@ -93,7 +87,7 @@ export class LessonDiscrepanciesTable {
    * @param {boolean} options.forceRefresh - Whether to force refresh
    * @returns {Promise<boolean>} Success status
    */
-  async createTable ({ discrepancies, capacityProblems, forceRefresh = false }) {
+  async createTable({ discrepancies, capacityProblems, forceRefresh = false }) {
     try {
       const journalId = this.extractJournalId()
       if (!journalId) return false
@@ -130,7 +124,7 @@ export class LessonDiscrepanciesTable {
    * @param {string} missingGradesMessage - Missing grades message
    * @returns {boolean} Success status
    */
-  insertUnifiedTable (discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
+  insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
       document.querySelector('[data-capacity-problems-table]')?.remove()
@@ -159,12 +153,13 @@ export class LessonDiscrepanciesTable {
    * @returns {HTMLElement} The table element
    * @private
    */
-  #createUnifiedTableElement (discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
+  #createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
     const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0 || !!independentWorkMessage || !!missingGradesMessage
     const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc'
     const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
     // Restore uniform padding to all sides for correct alignment
-    const boxStyle = `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
+    const boxStyle =
+      `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
       'box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;max-width:600px;flex:0 0 600px;'
     // Remove custom padding-left, use default padding for titleBar
     const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
@@ -179,26 +174,28 @@ export class LessonDiscrepanciesTable {
 
     // Notifications section (side table)
     let notificationsSection = ''
-    if (independentWorkMessage || missingGradesMessage) {
-      notificationsSection = `<div style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>`
-      // Header: match main table, no extra margin-top
-      notificationsSection += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
+    notificationsSection = `<div style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>`
+    notificationsSection += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
       <div style="display:flex;align-items:center;">
         <span style="font-size:20px;margin-right:10px;">🎓</span>
         <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
       </div>
       <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-        Teavitused
+        Iseseisvad tööd & Hinded
       </div>
     </div>`
-      if (independentWorkMessage) {
-        notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${independentWorkMessage}</div>`
-      }
-      if (missingGradesMessage) {
-        notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;'>${missingGradesMessage}</div>`
-      }
-      notificationsSection += `</div>`
+    // Always show both notifications, with green fallback if missing
+    if (independentWorkMessage) {
+      notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${independentWorkMessage}</div>`
+    } else {
+      notificationsSection += `<div style='color:#155724;font-weight:bold;font-size:15px;text-align:center;background:#d1edcc;border-radius:4px;border:1px solid #c3e6cb;padding:12px 8px;margin-bottom:10px;'>Kõik iseseisvad tööd on korras.</div>`
     }
+    if (missingGradesMessage) {
+      notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;'>${missingGradesMessage}</div>`
+    } else {
+      notificationsSection += `<div style='color:#155724;font-weight:bold;font-size:15px;text-align:center;background:#d1edcc;border-radius:4px;border:1px solid #c3e6cb;padding:12px 8px;'>Kõik hinded on korras.</div>`
+    }
+    notificationsSection += `</div>`
 
     const timetableSection = this.#createTimetableSection(discrepancies)
     const capacitySection = this.#createCapacitySection(capacityProblems, null)
@@ -221,7 +218,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for timetable section
    * @private
    */
-  #createTimetableSection (discrepancies) {
+  #createTimetableSection(discrepancies) {
     if (!discrepancies.length) {
       return '<p style="color:#28a745;margin:0 0 20px 0;">Erinevusi tunniplaaniga pole.</p>'
     }
@@ -242,7 +239,10 @@ export class LessonDiscrepanciesTable {
     const rows = sortedDiscrepancies.map(discrepancy => this.#createDiscrepancyRow(discrepancy)).join('')
     const tableHead = `<thead><tr style="background:#f8f9fa"><th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-25">Algustund</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-25">Tundide arv</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th></tr></thead>`
 
-    return sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
+    return (
+      sectionHeader +
+      `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
+    )
   }
 
   /**
@@ -252,7 +252,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for capacity section
    * @private
    */
-  #createCapacitySection (capacityProblems, independentWorkMessage) {
+  #createCapacitySection(capacityProblems, independentWorkMessage) {
     const hasCapacityProblems = capacityProblems.length > 0
     const hasindependentWorkMessage = !!independentWorkMessage
     let section = ''
@@ -262,11 +262,12 @@ export class LessonDiscrepanciesTable {
       const sectionHeader = `<div style="margin-bottom:15px;">
         <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
       </div>`
-      const sortedEntries = [...capacityProblems].sort((a, b) =>
-        new Date(a.entryDate) - new Date(b.entryDate))
+      const sortedEntries = [...capacityProblems].sort((a, b) => new Date(a.entryDate) - new Date(b.entryDate))
       const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
       const tableHead = `<thead><tr style="background:#f9f9f9"><th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">Märkus</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th></tr></thead>`
-      section += sectionHeader + `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
+      section +=
+        sectionHeader +
+        `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
     }
 
     // Independent work message always in its own section if present
@@ -290,18 +291,14 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for the row
    * @private
    */
-  #createDiscrepancyRow (discrepancy) {
+  #createDiscrepancyRow(discrepancy) {
     const renderers = {
       missingJournalEntry: this.#renderMissingEntry,
       singleEntryFix: this.#renderSingleEntryFix,
-      multiEntryFix: this.#renderMultiEntryFix,
+      multiEntryFix: this.#renderMultiEntryFix
     }
     const renderer = renderers[discrepancy.type] || this.#renderSingleEntryFix
-    const {
-      start,
-      count,
-      action,
-    } = renderer.call(this, discrepancy)
+    const { start, count, action } = renderer.call(this, discrepancy)
     return `<tr style="background-color:white"><td class="lesson-discrepancy-table-cell">${this.#formatDisplayDate(discrepancy.date)}</td><td class="lesson-discrepancy-table-cell-center">${start}</td><td class="lesson-discrepancy-table-cell-center">${count}</td><td class="lesson-discrepancy-table-cell-center">${action}</td></tr>`
   }
 
@@ -311,9 +308,9 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for the row
    * @private
    */
-  #createCapacityProblemRow (entry) {
+  #createCapacityProblemRow(entry) {
     // Format date without year (DD.MM) - handle null dates properly
-    let shortDate = 'Kuupäevata'  // Default for null dates
+    let shortDate = 'Kuupäevata' // Default for null dates
     if (entry.entryDate) {
       try {
         const dateObj = new Date(entry.entryDate)
@@ -370,7 +367,7 @@ export class LessonDiscrepanciesTable {
     console.log(`[LessonDiscrepanciesTable] Debug: entry.entryDate:`, entry.entryDate, typeof entry.entryDate)
     console.log(`[LessonDiscrepanciesTable] Debug: entry.id:`, entry.id)
 
-    let safeFormattedDate = 'NO_DATE'  // Special identifier for null dates
+    let safeFormattedDate = 'NO_DATE' // Special identifier for null dates
     if (entry.entryDate) {
       try {
         console.log(`[LessonDiscrepanciesTable] Debug: Attempting to parse date:`, entry.entryDate)
@@ -404,32 +401,33 @@ export class LessonDiscrepanciesTable {
     const duplicateIndexInput = {
       entryId: entry.id,
       date: safeFormattedDate,
-      entryType: entry.entryType,
+      entryType: entry.entryType
     }
     console.log(`[LessonDiscrepanciesTable] Calculating duplicate index for:`, duplicateIndexInput)
     const duplicateIndex = this.calculateDuplicateIndex(duplicateIndexInput)
     console.log(`[LessonDiscrepanciesTable] Calculated duplicate index:`, duplicateIndex)
 
-    const action = entry.validationResult?.errorType === 'no_teacher_selected'
-      ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
-        handler: 'fixCapacity',
-        entryid: entry.id,
-        date: safeFormattedDate,
-        duplicateindex: duplicateIndex,
-      })
-      : entry.validationResult?.errorType === 'journal_missing_independent_work'
-        ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
-          handler: 'openEntry',
-          entryid: entry.id,
-          date: safeFormattedDate,
-          duplicateindex: duplicateIndex,
-        })
-        : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+    const action =
+      entry.validationResult?.errorType === 'no_teacher_selected'
+        ? this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
           handler: 'fixCapacity',
           entryid: entry.id,
           date: safeFormattedDate,
-          duplicateindex: duplicateIndex,
+          duplicateindex: duplicateIndex
         })
+        : entry.validationResult?.errorType === 'journal_missing_independent_work'
+          ? this.#createButton(`open-entry-${entry.id}`, 'Ava', 'blue', {
+            handler: 'openEntry',
+            entryid: entry.id,
+            date: safeFormattedDate,
+            duplicateindex: duplicateIndex
+          })
+          : this.#createButton(`fix-capacity-${entry.id}`, 'Paranda', 'amber', {
+            handler: 'fixCapacity',
+            entryid: entry.id,
+            date: safeFormattedDate,
+            duplicateindex: duplicateIndex
+          })
 
     return `<tr style="background-color:white">
       <td class="lesson-discrepancy-table-cell-center">${dateWithBadge}</td>
@@ -444,7 +442,7 @@ export class LessonDiscrepanciesTable {
    * @returns {Object} Render data with start, count, and action
    * @private
    */
-  #renderMissingEntry (discrepancy) {
+  #renderMissingEntry(discrepancy) {
     return {
       start: `<span style="font-weight:bold;">${discrepancy.lessonNumber}</span>`,
       count: `<span style="font-weight:bold;">${discrepancy.lessonCount}</span>`,
@@ -457,8 +455,8 @@ export class LessonDiscrepanciesTable {
         timetableCount: discrepancy.lessonCount,
         timeStart: discrepancy.timeStart,
         timeEnd: discrepancy.timeEnd,
-        rooms: discrepancy.rooms,
-      }),
+        rooms: discrepancy.rooms
+      })
     }
   }
 
@@ -468,7 +466,7 @@ export class LessonDiscrepanciesTable {
    * @returns {Object} Render data with start, count, and action
    * @private
    */
-  #renderSingleEntryFix (discrepancy) {
+  #renderSingleEntryFix(discrepancy) {
     const duplicateIndex = this.calculateDuplicateIndex(discrepancy)
     const duplicateInfo = this.findDuplicateMatches(discrepancy.entryId, discrepancy.date)
     const hasDuplicates = duplicateInfo.exactMatches.length > 1
@@ -479,17 +477,23 @@ export class LessonDiscrepanciesTable {
     return {
       start: this.#createSmartDisplay(discrepancy.journalStart, discrepancy.timetableStart),
       count: this.#createSmartDisplay(discrepancy.journalCount, discrepancy.timetableCount),
-      action: this.#createButton(`edit-single-${discrepancy.date}-${discrepancy.entryId}`, buttonText, 'amber', {
-        handler: 'editEntry',
-        type: 'singleEntryFix',
-        date: discrepancy.date,
-        entryid: discrepancy.entryId,
-        timetableStart: discrepancy.timetableStart,
-        timetableCount: discrepancy.timetableCount,
-        currentStart: discrepancy.journalStart,
-        currentCount: discrepancy.journalCount,
-        duplicateindex: duplicateIndex,
-      }, tooltip),
+      action: this.#createButton(
+        `edit-single-${discrepancy.date}-${discrepancy.entryId}`,
+        buttonText,
+        'amber',
+        {
+          handler: 'editEntry',
+          type: 'singleEntryFix',
+          date: discrepancy.date,
+          entryid: discrepancy.entryId,
+          timetableStart: discrepancy.timetableStart,
+          timetableCount: discrepancy.timetableCount,
+          currentStart: discrepancy.journalStart,
+          currentCount: discrepancy.journalCount,
+          duplicateindex: duplicateIndex
+        },
+        tooltip
+      )
     }
   }
 
@@ -499,44 +503,56 @@ export class LessonDiscrepanciesTable {
    * @returns {Object} Render data with start, count, and action
    * @private
    */
-  #renderMultiEntryFix (discrepancy) {
+  #renderMultiEntryFix(discrepancy) {
     // Check if there are duplicates by looking at the first entry
     const firstEntry = discrepancy.entries?.[0]
-    const firstEntryDiscrepancy = firstEntry ? {
-      ...discrepancy,
-      entryId: firstEntry.id,
-      journalStart: firstEntry.startLessonNr,
-      journalCount: firstEntry.lessons,
-    } : null
+    const firstEntryDiscrepancy = firstEntry
+      ? {
+        ...discrepancy,
+        entryId: firstEntry.id,
+        journalStart: firstEntry.startLessonNr,
+        journalCount: firstEntry.lessons
+      }
+      : null
     const duplicateInfo = firstEntryDiscrepancy
       ? this.findDuplicateMatches(firstEntryDiscrepancy.entryId, firstEntryDiscrepancy.date)
       : { exactMatches: [] }
     const hasDuplicates = duplicateInfo.exactMatches.length > 1
 
-    const buttons = (discrepancy.entries ?? []).map(entry => {
-      const entryDiscrepancy = {
-        ...discrepancy,
-        entryId: entry.id,
-        journalStart: entry.startLessonNr,
-        journalCount: entry.lessons,
-      }
-      const duplicateIndex = this.calculateDuplicateIndex(entryDiscrepancy)
-      const humanIndex = duplicateIndex + 1
-      const buttonText = hasDuplicates ? `Muuda ${entry.startLessonNr}. (${entry.lessons}t) #${humanIndex}` : `Muuda ${entry.startLessonNr}. (${entry.lessons}t)`
-      const tooltip = `Entry ID: ${entry.id}, Duplicate Index: ${duplicateIndex}`
-      return this.#createButton(`edit-entry-${discrepancy.date}-${entry.id}`, buttonText, 'amber', {
-        handler: 'editEntry',
-        type: 'multiEntryFix',
-        date: discrepancy.date,
-        entryid: entry.id,
-        duplicateindex: duplicateIndex,
-      }, tooltip)
-    }).join('')
+    const buttons = (discrepancy.entries ?? [])
+      .map(entry => {
+        const entryDiscrepancy = {
+          ...discrepancy,
+          entryId: entry.id,
+          journalStart: entry.startLessonNr,
+          journalCount: entry.lessons
+        }
+        const duplicateIndex = this.calculateDuplicateIndex(entryDiscrepancy)
+        const humanIndex = duplicateIndex + 1
+        const buttonText = hasDuplicates
+          ? `Muuda ${entry.startLessonNr}. (${entry.lessons}t) #${humanIndex}`
+          : `Muuda ${entry.startLessonNr}. (${entry.lessons}t)`
+        const tooltip = `Entry ID: ${entry.id}, Duplicate Index: ${duplicateIndex}`
+        return this.#createButton(
+          `edit-entry-${discrepancy.date}-${entry.id}`,
+          buttonText,
+          'amber',
+          {
+            handler: 'editEntry',
+            type: 'multiEntryFix',
+            date: discrepancy.date,
+            entryid: entry.id,
+            duplicateindex: duplicateIndex
+          },
+          tooltip
+        )
+      })
+      .join('')
 
     return {
       start: this.#createSmartDisplay(discrepancy.journalStart, discrepancy.timetableStart),
       count: this.#createSmartDisplay(discrepancy.journalCount, discrepancy.timetableCount),
-      action: `<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:4px;">${buttons}</div>`,
+      action: `<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:4px;">${buttons}</div>`
     }
   }
 
@@ -545,11 +561,11 @@ export class LessonDiscrepanciesTable {
    * @returns {HTMLElement} The insertion point element
    * @private
    */
-  #findInsertionPoint () {
+  #findInsertionPoint() {
     const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-    return selectors
-      .map(selector => document.querySelector(selector))
-      .find(element => element && element.getBoundingClientRect().width > 100) || document.body
+    return (
+      selectors.map(selector => document.querySelector(selector)).find(element => element && element.getBoundingClientRect().width > 100) || document.body
+    )
   }
 
   /**
@@ -562,7 +578,7 @@ export class LessonDiscrepanciesTable {
    * @returns {string} HTML string for the button
    * @private
    */
-  #createButton (id, text, colorKey, data = {}, tooltip = '') {
+  #createButton(id, text, colorKey, data = {}, tooltip = '') {
     const dataAttributes = Object.entries(data)
       .map(([key, value]) => `data-${key}='${JSON.stringify(value)}'`)
       .join(' ')
@@ -594,9 +610,7 @@ export class LessonDiscrepanciesTable {
   #createSmartDisplay = (currentValue, correctValue) => {
     const current = Number(currentValue)
     const correct = Number(correctValue)
-    return current === correct
-      ? `<span style="font-size:14px;font-weight:bold;">${current}</span>`
-      : this.#createDiffPill(current, correct)
+    return current === correct ? `<span style="font-size:14px;font-weight:bold;">${current}</span>` : this.#createDiffPill(current, correct)
   }
 
   /**
@@ -625,6 +639,4 @@ export class LessonDiscrepanciesTable {
     const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
     return `<div style="${style}">${currentPill}${correctPill}</div>`
   }
-
-
 }

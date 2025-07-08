@@ -12,7 +12,7 @@ const domService = {
    * @param {number} interval - Check interval in ms (default: 100)
    * @returns {Promise<Element>} The found element
    */
-  waitForElement (selector, timeout = 10000, interval = 100) {
+  waitForElement(selector, timeout = 10000, interval = 100) {
     return new Promise((resolve, reject) => {
       const element = document.querySelector(selector)
       if (element) {
@@ -40,7 +40,7 @@ const domService = {
    * @param {number} timeout - Maximum time to wait in ms (default: 20000)
    * @returns {Object} Observer control object with disconnect method
    */
-  observeForElements (selectors, callback, timeout = 20000) {
+  observeForElements(selectors, callback, timeout = 20000) {
     // Convert single selector to array
     const selectorArray = Array.isArray(selectors) ? selectors : [selectors]
 
@@ -114,7 +114,7 @@ const domService = {
    * @param {string} position - InsertPosition (beforebegin, afterbegin, beforeend, afterend)
    * @returns {Element} The created element
    */
-  createAndInsertElement (tag, attributes = {}, content = '', parent, position = 'beforeend') {
+  createAndInsertElement(tag, attributes = {}, content = '', parent, position = 'beforeend') {
     const element = document.createElement(tag)
 
     // Set attributes
@@ -157,7 +157,7 @@ const domService = {
    * @param {string} css - CSS rules to add
    * @returns {HTMLStyleElement} The created style element
    */
-  addStyles (css) {
+  addStyles(css) {
     const style = document.createElement('style')
     style.textContent = css
     document.head.appendChild(style)

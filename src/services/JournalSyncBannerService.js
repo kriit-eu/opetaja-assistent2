@@ -11,14 +11,14 @@ import { bannerService } from './BannerService.js'
 import Logger from './Logger.js'
 
 export class JournalSyncBannerService {
-  constructor () {
+  constructor() {
     this.stylesLoaded = false
   }
 
   /**
      * Load CSS styles specific to sync banners (lazy loading)
      */
-  loadSyncStyles () {
+  loadSyncStyles() {
     if (this.stylesLoaded || typeof document === 'undefined') {
       return
     }
@@ -33,7 +33,7 @@ export class JournalSyncBannerService {
    * Asynchronously load CSS from external file
    * @private
    */
-  async _loadCSSAsync () {
+  async _loadCSSAsync() {
     try {
       // Load CSS from external file
       const cssUrl = chrome.runtime.getURL('styles/JournalSyncBannerService.css')
@@ -55,7 +55,7 @@ export class JournalSyncBannerService {
      * Show a banner when the Kriit API key is missing
      * @param {Function} onOpenSettings - Callback for opening settings
      */
-  showMissingApiKeyBanner (onOpenSettings = null) {
+  showMissingApiKeyBanner(onOpenSettings = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
     if (!container) return
@@ -95,7 +95,7 @@ export class JournalSyncBannerService {
      * @param {Function} onRefresh - Callback for refresh button
      * @param {Function} onClose - Callback for close button
      */
-  showAllInSyncBanner (onRefresh = null, onClose = null) {
+  showAllInSyncBanner(onRefresh = null, onClose = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
@@ -152,7 +152,7 @@ export class JournalSyncBannerService {
      * @param {Function} onRefresh - Callback for refresh button
      * @param {Function} renderDifferences - Function to render the differences content
      */
-  showDifferencesBanner (totalDifferences, onSync = null, onRefresh = null, renderDifferences = null) {
+  showDifferencesBanner(totalDifferences, onSync = null, onRefresh = null, renderDifferences = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
@@ -207,7 +207,7 @@ export class JournalSyncBannerService {
      * @param {Function} options.onSettings - Callback for settings button
      * @param {Function} options.onRefresh - Callback for refresh button
      */
-  showSyncErrorBanner (error, options = {}) {
+  showSyncErrorBanner(error, options = {}) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
@@ -262,7 +262,7 @@ export class JournalSyncBannerService {
      * Add sync-specific error actions and help text
      * @private
      */
-  _addSyncErrorActions (banner, error, options) {
+  _addSyncErrorActions(banner, error, options) {
     if (error && error.includes('403')) {
       if (error.includes('Permission denied') || error.includes('rights to modify')) {
         // Permission error for journal modification
@@ -405,7 +405,7 @@ export class JournalSyncBannerService {
      * @param {Element} parent - Parent element to append the container to
      * @returns {Element} The created differences container
      */
-  createDifferencesContainer (parent) {
+  createDifferencesContainer(parent) {
     return domService.createAndInsertElement('div', {
       classList: ['ta-sync-differences-container'],
     }, '', parent)
@@ -417,7 +417,7 @@ export class JournalSyncBannerService {
      * @param {string} categoryName - Name of the category
      * @returns {Element} The created category section
      */
-  createCategorySection (parent, categoryName) {
+  createCategorySection(parent, categoryName) {
     const categorySection = domService.createAndInsertElement('div', {
       classList: ['ta-sync-category'],
     }, '', parent)
@@ -434,7 +434,7 @@ export class JournalSyncBannerService {
      * @param {Element} parent - Parent element to append the message to
      * @param {string} message - Custom message to display
      */
-  createNoDifferencesMessage (parent, message = 'No differences found') {
+  createNoDifferencesMessage(parent, message = 'No differences found') {
     domService.createAndInsertElement('div', {
       classList: ['ta-sync-no-differences'],
     }, message, parent)
@@ -449,7 +449,7 @@ export class JournalSyncBannerService {
      * @param {string} newLabel - Label for the new value (optional)
      * @returns {Element} The created comparison display element
      */
-  createComparisonDisplay (parent, oldValue, newValue, oldLabel = '', newLabel = '') {
+  createComparisonDisplay(parent, oldValue, newValue, oldLabel = '', newLabel = '') {
     const comparisonDisplay = domService.createAndInsertElement('span', {
       classList: ['ta-sync-grade-difference'],
     }, '', parent)
@@ -474,7 +474,7 @@ export class JournalSyncBannerService {
   /**
      * Clean up sync-specific resources
      */
-  destroy () {
+  destroy() {
     styleService.removeCSS('journal-sync-banner-styles')
   }
 }

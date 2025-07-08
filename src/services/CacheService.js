@@ -29,7 +29,7 @@ const cacheService = {
    * @param {boolean} useMemoryCache - Whether to use memory cache (default: true)
    * @returns {Promise<any>} The data
    */
-  async getOrFetch (key, fetchFn, expiration = CACHE_EXPIRATION.MEDIUM, useMemoryCache = true) {
+  async getOrFetch(key, fetchFn, expiration = CACHE_EXPIRATION.MEDIUM, useMemoryCache = true) {
     const cacheKey = `${CACHE_PREFIX}${key}`
 
     // Try memory cache first (for current page session)
@@ -129,7 +129,7 @@ const cacheService = {
    * Clear all API request caches
    * @returns {Promise<number>} Number of cache entries cleared
    */
-  async clearCache () {
+  async clearCache() {
     // Clear memory cache
     const memoryKeysCount = Object.keys(memoryCache).length
     Object.keys(memoryCache).forEach(key => {
@@ -162,7 +162,7 @@ const cacheService = {
    * @param {number} journalId - Optional journal ID to clear cache for specific journal
    * @returns {Promise<number>} Number of cache entries cleared
    */
-  async clearJournalCache (journalId = null) {
+  async clearJournalCache(journalId = null) {
     // Clear memory cache
     const memoryKeysToRemove = []
     for (const key in memoryCache) {
@@ -199,7 +199,7 @@ const cacheService = {
    * @param {number} journalId - Optional journal ID to filter by
    * @returns {boolean} True if the cache key is journal-related
    */
-  isJournalRelatedCache (key, journalId = null) {
+  isJournalRelatedCache(key, journalId = null) {
     // Remove cache prefix for checking
     const cleanKey = key.replace(CACHE_PREFIX, '')
 
@@ -248,7 +248,7 @@ const cacheService = {
    * Get cache statistics
    * @returns {Promise<Object>} Cache statistics
    */
-  async getStats () {
+  async getStats() {
     // Get memory cache stats
     const memoryStats = {
       count: Object.keys(memoryCache).length,

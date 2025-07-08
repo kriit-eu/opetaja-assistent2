@@ -56,7 +56,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {string} comparisonDate - The comparison date in YYYY-MM-DD format
  * @returns {Promise<Array>} Array of future lesson subjects
  */
-async function handleGetFutureSubjects (comparisonDate) {
+async function handleGetFutureSubjects(comparisonDate) {
   try {
     // Import the API service
     const { api } = await import('./core/BaseFeature.js')

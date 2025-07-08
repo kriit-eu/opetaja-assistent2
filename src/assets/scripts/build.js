@@ -47,7 +47,7 @@ const CONFIG = {
 }
 
 // Main build function
-async function build () {
+async function build() {
   console.log(`🚀 Starting ${CONFIG.isProd ? 'PRODUCTION' : 'DEVELOPMENT'} build process...`)
 
   try {
@@ -71,7 +71,7 @@ async function build () {
 }
 
 // Clean dist directory
-async function cleanDist () {
+async function cleanDist() {
   console.log('🧹 Cleaning dist directory...')
 
   if (fs.existsSync(CONFIG.distDir)) {
@@ -82,7 +82,7 @@ async function cleanDist () {
 }
 
 // Bundle JavaScript files using Bun
-async function bundleJavaScript () {
+async function bundleJavaScript() {
   console.log('📦 Bundling JavaScript files...')
 
   const files = CONFIG.bundleFiles.map(file => path.join(CONFIG.srcDir, file))
@@ -115,7 +115,7 @@ async function bundleJavaScript () {
 }
 
 // Convert SVG icons to PNG
-async function convertIcons () {
+async function convertIcons() {
   console.log('🖼️  Converting SVG icons to PNG...')
 
   try {
@@ -140,7 +140,7 @@ async function convertIcons () {
 }
 
 // Copy static assets to dist
-async function copyStaticAssets () {
+async function copyStaticAssets() {
   console.log('📋 Copying static assets...')
 
   // Copy manifest.json

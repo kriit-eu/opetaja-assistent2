@@ -19,7 +19,7 @@ import { bannerService } from '../../services/BannerService.js'
 import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
 
 class JournalListSyncFeature extends BaseFeature {
-  constructor () {
+  constructor() {
     // Define selectors for journal links - using the most reliable selector first
     const journalLinkSelectors = [
       // Primary selector that works reliably
@@ -54,7 +54,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Called when the feature is activated
    * @param {NodeList} elements - The found elements (journal links)
    */
-  onActivate (elements) {
+  onActivate(elements) {
     // Log a specific message for this feature's activation
     Logger.feature(this.name, 'Journal List Sync feature initialized')
 
@@ -89,7 +89,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Called when the feature is deactivated
    */
-  onDeactivate () {
+  onDeactivate() {
     // Call parent method to clean up observers
     super.onDeactivate()
 
@@ -105,7 +105,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Reset journal links cache
    * This ensures we don't reuse links from a previous page
    */
-  resetJournalLinks () {
+  resetJournalLinks() {
     Logger.debug('Resetting journal links cache')
     this.journalLinks = null
   }
@@ -115,7 +115,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {NodeList} elements - The found elements
    * @param {string} selector - The selector that matched
    */
-  onRequiredElementsFound (elements, selector) {
+  onRequiredElementsFound(elements, selector) {
     Logger.debug(`Found ${elements.length} journal links with selector: ${selector}`)
     this.journalLinks = elements
 
@@ -131,7 +131,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Called when required elements (journal links) are not found
    * @param {Error} error - The error that occurred
    */
-  onRequiredElementsNotFound (error) {
+  onRequiredElementsNotFound(error) {
     Logger.warning(`Could not find journal links: ${error.message}`)
     this.isLoading = false
     this.error = 'No journal links found on the page. Please make sure you are on the journal list page.'
@@ -141,7 +141,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Fetch journal data from Tahvel and check for differences with Kriit
    */
-  async fetchJournalData () {
+  async fetchJournalData() {
     try {
       this.isLoading = true
       this.updateUI()
@@ -204,7 +204,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Collect journal data from Tahvel
    * @returns {Promise<Array>} Array of journal data objects
    */
-  async collectJournalData () {
+  async collectJournalData() {
     try {
       Logger.debug('Collecting journal data from Tahvel')
       Logger.debug('Using Tahvel API base URL:', this.api.tahvel.baseUrl)
@@ -422,7 +422,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Array} journalStudents - Journal students
    * @returns {Promise<Object>} Student details map
    */
-  async processStudentData (journalId, journalStudents) {
+  async processStudentData(journalId, journalStudents) {
     const studentDetailsMap = {}
 
     // Process each journal student to get their personal code
@@ -481,7 +481,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async () => {
+        const fetchStudentDetails = async() => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -508,7 +508,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async () => {
+        const fetchPromise = (async() => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -568,7 +568,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Update the UI based on current state
    */
-  updateUI () {
+  updateUI() {
     // Don't remove banner if we're currently syncing (loading state)
     if (!this.isLoading) {
       bannerService.removeBanner()
@@ -604,7 +604,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} current - Current progress
    * @param {number} total - Total items
    */
-  updateProgressUI (current, total) {
+  updateProgressUI(current, total) {
     bannerService.updateProgressUI(current, total, 'Sünkroniseerin hindeid Kriidist Tahvlisse...')
   }
 
@@ -612,7 +612,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Show success banner
    * @param {string} message - Success message
    */
-  showSuccessBanner (message) {
+  showSuccessBanner(message) {
     bannerService.showSuccessBanner(message, {
       onRefresh: () => this.fetchJournalData(),
       onClose: () => bannerService.removeBanner()
@@ -629,7 +629,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Show error banner
    */
-  showErrorBanner () {
+  showErrorBanner() {
     const options = {
       onRetry: () => this.fetchJournalData(),
       onClearCache: () => {
@@ -651,14 +651,14 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Show a banner when the Kriit API key is missing
    */
-  showMissingApiKeyBanner () {
+  showMissingApiKeyBanner() {
     journalSyncBannerService.showMissingApiKeyBanner()
   }
 
   /**
    * Show green banner when all grades are in sync
    */
-  showAllInSyncBanner () {
+  showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
       () => this.fetchJournalData(),
       () => bannerService.removeBanner()
@@ -668,7 +668,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Show differences banner
    */
-  showDifferencesBanner () {
+  showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
@@ -682,7 +682,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Remove sync banner from the DOM (used by message listener through context)
    */
   // noinspection JSUnusedGlobalSymbols
-  removeSyncBanner () {
+  removeSyncBanner() {
     bannerService.removeBanner()
   }
 
@@ -690,7 +690,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Set Kriit API token and save to chrome.storage
    * @param {string} token - API token
    */
-  setKriitApiToken (token) {
+  setKriitApiToken(token) {
     if (!token) {
       Logger.error('Invalid token provided')
       return
@@ -712,7 +712,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Reset Kriit API token and prompt for a new one
    */
-  resetKriitApiToken () {
+  resetKriitApiToken() {
     // Remove current token
     chrome.storage.sync.remove(['OA_kriitApiToken'], () => {
       // Prompt user for a new token
@@ -734,7 +734,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Clear all cache data
    * @returns {Promise<Object>} Number of cache entries cleared
    */
-  async clearCache () {
+  async clearCache() {
     // Clear the teacher runtime cache
     const teacherRuntimeCacheSize = Object.keys(this.globalTeacherCache).length
 
@@ -774,7 +774,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Proceed with the actual Kriit API call
    * @param {Array} [providedJournalData] - Optional journal data to use instead of collecting fresh data
    */
-  async proceedWithKriitApiCall (providedJournalData = null) {
+  async proceedWithKriitApiCall(providedJournalData = null) {
     try {
       this.isLoading = true
       this.updateUI()
@@ -902,7 +902,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Count total number of differences
    * @returns {number} Total number of differences
    */
-  countTotalDifferences () {
+  countTotalDifferences() {
     let count = 0
 
     if (!this.differences || !Array.isArray(this.differences)) return 0
@@ -933,7 +933,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Render differences in the banner
    * @param {Element} container - Container element to render differences in
    */
-  renderDifferences (container) {
+  renderDifferences(container) {
     if (!this.differences || !container) return
 
     const differencesContainer = journalSyncBannerService.createDifferencesContainer(container)
@@ -1027,7 +1027,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Object} assignment Assignment data
    * @param {Element} container Container element
    */
-  renderAssignment (assignment, container) {
+  renderAssignment(assignment, container) {
     // Filter results to only show students with differences
     const resultsWithDifferences = Array.isArray(assignment.results)
       ? assignment.results.filter(result => {
@@ -1100,7 +1100,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<Object>} Journal info
    */
-  async getJournalInfo (journalId) {
+  async getJournalInfo(journalId) {
     // Use the built-in API service caching with a long expiration
     return this.api.tahvel.get(`/journals/${journalId}`, {}, {
       cacheExpiration: 30 * 24 * 60 * 60 * 1000, // 30 days
@@ -1112,7 +1112,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<Array>} Journal entries
    */
-  async getJournalEntries (journalId) {
+  async getJournalEntries(journalId) {
     try {
       Logger.debug(`Fetching journal entries for ${journalId} from API (NO CACHE)`)
       const response = await this.api.tahvel.get(
@@ -1145,7 +1145,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<Array>} Journal entries with grades
    */
-  async getJournalEntriesWithGrades (journalId) {
+  async getJournalEntriesWithGrades(journalId) {
     try {
       Logger.debug(`Fetching journal entries with grades for ${journalId} from API (NO CACHE)`)
       const response = await this.api.tahvel.get(
@@ -1175,7 +1175,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<Array>} Journal students
    */
-  async getJournalStudents (journalId) {
+  async getJournalStudents(journalId) {
     try {
       Logger.debug(`Fetching journal students for ${journalId}`)
       // Use a shorter cache time (1 hour) to ensure data is relatively fresh
@@ -1218,7 +1218,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<Object>} Detailed student information
    */
-  async getDetailedStudentInfo (personalCode, journalId) {
+  async getDetailedStudentInfo(personalCode, journalId) {
     try {
       Logger.debug(`Getting detailed info for student with personal code ${personalCode} in journal ${journalId}`)
 
@@ -1359,7 +1359,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} groupId - Student group ID
    * @returns {Promise<Array>} Student group data
    */
-  async getStudentGroupData (groupId) {
+  async getStudentGroupData(groupId) {
     if (!groupId) {
       Logger.error('Cannot fetch student group data: groupId is undefined or null')
       return null
@@ -1388,7 +1388,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} studentId - Student ID
    * @returns {Promise<Object>} Student details
    */
-  async getStudentDetails (studentId) {
+  async getStudentDetails(studentId) {
     // Use the built-in API service caching with a very long expiration
     return this.api.tahvel.get(`/students/${studentId}`, {}, {
       cacheExpiration: 24 * 60 * 60 * 1000
@@ -1401,7 +1401,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Object} studentDetailsMap - Map of student IDs to their details including personal codes
    * @returns {Object} Student map
    */
-  createStudentMap (journalStudents, studentDetailsMap = {}) {
+  createStudentMap(journalStudents, studentDetailsMap = {}) {
     const studentMap = {
       idToPersonalCode: {},
       personalCodeToName: {},
@@ -1451,7 +1451,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Array} journalEntriesWithGrades - Journal entries with grades from journalEntriesByDate endpoint (optional)
    * @returns {Array} Assignments
    */
-  extractAssignmentsFromEntries (journalEntries, studentMap, journalStudents = [], studentDetailsMap = {}, journalEntriesWithGrades = []) {
+  extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents = [], studentDetailsMap = {}, journalEntriesWithGrades = []) {
     const assignments = []
 
     if (!journalEntries || !Array.isArray(journalEntries)) {
@@ -1596,7 +1596,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Array} students - Journal entry students
    * @returns {string} addInfo value
    */
-  getAddInfoFromExistingStudents (students) {
+  getAddInfoFromExistingStudents(students) {
     if (!students || !Array.isArray(students) || students.length === 0) {
       return null
     }
@@ -1632,7 +1632,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Object} entry - Journal entry
    * @returns {string} Assignment name
    */
-  getAssignmentNameFromEntry (entry) {
+  getAssignmentNameFromEntry(entry) {
     if (entry.nameEt) return entry.nameEt
 
     if (entry.content) {
@@ -1658,7 +1658,7 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Sync data with Kriit
    */
-  async syncWithKriit () {
+  async syncWithKriit() {
     Logger.feature(this.name, 'Syncing with Kriit...')
 
     // Prevent multiple sync operations from running simultaneously
@@ -2156,7 +2156,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {string|number} grade - Grade to set (numeric 1-5, MA, or A)
    * @returns {Promise<Object>} Response data
    */
-  async syncGradeToTahvel (journalId, assignmentId, studentPersonalCode, grade) {
+  async syncGradeToTahvel(journalId, assignmentId, studentPersonalCode, grade) {
     try {
       Logger.info('=== STARTING GRADE SYNC ===')
       Logger.info(`Syncing grade for student ${studentPersonalCode} in assignment ${assignmentId}`)
@@ -2847,7 +2847,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {string|number} journalStudentId - Journal student ID to look up
    * @returns {Promise<Object|null>} Cached student data or null if not found
    */
-  async getCachedStudent (journalStudentId) {
+  async getCachedStudent(journalStudentId) {
     if (!journalStudentId) return null
 
     Logger.debug(`🔍 Looking for student in cache with journalStudentId: ${journalStudentId}`)
@@ -2887,7 +2887,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Get all students from cache by iterating through possible keys
    * @returns {Promise<Object>} Object with studentId as key and student data as value
    */
-  async getAllStudentsFromCache () {
+  async getAllStudentsFromCache() {
     // Since we use the API cache directly, we can return the mapping
     return this.journalStudentIdToStudentId
   }
@@ -2896,7 +2896,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Clear all student cache entries
    * @returns {Promise<number>} Number of entries cleared
    */
-  async clearStudentCache () {
+  async clearStudentCache() {
     // Clear the mapping
     const count = Object.keys(this.journalStudentIdToStudentId).length
     this.journalStudentIdToStudentId = {}
@@ -2923,7 +2923,7 @@ const pendingTeacherRequests = new Map()
  * @param {number} expiration - Cache expiration time in milliseconds
  * @returns {Promise<any>} The fetched data
  */
-async function fetchCachedData (api, endpoint, expiration = ONE_DAY_MS) {
+async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   // Create a cache key from the endpoint
   const cacheKey = `${encodeURIComponent(endpoint.replace(/^\//, ''))}`
 
@@ -2931,7 +2931,7 @@ async function fetchCachedData (api, endpoint, expiration = ONE_DAY_MS) {
   try {
     return await cacheService.getOrFetch(
       cacheKey,
-      async () => {
+      async() => {
         try {
           return await api.tahvel.get(endpoint)
         } catch (error) {
@@ -2953,7 +2953,7 @@ async function fetchCachedData (api, endpoint, expiration = ONE_DAY_MS) {
  * @param {Object} teacher - Teacher object with id, nameEt, fullname
  * @returns {Promise<Object>} Teacher data with personalCode, name, id
  */
-async function getTeacherPersonalCodeCached (api, teacher) {
+async function getTeacherPersonalCodeCached(api, teacher) {
   const teacherId = teacher.id
   const teacherName = teacher.nameEt || teacher.fullname || ''
 
@@ -2979,7 +2979,7 @@ async function getTeacherPersonalCodeCached (api, teacher) {
   }
 
   // Create the fetch promise
-  const fetchPromise = (async () => {
+  const fetchPromise = (async() => {
     try {
       Logger.debug(`Fetching teacher personal code for ${teacherName} (ID: ${teacherId}) with endpoint: ${endpoint}`)
 
@@ -3053,7 +3053,7 @@ async function getTeacherPersonalCodeCached (api, teacher) {
  * @param {Array<string|number>} journalIds - List of journal IDs to process
  * @returns {Promise<Array>} Array of subjects with assignments and grades
  */
-export async function getTahvelSubjectsWithAssignmentsAndGrades (journalIds = []) {
+export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = []) {
   try {
 
     // Ensure we have journal IDs to process

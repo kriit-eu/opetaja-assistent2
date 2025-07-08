@@ -10,20 +10,20 @@ const navigationService = {
   listeners: [],
 
   // Initialize the service
-  init () {
+  init() {
     this.currentUrl = window.location.href
     this.setupUrlObserver()
   },
 
   // Register a callback to be notified of navigation events
-  onNavigate (callback) {
+  onNavigate(callback) {
     if (typeof callback === 'function') {
       this.listeners.push(callback)
     }
   },
 
   // Set up an observer to detect URL changes in the SPA
-  setupUrlObserver () {
+  setupUrlObserver() {
     // Create a MutationObserver to watch for URL changes
     const observer = new MutationObserver(() => {
       // Check if URL has changed
@@ -44,7 +44,7 @@ const navigationService = {
   },
 
   // Notify all listeners of a navigation event
-  notifyListeners (newUrl, previousUrl) {
+  notifyListeners(newUrl, previousUrl) {
     this.listeners.forEach(callback => {
       try {
         callback(newUrl, previousUrl)

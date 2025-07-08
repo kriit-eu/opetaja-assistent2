@@ -12,7 +12,7 @@ const tahvelExtension = {
   activeFeatures: [],
 
   // Initialize the extension
-  async init () {
+  async init() {
     Logger.success('Initializing Õpetaja Assistent 2...')
 
     // Add visual indicator to show the extension is active
@@ -43,7 +43,7 @@ const tahvelExtension = {
   },
 
   // Add visual indicator to show the extension is active
-  addVisualIndicator () {
+  addVisualIndicator() {
     // Keep track of whether we've added the indicator
     this.indicatorAdded = false
 
@@ -146,7 +146,7 @@ const tahvelExtension = {
   },
 
   // Handle navigation events
-  handleNavigation (url) {
+  handleNavigation(url) {
     Logger.debug(`Navigation detected: ${url}`)
 
     // Activate relevant features for current page

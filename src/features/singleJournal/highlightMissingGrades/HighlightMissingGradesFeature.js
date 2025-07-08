@@ -1,18 +1,18 @@
 // HighlightMissingGradesFeature.js
 // Highlights cells in independent work columns in red if due date has passed and no grade is assigned
 
-import { BaseFeature } from "../../../core/BaseFeature.js"
+import { BaseFeature } from '../../../core/BaseFeature.js'
 
 class HighlightMissingGradesFeature extends BaseFeature {
-  constructor () {
-    super("highlightMissingGrades", /#\/journal\//)
-    console.debug("[HighlightMissingGradesFeature] constructor called")
+  constructor() {
+    super('highlightMissingGrades', /#\/journal\//)
+    console.debug('[HighlightMissingGradesFeature] constructor called')
   }
 
-  injectMissingGradeCSS () {
-    if (!document.getElementById("highlight-missing-grade-style")) {
-      const style = document.createElement("style")
-      style.id = "highlight-missing-grade-style"
+  injectMissingGradeCSS() {
+    if (!document.getElementById('highlight-missing-grade-style')) {
+      const style = document.createElement('style')
+      style.id = 'highlight-missing-grade-style'
       style.textContent = `
                 .highlight-missing-grade {
                     background: #ffdddd !important;
@@ -25,39 +25,38 @@ class HighlightMissingGradesFeature extends BaseFeature {
     }
   }
 
-  onActivate () {
-    console.debug("[HighlightMissingGradesFeature] onActivate called")
+  onActivate() {
+    console.debug('[HighlightMissingGradesFeature] onActivate called')
     setTimeout(() => {
-      (async () => {
+      (async() => {
         await this.run()
       })()
-    }, 1000) // Delay to ensure DOM is ready
-    // Observe DOM changes to re-run highlighting if new columns/cells are added
+    }, 1000)
     if (!this._observer) {
       this._observer = new MutationObserver(() => this.run())
       this._observer.observe(document.body, { childList: true, subtree: true })
     }
   }
 
-  onDeactivate () {
-    console.debug("[HighlightMissingGradesFeature] onDeactivate called")
+  onDeactivate() {
+    console.debug('[HighlightMissingGradesFeature] onDeactivate called')
     if (this._observer) {
       this._observer.disconnect()
       this._observer = null
     }
   }
 
-  async run () {
+  async run() {
     this.injectMissingGradeCSS()
-    const layoutPadding = document.querySelector(".layout-padding")
+    const layoutPadding = document.querySelector('.layout-padding')
     if (!layoutPadding) {
       return
     }
-    const table = layoutPadding.querySelector("table.journalTable")
+    const table = layoutPadding.querySelector('table.journalTable')
     if (!table) {
       return
     }
-    const headerCells = Array.from(table.querySelectorAll("thead th"))
+    const headerCells = Array.from(table.querySelectorAll('thead th'))
     const nowDate = new Date()
 
     // Try to extract journalId from URL
@@ -86,9 +85,9 @@ class HighlightMissingGradesFeature extends BaseFeature {
     const entryColumns = headerCells.slice(2)
     const iseseisevColumns = []
     // Prepare to fetch extra details for each SISSEKANNE_I entry
-    const entryDetailPromises = entryColumns.map(async (th, i) => {
+    const entryDetailPromises = entryColumns.map(async(th, i) => {
       const entry = journalEntries[i]
-      if (entry && entry.entryType === "SISSEKANNE_I") {
+      if (entry && entry.entryType === 'SISSEKANNE_I') {
         let entryDetail = entry
         // Fetch full entry details to get homeworkDuedate if not present
         if (!entry.homeworkDuedate) {
@@ -111,35 +110,24 @@ class HighlightMissingGradesFeature extends BaseFeature {
     })
     await Promise.all(entryDetailPromises)
     if (iseseisevColumns.length > 0) {
-      const rows = Array.from(table.querySelectorAll("tbody tr"))
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
       rows.forEach((row, _rowIdx) => {
         iseseisevColumns.forEach(({ idx, entry }) => {
           const cells = Array.from(row.children)
           const cell = cells[idx]
           if (!cell) return
           // Try to get studentId from row or cell (may need to adjust selector)
-          const studentId =
-            cell.getAttribute("data-student-id") ||
-            row.getAttribute("data-student-id")
-          let grade = ""
-          let absence = ""
-          if (
-            studentId &&
-            entry.journalStudentResults &&
-            entry.journalStudentResults[studentId]
-          ) {
+          const studentId = cell.getAttribute('data-student-id') || row.getAttribute('data-student-id')
+          let grade = ''
+          let absence = ''
+          if (studentId && entry.journalStudentResults && entry.journalStudentResults[studentId]) {
             // Array of results for this student
             const results = entry.journalStudentResults[studentId]
             if (Array.isArray(results) && results.length > 0) {
               const g = results[0].grade
-              if (
-                g === null ||
-                g === undefined ||
-                g === "" ||
-                (typeof g === "object" && (!g.code || g.code === ""))
-              ) {
-                grade = ""
-              } else if (typeof g === "object" && g.code) {
+              if (g === null || g === undefined || g === '' || (typeof g === 'object' && (!g.code || g.code === ''))) {
+                grade = ''
+              } else if (typeof g === 'object' && g.code) {
                 grade = g.code
               } else {
                 grade = g
@@ -148,37 +136,28 @@ class HighlightMissingGradesFeature extends BaseFeature {
               if (!grade && results[0].verbalGrade) {
                 grade = results[0].verbalGrade
               }
-              absence = results[0].absence || ""
+              absence = results[0].absence || ''
             }
           } else {
-            grade = cell.getAttribute("data-grade") || cell.textContent.trim()
-            absence =
-              cell.getAttribute("data-absence") || cell.textContent.trim()
+            grade = cell.getAttribute('data-grade') || cell.textContent.trim()
+            absence = cell.getAttribute('data-absence') || cell.textContent.trim()
           }
           // Highlight if grade is missing (null, empty, H, P) and absence is empty or PUUDUMINE_H/PUUDUMINE_P/H/P
           if (
-            (!grade || grade === "H" || grade === "P") &&
-            (absence === "" ||
-              absence === "PUUDUMINE_H" ||
-              absence === "PUUDUMINE_P" ||
-              absence === "H" ||
-              absence === "P")
+            (!grade || grade === 'H' || grade === 'P') &&
+            (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
           ) {
-            cell.classList.add("highlight-missing-grade")
+            cell.classList.add('highlight-missing-grade')
             // Set tooltip with due date in required format
             const dueDateStr = entry.homeworkDuedate || entry.entryDate
-            let tooltipDate = ""
+            let tooltipDate = ''
             if (dueDateStr) {
               const d = new Date(dueDateStr)
-              tooltipDate = `${String(d.getDate()).padStart(2, "0")}.${String(
-                d.getMonth() + 1
-              ).padStart(2, "0")}.${d.getFullYear()}`
+              tooltipDate = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
             }
-            cell.title = tooltipDate
-              ? `Tähtaeg oli ${tooltipDate}, aga hinne puudub`
-              : "Hinne puudub"
+            cell.title = tooltipDate ? `Tähtaeg oli ${tooltipDate}, aga hinne puudub` : 'Hinne puudub'
           } else {
-            cell.classList.remove("highlight-missing-grade")
+            cell.classList.remove('highlight-missing-grade')
           }
         })
       })
@@ -191,24 +170,27 @@ class HighlightMissingGradesFeature extends BaseFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<string|null>} - Message to display or null
    */
-  static async check (api, journalId) {
-    // Only activate if the last-lesson-banner exists and matches the required message
-    const banner = document.getElementById("last-lesson-banner")
-    if (!banner) return null
-    const bannerText = banner.textContent || ""
-    const match = bannerText.match(
-      /NB! Viimane tund toimus (\d{2}\.\d{2}\.\d{4})/
-    )
+  static async check(api, journalId) {
+    // Wait for the inline notification to appear (up to 2s)
+    let notif = null
+    let waited = 0
+    const maxWait = 2000
+    const interval = 100
+    while (waited < maxWait) {
+      notif = document.getElementById('last-lesson-inline-notification')
+      if (notif) break
+      await new Promise(r => setTimeout(r, interval))
+      waited += interval
+    }
+    if (!notif) return null
+    const notifText = notif.textContent || ''
+    const match = notifText.match(/Viimane tund toim(?:us|ub) (\d{2}\.\d{2}\.\d{4})/)
     if (!match) return null
 
     // Fetch journalEntries from API (cache for performance)
     let journalEntries = []
     try {
-      journalEntries = await api.tahvel.get(
-        `/journals/${journalId}/journalEntriesByDate`,
-        { allStudents: true },
-        { cache: true, cacheExpiration: 6e4 }
-      )
+      journalEntries = await api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true, cacheExpiration: 6e4 })
     } catch (e) {
       return null
     }
@@ -220,38 +202,27 @@ class HighlightMissingGradesFeature extends BaseFeature {
     const nowDate = new Date()
     let hasMissing = false
     for (const entry of journalEntries) {
-      if (entry.entryType === "SISSEKANNE_I") {
+      if (entry.entryType === 'SISSEKANNE_I') {
         const dueDateStr = entry.homeworkDuedate || entry.entryDate
         const dueDate = dueDateStr ? new Date(dueDateStr) : null
         if (dueDate && dueDate < nowDate) {
-          // Check for missing grades for any student
           if (entry.journalStudentResults) {
             for (const studentId in entry.journalStudentResults) {
               const results = entry.journalStudentResults[studentId]
               if (Array.isArray(results) && results.length > 0) {
                 let grade = results[0].grade
-                if (
-                  grade === null ||
-                  grade === undefined ||
-                  grade === "" ||
-                  (typeof grade === "object" &&
-                    (!grade.code || grade.code === ""))
-                ) {
-                  grade = ""
-                } else if (typeof grade === "object" && grade.code) {
+                if (grade === null || grade === undefined || grade === '' || (typeof grade === 'object' && (!grade.code || grade.code === ''))) {
+                  grade = ''
+                } else if (typeof grade === 'object' && grade.code) {
                   grade = grade.code
                 }
                 if (!grade && results[0].verbalGrade) {
                   grade = results[0].verbalGrade
                 }
-                const absence = results[0].absence || ""
+                const absence = results[0].absence || ''
                 if (
-                  (!grade || grade === "H" || grade === "P") &&
-                  (absence === "" ||
-                    absence === "PUUDUMINE_H" ||
-                    absence === "PUUDUMINE_P" ||
-                    absence === "H" ||
-                    absence === "P")
+                  (!grade || grade === 'H' || grade === 'P') &&
+                  (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
                 ) {
                   hasMissing = true
                   break
@@ -264,7 +235,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
       if (hasMissing) break
     }
     if (hasMissing) {
-      return "Mõnedel iseseisvatel töödel on hinded puudu"
+      return 'Mõnedel iseseisvatel töödel on hinded puudu'
     }
     return null
   }

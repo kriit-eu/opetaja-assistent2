@@ -17,7 +17,7 @@ import Logger from './Logger.js'
  * @param {Function} context.fetchJournalData - Function to fetch journal data
  * @param {Function} context.showMissingApiKeyBanner - Function to show missing API key banner
  */
-export function setupKriitMessageListener (context) {
+export function setupKriitMessageListener(context) {
   chrome.runtime.onMessage.addListener(message => {
     if (message.action === 'kriitEnabledChanged') {
       Logger.debug('Received kriitEnabledChanged message:', message.enabled)
@@ -75,6 +75,6 @@ export function setupKriitMessageListener (context) {
  * Alternative setup function for features that need custom handling
  * @param {Function} messageHandler - Custom message handler function
  */
-export function setupCustomMessageListener (messageHandler) {
+export function setupCustomMessageListener(messageHandler) {
   chrome.runtime.onMessage.addListener(messageHandler)
 }

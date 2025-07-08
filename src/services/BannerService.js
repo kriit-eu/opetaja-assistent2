@@ -11,7 +11,7 @@ import { styleService } from './StyleService.js'
 import Logger from './Logger.js'
 
 export class BannerService {
-  constructor (containerSelector = '#main-content > div.layout-padding > div') {
+  constructor(containerSelector = '#main-content > div.layout-padding > div') {
     this.containerSelector = containerSelector
     this.currentBanner = null
     this.progressContainer = null
@@ -24,7 +24,7 @@ export class BannerService {
   /**
      * Load CSS styles for the banner service (lazy loading)
      */
-  loadStyles () {
+  loadStyles() {
     if (this.stylesLoaded || typeof document === 'undefined') {
       return
     }
@@ -154,7 +154,7 @@ export class BannerService {
      * Get the banner container element
      * @returns {Element} The banner container element or document.body as fallback
      */
-  getBannerContainer () {
+  getBannerContainer() {
     const container = document.querySelector(this.containerSelector)
     if (!container) {
       Logger.warning(`Banner container not found with selector: ${this.containerSelector}, falling back to document.body`)
@@ -166,7 +166,7 @@ export class BannerService {
   /**
      * Remove current banner from the DOM
      */
-  removeBanner () {
+  removeBanner() {
     if (this.currentBanner && this.currentBanner.parentNode) {
       this.currentBanner.parentNode.removeChild(this.currentBanner)
       this.currentBanner = null
@@ -181,7 +181,7 @@ export class BannerService {
      * Show loading banner
      * @param {string} message - Loading message to display
      */
-  showLoadingBanner (message = 'Töötlen andmeid, palun oota...') {
+  showLoadingBanner(message = 'Töötlen andmeid, palun oota...') {
     this.loadStyles()
     const container = this.getBannerContainer()
     this.removeBanner()
@@ -221,7 +221,7 @@ export class BannerService {
      * @param {number} total - Total items
      * @param {string} loadingMessage - Optional loading message to update
      */
-  updateProgressUI (current, total, loadingMessage = null) {
+  updateProgressUI(current, total, loadingMessage = null) {
     // Log progress even if UI elements are missing
     Logger.debug(`Progress: ${current}/${total} (${Math.round((current / total) * 100)}%)`)
 
@@ -260,7 +260,7 @@ export class BannerService {
      * @param {Function} options.onRefresh - Callback for refresh button
      * @param {Function} options.onClose - Callback for close button
      */
-  showSuccessBanner (message, options = {}) {
+  showSuccessBanner(message, options = {}) {
     this.loadStyles()
     Logger.info('=== SHOWING SUCCESS BANNER ===')
     Logger.info(`Success message: ${message}`)
@@ -315,7 +315,7 @@ export class BannerService {
      * @param {Function} options.onRetry - Callback for retry button
      * @param {Function} options.onRefresh - Callback for refresh button
      */
-  showErrorBanner (error, options = {}) {
+  showErrorBanner(error, options = {}) {
     this.loadStyles()
     const container = this.getBannerContainer()
     this.removeBanner()
@@ -364,7 +364,7 @@ export class BannerService {
      * Get the current banner element (for custom content injection)
      * @returns {Element|null} Current banner element
      */
-  getCurrentBanner () {
+  getCurrentBanner() {
     return this.currentBanner
   }
 
@@ -372,14 +372,14 @@ export class BannerService {
      * Check if a banner is currently displayed
      * @returns {boolean} True if banner exists
      */
-  hasBanner () {
+  hasBanner() {
     return this.currentBanner !== null
   }
 
   /**
      * Clean up resources
      */
-  destroy () {
+  destroy() {
     this.removeBanner()
     styleService.removeCSS('banner-service-styles')
   }
@@ -390,7 +390,7 @@ export class BannerService {
      * @param {Array} classList - Array of CSS classes to apply
      * @returns {Element} The created container element
      */
-  createContainer (parent, classList = []) {
+  createContainer(parent, classList = []) {
     return domService.createAndInsertElement('div', {
       classList: classList,
     }, '', parent)
@@ -403,7 +403,7 @@ export class BannerService {
      * @param {Array} classList - Array of CSS classes to apply
      * @returns {Element} The created section element
      */
-  createSection (parent, title, classList = []) {
+  createSection(parent, title, classList = []) {
     const section = domService.createAndInsertElement('div', {
       classList: classList,
     }, '', parent)
@@ -423,7 +423,7 @@ export class BannerService {
      * @param {string} message - Message text to display
      * @param {Array} classList - Array of CSS classes to apply
      */
-  createMessage (parent, message, classList = ['ta-banner-message']) {
+  createMessage(parent, message, classList = ['ta-banner-message']) {
     domService.createAndInsertElement('div', {
       classList: classList,
     }, message, parent)
