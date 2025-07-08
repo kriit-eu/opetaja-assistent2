@@ -1,6 +1,7 @@
 import Logger from '../../../services/Logger.js'
 import { styleService } from '../../../services/StyleService.js'
 import IndependentWorkCapacityFeature from './IndependentWorkCapacityFeature.js'
+import HighlightMissingGradesFeature from '../highlightMissingGrades/HighlightMissingGradesFeature.js'
 
 /**
  * LessonDiscrepanciesTable class
@@ -105,9 +106,11 @@ export class LessonDiscrepanciesTable {
 
       // Check independent work capacity message
       const independentWorkMessage = await IndependentWorkCapacityFeature.check(this.api, journalId)
+      // Check missing grades message
+      const missingGradesMessage = await HighlightMissingGradesFeature.check(this.api, journalId)
 
       existingTable?.remove()
-      const success = this.insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessage)
+      const success = this.insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage)
       if (success) {
         this.tableCreated = true
         this.currentJournalId = journalId
@@ -124,9 +127,10 @@ export class LessonDiscrepanciesTable {
    * @param {Array} discrepancies - List of discrepancies
    * @param {Array} capacityProblems - List of capacity problems
    * @param {string} independentWorkMessage - Independent work message
+   * @param {string} missingGradesMessage - Missing grades message
    * @returns {boolean} Success status
    */
-  insertUnifiedTable (discrepancies, capacityProblems, independentWorkMessage) {
+  insertUnifiedTable (discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
       document.querySelector('[data-capacity-problems-table]')?.remove()
@@ -135,7 +139,7 @@ export class LessonDiscrepanciesTable {
 
       this.#injectCSS()
       insertionPoint.insertBefore(
-        this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage),
+        this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage),
         insertionPoint.firstChild
       )
       this.addDiscrepancyButtonListeners()
@@ -151,15 +155,18 @@ export class LessonDiscrepanciesTable {
    * @param {Array} discrepancies - List of discrepancies
    * @param {Array} capacityProblems - List of capacity problems
    * @param {string} independentWorkMessage - Independent work message
+   * @param {string} missingGradesMessage - Missing grades message
    * @returns {HTMLElement} The table element
    * @private
    */
-  #createUnifiedTableElement (discrepancies, capacityProblems, independentWorkMessage) {
-    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0 || !!independentWorkMessage
+  #createUnifiedTableElement (discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
+    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0 || !!independentWorkMessage || !!missingGradesMessage
     const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc'
     const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
+    // Restore uniform padding to all sides for correct alignment
     const boxStyle = `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
-      'margin:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;'
+      'box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;max-width:600px;flex:0 0 600px;'
+    // Remove custom padding-left, use default padding for titleBar
     const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
       <div style="display:flex;align-items:center;">
         <span style="font-size:20px;margin-right:10px;">🎓</span>
@@ -170,21 +177,42 @@ export class LessonDiscrepanciesTable {
       </div>
     </div>`
 
-    // Move independentWorkSection above the timetable section
-    let independentWorkSection = ''
-    if (independentWorkMessage) {
-      independentWorkSection = `<div style="display:flex;justify-content:center;margin-bottom:18px;">
-        <div style='width:600px;min-width:430px;box-sizing:border-box;padding:12px 8px;color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;'>${independentWorkMessage}</div>
-      </div>`
+    // Notifications section (side table)
+    let notificationsSection = ''
+    if (independentWorkMessage || missingGradesMessage) {
+      notificationsSection = `<div style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>`
+      // Header: match main table, no extra margin-top
+      notificationsSection += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
+      <div style="display:flex;align-items:center;">
+        <span style="font-size:20px;margin-right:10px;">🎓</span>
+        <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
+      </div>
+      <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
+        Teavitused
+      </div>
+    </div>`
+      if (independentWorkMessage) {
+        notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${independentWorkMessage}</div>`
+      }
+      if (missingGradesMessage) {
+        notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;'>${missingGradesMessage}</div>`
+      }
+      notificationsSection += `</div>`
     }
 
     const timetableSection = this.#createTimetableSection(discrepancies)
     const capacitySection = this.#createCapacitySection(capacityProblems, null)
-    const element = document.createElement('div')
-    element.dataset.discrepanciesTable = 'true'
-    element.style.cssText = boxStyle
-    element.innerHTML = titleBar + independentWorkSection + timetableSection + capacitySection
-    return element
+    // Main table section
+    const mainTableSection = `<div style='${boxStyle}'>${titleBar + timetableSection + capacitySection}</div>`
+    // Flex container for side-by-side layout
+    const flexContainer = document.createElement('div')
+    flexContainer.style.display = 'flex'
+    flexContainer.style.flexWrap = 'wrap'
+    flexContainer.style.gap = '16px'
+    flexContainer.style.alignItems = 'flex-start'
+    flexContainer.style.margin = '0' // Ensure no left margin on flex container
+    flexContainer.innerHTML = mainTableSection + notificationsSection
+    return flexContainer
   }
 
   /**
@@ -327,7 +355,7 @@ export class LessonDiscrepanciesTable {
         message = 'Sissekande liik on praktiline töö, aga praktilise töö linnukest ei ole sees'
       } else if (entry.validationResult.errorType === 'missing_auditoorne_checkbox') {
         message = 'Auditoorne õpe puudub'
-      } else if (entry.validationResult.errorType === 'missing_iseseisev_checkbox') {
+      } else if (entry.validationResult.errorType === 'missing_iseseive_checkbox') {
         message = 'Iseseisev õpe puudub'
       } else if (entry.validationResult.errorType === 'journal_missing_independent_work') {
         message = 'Vigane sissekanne: päevikule pole määratud iseisevaid töid'
