@@ -11,18 +11,13 @@
   },
   "overrides": [
     {
-      "files": [
-        "**/Logger.js"
-      ],
+      "files": ["**/Logger.js"],
       "rules": {
         "no-console": "off"
       }
     },
     {
-      "files": [
-        "**/build.js",
-        "**/watch.js"
-      ],
+      "files": ["**/build.js", "**/watch.js"],
       "env": {
         "node": true
       },
@@ -41,15 +36,9 @@
         "SwitchCase": 1
       }
     ],
-    "linebreak-style": [
-      "error",
-      "unix"
-    ],
+    "linebreak-style": ["error", "unix"],
     "quotes": "off",
-    "semi": [
-      "error",
-      "never"
-    ],
+    "semi": ["error", "never"],
     "max-len": [
       "warn",
       {
@@ -69,14 +58,8 @@
         "after": true
       }
     ],
-    "comma-style": [
-      "error",
-      "last"
-    ],
-    "eol-last": [
-      "error",
-      "always"
-    ],
+    "comma-style": ["error", "last"],
+    "eol-last": ["error", "always"],
     "key-spacing": [
       "error",
       {
@@ -99,10 +82,7 @@
         "maxEOF": 1
       }
     ],
-    "object-curly-spacing": [
-      "error",
-      "always"
-    ],
+    "object-curly-spacing": ["error", "always"],
     "space-before-blocks": "error",
     "space-before-function-paren": [
       "error",
@@ -112,10 +92,7 @@
         "asyncArrow": "never"
       }
     ],
-    "space-in-parens": [
-      "error",
-      "never"
-    ],
+    "space-in-parens": ["error", "never"],
     "space-infix-ops": "error",
     "arrow-spacing": [
       "error",
@@ -124,14 +101,8 @@
         "after": true
       }
     ],
-    "arrow-parens": [
-      "error",
-      "as-needed"
-    ],
-    "arrow-body-style": [
-      "error",
-      "as-needed"
-    ],
+    "arrow-parens": ["error", "as-needed"],
+    "arrow-body-style": ["error", "as-needed"],
     "brace-style": "off",
     "function-call-argument-newline": "off",
     "function-paren-newline": "off",
@@ -141,14 +112,8 @@
         "allowAllPropertiesOnSameLine": true
       }
     ],
-    "array-bracket-newline": [
-      "error",
-      "consistent"
-    ],
-    "array-element-newline": [
-      "error",
-      "consistent"
-    ],
+    "array-bracket-newline": ["error", "consistent"],
+    "array-element-newline": ["error", "consistent"],
     "operator-linebreak": [
       "error",
       "after",
@@ -169,7 +134,7 @@
     ],
     "camelcase": "off",
     "no-var": "warn",
-    "prefer-const": "warn", 
+    "prefer-const": "warn",
     "no-console": "off",
     "eqeqeq": "off",
     "curly": "off",
