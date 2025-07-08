@@ -81,34 +81,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     super.onDeactivate()
   }
 
-  // #injectCSS method moved to LessonDiscrepanciesTable class
-  // #injectCSS () {
-  //   const css = `
-  //     .lesson-discrepancy-table-cell {
-  //       padding: 8px;
-  //       border-bottom: 1px solid #e0e0e0;
-  //     }
-  //     .lesson-discrepancy-table-cell-center {
-  //       padding: 8px;
-  //       border-bottom: 1px solid #e0e0e0;
-  //       text-align: center;
-  //     }
-  //     .lesson-discrepancy-table-cell-20 {
-  //       width: 20%;
-  //     }
-  //     .lesson-discrepancy-table-cell-25 {
-  //       width: 25%;
-  //     }
-  //     .lesson-discrepancy-table-cell-30 {
-  //       width: 30%;
-  //     }
-  //     .lesson-discrepancy-table-cell-50 {
-  //       width: 50%;
-  //     }
-  //   `
-  //   styleService.injectCSS(css, 'lesson-discrepancies-styles')
-  // }
-
   reset () {
     this.#tableCreated = false
     this.#currentJournalId = null
@@ -505,18 +477,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  // #createPill and #createDiffPill methods moved to LessonDiscrepanciesTable class
-  // #createPill = (text, color, backgroundColor, textDecoration = 'none') =>
-  //   `<span style="background-color:${backgroundColor};color:${color};font-weight:bold;font-size:14px;padding:4px 8px;text-decoration:${textDecoration};">${text}</span>`
-
-  // #createDiffPill = (current, correct) => {
-  //   // Add strikethrough to the red (current) value
-  //   const currentPill = this.#createPill(current, '#721c24', '#f8d7da', 'line-through')
-  //   const correctPill = this.#createPill(correct, '#155724', '#d1edcc')
-  //   const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
-  //   return `<div style="${style}">${currentPill}${correctPill}</div>`
-  // }
-
   #calculateDuplicateIndex (discrepancy) {
     // Use the same logic as #findJournalEntryElement to ensure consistency
     Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
@@ -669,63 +629,6 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       targetIndex: Math.max(0, targetIndex),
     }
   }
-
-  // #createSmartDisplay method moved to LessonDiscrepanciesTable class
-  // #createSmartDisplay = (currentValue, correctValue) => {
-  //   const current = Number(currentValue)
-  //   const correct = Number(correctValue)
-  //   return current === correct
-  //     ? `<span style="font-size:14px;font-weight:bold;">${current}</span>`
-  //     : this.#createDiffPill(current, correct)
-  // }
-
-  // #createButton method moved to LessonDiscrepanciesTable class
-  // #createButton (id, text, colorKey, data = {}, tooltip = '') {
-  //   const dataAttributes = Object.entries(data)
-  //     .map(([key, value]) => `data-${key}='${JSON.stringify(value)}'`)
-  //     .join(' ')
-  //   const titleAttribute = tooltip ? `title="${tooltip}"` : ''
-  //   return `<button id="${id}" style="${createButtonStyle(HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
-  // }
-
-  // #renderMissingEntry method moved to LessonDiscrepanciesTable class
-
-  // #renderSingleEntryFix method moved to LessonDiscrepanciesTable class
-
-  // #renderMultiEntryFix method moved to LessonDiscrepanciesTable class
-
-  // #createDiscrepancyRow method moved to LessonDiscrepanciesTable class
-
-  // #findInsertionPoint method moved to LessonDiscrepanciesTable class
-  // #findInsertionPoint () {
-  //   const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-  //   return selectors
-  //     .map(selector => document.querySelector(selector))
-  //     .find(element => element && element.getBoundingClientRect().width > 100) || document.body
-  // }
-
-  // #insertUnifiedTable method moved to LessonDiscrepanciesTable class
-  // #insertUnifiedTable (discrepancies, capacityProblems, independentWorkMessage) {
-  //   try {
-  //     document.querySelector('[data-discrepancies-table]')?.remove()
-  //     document.querySelector('[data-capacity-problems-table]')?.remove()
-  //     const insertionPoint = this.#findInsertionPoint()
-  //     if (!insertionPoint) return false
-
-  //     insertionPoint.insertBefore(this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage), insertionPoint.firstChild)
-  //     this.#addDiscrepancyButtonListeners()
-  //     return true
-  //   } catch (error) {
-  //     Logger.error(`[${this.name}] insert unified table`, error)
-  //     return false
-  //   }
-  // }
-
-  // #createUnifiedTableElement method moved to LessonDiscrepanciesTable class
-
-  // #createTimetableSection method moved to LessonDiscrepanciesTable class
-
-  // #createCapacitySection method moved to LessonDiscrepanciesTable class
 
   #addDiscrepancyButtonListeners () {
     const buttons = document.querySelectorAll('[data-discrepancies-table] button')

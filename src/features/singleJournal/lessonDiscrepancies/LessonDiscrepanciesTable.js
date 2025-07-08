@@ -599,29 +599,4 @@ export class LessonDiscrepanciesTable {
     const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
     return `<div style="${style}">${currentPill}${correctPill}</div>`
   }
-
-  /**
-   * Removes the table from the DOM
-   */
-  removeTable () {
-    document.querySelector('[data-discrepancies-table]')?.remove()
-    document.querySelector('[data-capacity-problems-table]')?.remove()
-    this.tableCreated = false
-  }
-
-  /**
-   * Checks if the table is currently created
-   * @returns {boolean} Table creation status
-   */
-  isTableCreated () {
-    return this.tableCreated
-  }
-
-  /**
-   * Gets the current journal ID
-   * @returns {string|null} Current journal ID
-   */
-  getCurrentJournalId () {
-    return this.currentJournalId
-  }
 }
