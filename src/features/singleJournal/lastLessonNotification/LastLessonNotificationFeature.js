@@ -331,4 +331,17 @@ export default class LastLessonNotificationFeature extends BaseFeature {
 
     return { timetable, journalEntries: journalEntries ?? [] }
   }
+
+  static async refresh(api) {
+    if (!window.location.href.match(/\/journal\/(\d+)\/edit/)) return
+    const feature = new LastLessonNotificationFeature()
+    feature.api = api || (window.__opetajaAssistentApiService && window.__opetajaAssistentApiService.api)
+    if (!feature.api) return
+    await feature.#showLastLessonNotification()
+  }
+}
+
+// Attach refresh to window for global access (outside class)
+if (typeof window !== 'undefined' && !window.__lastLessonNotificationRefresh) {
+  window.__lastLessonNotificationRefresh = LastLessonNotificationFeature.refresh
 }

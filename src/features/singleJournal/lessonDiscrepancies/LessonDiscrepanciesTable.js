@@ -57,11 +57,19 @@ export class LessonDiscrepanciesTable {
       .lesson-discrepancy-table-cell {
         padding: 8px;
         border-bottom: 1px solid #e0e0e0;
+        border-right: 1px solid #dee2e6;
+      }
+      .lesson-discrepancy-table-cell:last-child {
+        border-right: none;
       }
       .lesson-discrepancy-table-cell-center {
         padding: 8px;
         border-bottom: 1px solid #e0e0e0;
+        border-right: 1px solid #dee2e6;
         text-align: center;
+      }
+      .lesson-discrepancy-table-cell-center:last-child {
+        border-right: none;
       }
       .lesson-discrepancy-table-cell-20 {
         width: 20%;
@@ -89,6 +97,10 @@ export class LessonDiscrepanciesTable {
    */
   async createTable({ discrepancies, capacityProblems, forceRefresh = false }) {
     try {
+      // Always refresh independent work deadline messages before table build
+      if (window.__lastLessonNotificationRefresh) {
+        await window.__lastLessonNotificationRefresh(this.api)
+      }
       const journalId = this.extractJournalId()
       if (!journalId) return false
 
@@ -279,8 +291,19 @@ export class LessonDiscrepanciesTable {
         <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
       </div>`
       const sortedEntries = [...capacityProblems].sort((a, b) => new Date(a.entryDate) - new Date(b.entryDate))
-      const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
-      const tableHead = `<thead><tr style="background:#f9f9f9"><th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">Märkus</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th></tr></thead>`
+      const rows = sortedEntries.map(entry => {
+        const row = this.#createCapacityProblemRow(entry)
+        return `<tr style="background-color:white">
+          <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-20">${row.dateWithBadge}</td>
+          <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">${row.message}</td>
+          <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">${row.action}</td>
+        </tr>`
+      }).join('')
+      const tableHead = `<thead><tr style="background:#f9f9f9">
+        <th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th>
+        <th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">Märkus</th>
+        <th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th>
+      </tr></thead>`
       section +=
         sectionHeader +
         `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
