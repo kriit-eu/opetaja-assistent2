@@ -98,13 +98,24 @@ export class LessonDiscrepanciesTable {
       }
       if (existingTable) this.tableCreated = false
 
-      // Check independent work capacity message
-      const independentWorkMessage = await IndependentWorkCapacityFeature.check(this.api, journalId)
+      // Collect all independent work messages (capacity and all deadlines), avoid duplicates
+      const independentWorkMessages = []
+      const capacityMsg = await IndependentWorkCapacityFeature.check(this.api, journalId)
+      if (capacityMsg && !independentWorkMessages.includes(capacityMsg)) independentWorkMessages.push(capacityMsg)
+      if (window.__lastLessonNotification_independentWorkMessage) {
+        const globalMsgs = Array.isArray(window.__lastLessonNotification_independentWorkMessage)
+          ? window.__lastLessonNotification_independentWorkMessage
+          : [window.__lastLessonNotification_independentWorkMessage]
+        for (const msg of globalMsgs) {
+          if (msg && !independentWorkMessages.includes(msg)) independentWorkMessages.push(msg)
+        }
+        delete window.__lastLessonNotification_independentWorkMessage
+      }
       // Check missing grades message
       const missingGradesMessage = await HighlightMissingGradesFeature.check(this.api, journalId)
 
       existingTable?.remove()
-      const success = this.insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage)
+      const success = this.insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage)
       if (success) {
         this.tableCreated = true
         this.currentJournalId = journalId
@@ -120,11 +131,11 @@ export class LessonDiscrepanciesTable {
    * Inserts the unified table into the DOM
    * @param {Array} discrepancies - List of discrepancies
    * @param {Array} capacityProblems - List of capacity problems
-   * @param {string} independentWorkMessage - Independent work message
+   * @param {Array} independentWorkMessages - Array of independent work messages
    * @param {string} missingGradesMessage - Missing grades message
    * @returns {boolean} Success status
    */
-  insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
+  insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
       document.querySelector('[data-capacity-problems-table]')?.remove()
@@ -133,7 +144,7 @@ export class LessonDiscrepanciesTable {
 
       this.#injectCSS()
       insertionPoint.insertBefore(
-        this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage),
+        this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage),
         insertionPoint.firstChild
       )
       this.addDiscrepancyButtonListeners()
@@ -148,20 +159,19 @@ export class LessonDiscrepanciesTable {
    * Creates the unified table element
    * @param {Array} discrepancies - List of discrepancies
    * @param {Array} capacityProblems - List of capacity problems
-   * @param {string} independentWorkMessage - Independent work message
+   * @param {Array} independentWorkMessages - Array of independent work messages
    * @param {string} missingGradesMessage - Missing grades message
    * @returns {HTMLElement} The table element
    * @private
    */
-  #createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessage, missingGradesMessage) {
-    const hasProblems = discrepancies.length > 0 || capacityProblems.length > 0 || !!independentWorkMessage || !!missingGradesMessage
+  #createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage) {
+    const hasProblems =
+      discrepancies.length > 0 || capacityProblems.length > 0 || (independentWorkMessages && independentWorkMessages.length > 0) || !!missingGradesMessage
     const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc'
     const borderColor = hasProblems ? '#ffeaa7' : '#c3e6cb'
-    // Restore uniform padding to all sides for correct alignment
     const boxStyle =
       `background:${backgroundColor};border:1px solid ${borderColor};border-radius:4px;padding:15px;` +
       'box-shadow:0 2px 4px rgba(0,0,0,.1);width:600px;min-width:430px;max-width:600px;flex:0 0 600px;'
-    // Remove custom padding-left, use default padding for titleBar
     const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
       <div style="display:flex;align-items:center;">
         <span style="font-size:20px;margin-right:10px;">🎓</span>
@@ -172,6 +182,17 @@ export class LessonDiscrepanciesTable {
       </div>
     </div>`
 
+    // Show all independent work banners if present
+    let indepWorkBanners = ''
+    if (independentWorkMessages && independentWorkMessages.length > 0) {
+      indepWorkBanners = independentWorkMessages
+        .map(
+          msg =>
+            `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${msg}</div>`
+        )
+        .join('')
+    }
+
     // Notifications section (side table)
     let notificationsSection = ''
     notificationsSection = `<div style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>`
@@ -181,15 +202,10 @@ export class LessonDiscrepanciesTable {
         <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
       </div>
       <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-        Iseseisvad tööd & Hinded
+        Hinded
       </div>
     </div>`
-    // Always show both notifications, with green fallback if missing
-    if (independentWorkMessage) {
-      notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${independentWorkMessage}</div>`
-    } else {
-      notificationsSection += `<div style='color:#155724;font-weight:bold;font-size:15px;text-align:center;background:#d1edcc;border-radius:4px;border:1px solid #c3e6cb;padding:12px 8px;margin-bottom:10px;'>Kõik iseseisvad tööd on korras.</div>`
-    }
+    // Only show missing grades message in notifications section
     if (missingGradesMessage) {
       notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;'>${missingGradesMessage}</div>`
     } else {
@@ -199,8 +215,7 @@ export class LessonDiscrepanciesTable {
 
     const timetableSection = this.#createTimetableSection(discrepancies)
     const capacitySection = this.#createCapacitySection(capacityProblems, null)
-    // Main table section
-    const mainTableSection = `<div style='${boxStyle}'>${titleBar + timetableSection + capacitySection}</div>`
+    const mainTableSection = `<div style='${boxStyle}'>${titleBar + indepWorkBanners + timetableSection + capacitySection}</div>`
     // Flex container for side-by-side layout
     const flexContainer = document.createElement('div')
     flexContainer.style.display = 'flex'
@@ -580,7 +595,11 @@ export class LessonDiscrepanciesTable {
    */
   #createButton(id, text, colorKey, data = {}, tooltip = '') {
     const dataAttributes = Object.entries(data)
-      .map(([key, value]) => `data-${key}='${JSON.stringify(value)}'`)
+      .map(([key, value]) =>
+        key === 'handler'
+          ? `data-handler='${value}'`
+          : `data-${key}='${JSON.stringify(value)}'`
+      )
       .join(' ')
     const titleAttribute = tooltip ? `title="${tooltip}"` : ''
     return `<button id="${id}" style="${LessonDiscrepanciesTable.createButtonStyle(LessonDiscrepanciesTable.HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`

@@ -95,6 +95,39 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       lastLessonDate = sortedTimetable[sortedTimetable.length - 1].date
     }
 
+    // Prepare independent work messages for all deadlines after last lesson
+    let independentWorkMessages = []
+    if (lastLessonDate && Array.isArray(journalEntries)) {
+      const lastLesson = new Date(lastLessonDate)
+      lastLesson.setHours(0, 0, 0, 0)
+      const futureIndependents = journalEntries
+        .filter(entry => entry.entryType === 'SISSEKANNE_I')
+        .map(entry => {
+          const dueDateStr = entry.homeworkDuedate || entry.entryDate
+          if (!dueDateStr) return null
+          const deadline = new Date(dueDateStr)
+          deadline.setHours(0, 0, 0, 0)
+          return { deadline, entry }
+        })
+        .filter(Boolean)
+        .filter(({ deadline }) => deadline > lastLesson)
+        .sort((a, b) => a.deadline - b.deadline)
+      if (futureIndependents.length > 0) {
+        independentWorkMessages = futureIndependents.map(({ deadline }) => {
+          const diffDays = Math.round((deadline - lastLesson) / (1000 * 60 * 60 * 24))
+          const deadlineStr = this.#formatDisplayDate(deadline)
+          return `${deadlineStr} iseseisva töö tähtaeg on ${diffDays} päeva hiljem kui viimane tund`
+        })
+      }
+    }
+
+    // Always set the global message(s) before table creation
+    if (independentWorkMessages.length > 0) {
+      window.__lastLessonNotification_independentWorkMessage = independentWorkMessages
+      document.getElementById('independent-work-deadline-banner')?.remove()
+      console.debug('[LastLessonNotificationFeature] Provided independent work messages to table:', independentWorkMessages)
+    }
+
     const timetableCount = timetable.length
     const journalCount = journalEntries.length
     console.debug('[LastLessonNotificationFeature] timetableCount:', timetableCount, 'journalCount:', journalCount)
