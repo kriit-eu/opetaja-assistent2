@@ -643,6 +643,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     let fadeTarget = null
     let fadeTable = null
+    let restorePending = false
     try {
       const data = this.#parseButtonData(button)
       Logger.debug(`[${this.name}] Raw button dataset:`, button.dataset)
@@ -671,12 +672,27 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Logger.debug(`[${this.name}] Lisa button clicked, waiting for table refresh...`)
         await this.#delay(1000)
         await this.#refreshTableWithRetry()
+        restorePending = true
       }
     } catch (error) {
       Logger.error(`[${this.name}] button action error`, error)
+      // On error, allow restore
+      restorePending = true
     } finally {
       const isLisaButton = this.#parseButtonData(button).handler === 'addMissing'
-      this.#restoreButtonState(button, originalState, isLisaButton)
+      if (isLisaButton && fadeTarget) {
+        // Only restore when the row is actually removed from DOM
+        const checkRowRemoved = () => {
+          if (!fadeTarget.isConnected) {
+            this.#restoreButtonState(button, originalState, isLisaButton)
+          } else {
+            setTimeout(checkRowRemoved, 200)
+          }
+        }
+        if (restorePending) checkRowRemoved()
+      } else {
+        this.#restoreButtonState(button, originalState, isLisaButton)
+      }
     }
   }
 
@@ -2692,7 +2708,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     for (const checkbox of teacherCheckboxes) {
       if (checkbox && this.#isElementVisible(checkbox)) {
-        const handleTeacherChange = async() => {
+        const handleTeacherChange = async () => {
           Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
           // Small delay to let the change propagate
           await this.#delay(300)
