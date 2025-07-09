@@ -70,6 +70,15 @@ export async function loadFeatures() {
   } catch (error) {
     Logger.error('Error loading HighlightMissingGradesFeature:', error)
   }
+  // Load highlight final grades feature (always enabled)
+  try {
+    const HighlightFinalGradesFeature = (await import('../features/singleJournal/highlightFinalGrades/HighlightFinalGradesFeature.js')).default
+    const highlightFinalGradesFeature = new HighlightFinalGradesFeature()
+    allAvailableFeatures.singleJournal.push(highlightFinalGradesFeature)
+    Logger.debug('Feature "HighlightFinalGradesFeature" created')
+  } catch (error) {
+    Logger.error('Error loading HighlightFinalGradesFeature:', error)
+  }
 
   // Create a copy of the features structure for returning
   const featureGroups = {

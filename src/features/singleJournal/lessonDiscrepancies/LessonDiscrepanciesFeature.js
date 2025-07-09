@@ -1637,7 +1637,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#originalFetch = window.fetch
 
       // Monitor for journal entry dialog saves by watching for PUT requests to journal entry endpoints
-      window.fetch = async (...args) => {
+      window.fetch = async(...args) => {
         const response = await this.#originalFetch.apply(window, args)
 
         // Check if this is a PUT request to a journal entry endpoint
@@ -1647,7 +1647,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           const journalIdMatch = url.match(/\/journals\/(\d+)\/journalEntry\//)
           if (journalIdMatch && parseInt(journalIdMatch[1]) === this.#currentJournalId) {
             // Wait a bit for the save to complete, then refresh validation
-            setTimeout(async () => {
+            setTimeout(async() => {
               await this.#refreshCapacityValidationAfterSave()
             }, 1500)
           }
@@ -2708,7 +2708,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     for (const checkbox of teacherCheckboxes) {
       if (checkbox && this.#isElementVisible(checkbox)) {
-        const handleTeacherChange = async () => {
+        const handleTeacherChange = async() => {
           Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
           // Small delay to let the change propagate
           await this.#delay(300)

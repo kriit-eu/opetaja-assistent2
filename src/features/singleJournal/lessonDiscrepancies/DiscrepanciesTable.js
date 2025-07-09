@@ -155,13 +155,14 @@ export class DiscrepanciesTable {
       document.querySelector('[data-capacity-problems-table]')?.remove()
       const insertionPoint = this.#findInsertionPoint()
       if (!insertionPoint) return false
-
       this.#injectCSS()
       insertionPoint.insertBefore(
         this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage),
         insertionPoint.firstChild
       )
       this.addDiscrepancyButtonListeners()
+      // Highlight final grade column and show notification
+      setTimeout(() => this.highlightFinalGradeColumnAndNotify(), 0)
       return true
     } catch (error) {
       Logger.error(`[${this.name}] insert unified table error`, error)
@@ -221,7 +222,7 @@ export class DiscrepanciesTable {
     </div>`
     // Only show missing grades message in notifications section
     if (missingGradesMessage) {
-      notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;'>${missingGradesMessage}</div>`
+      notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${missingGradesMessage}</div>`
     }
     notificationsSection += `</div>`
 
@@ -682,8 +683,105 @@ export class DiscrepanciesTable {
       </div>
     </div>`
     if (missingGradesMessage) {
-      notifications.innerHTML += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;'>${missingGradesMessage}</div>`
+      notifications.innerHTML += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${missingGradesMessage}</div>`
     }
     // If no missingGradesMessage, show nothing
+  }
+
+  // New method to update the final grade warning banner
+  updateFinalGradeWarningBanner() {
+    const notifications = document.querySelector('[data-discrepancies-table] .notifications-section')
+    if (!notifications) return
+    document.getElementById('final-grade-warning-banner')?.remove()
+    const highlighted = document.querySelectorAll('.highlight-final-grade-red')
+    if (highlighted.length > 0) {
+      const banner = document.createElement('div')
+      banner.id = 'final-grade-warning-banner'
+      banner.style.background = '#f8d7da'
+      banner.style.color = '#721c24'
+      banner.style.fontWeight = 'bold'
+      banner.style.fontSize = '15px'
+      banner.style.textAlign = 'center'
+      banner.style.borderRadius = '4px'
+      banner.style.border = '1px solid #f5c6cb'
+      banner.style.padding = '12px 8px'
+      banner.style.marginBottom = '10px'
+      banner.textContent = `Mõnedel õpilastel puudub Lõpptulemus!`
+      notifications.appendChild(banner)
+    }
+  }
+
+  highlightEmptyFinalGradeCells() {
+    const table = document.querySelector('.journalTable')
+    if (!table) return
+    // Find final grade columns
+    const headerCells = Array.from(table.querySelectorAll('thead th'))
+    const finalGradeColumns = []
+    headerCells.forEach((th, idx) => {
+      const text = (th.textContent || '').trim().toLowerCase()
+      if (text.includes('õv') || text.includes('lõpphinne')) {
+        finalGradeColumns.push(idx)
+      }
+    })
+    if (finalGradeColumns.length === 0) return
+    // Highlight visually empty cells in those columns
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    rows.forEach(row => {
+      const cells = Array.from(row.children)
+      finalGradeColumns.forEach(colIdx => {
+        const cell = cells[colIdx]
+        if (cell && !cell.innerText.trim()) {
+          cell.classList.add('highlight-final-grade-red')
+        }
+      })
+    })
+  }
+
+  highlightFinalGradeColumnAndNotify() {
+    const table = document.querySelector('.journalTable')
+    if (!table) return
+    const headerCells = Array.from(table.querySelectorAll('thead th'))
+    let finalGradeColIdx = -1
+    headerCells.forEach((th, idx) => {
+      const text = (th.textContent || '').trim().toLowerCase()
+      if (text.includes('lõpptulemus')) finalGradeColIdx = idx
+    })
+    if (finalGradeColIdx === -1) return
+    let emptyCount = 0
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    rows.forEach(row => {
+      const cells = Array.from(row.children)
+      const cell = cells[finalGradeColIdx]
+      if (!cell) return
+      const grade = cell.getAttribute('data-grade') || cell.innerText.trim()
+      if (!grade) {
+        cell.classList.add('highlight-final-grade-red')
+        cell.title = 'Lõpptulemus puudub'
+        emptyCount++
+      } else {
+        cell.classList.remove('highlight-final-grade-red')
+        cell.removeAttribute('title')
+      }
+    })
+    // Show or remove notification
+    const notifications = document.querySelector('[data-discrepancies-table] .notifications-section')
+    if (notifications) {
+      document.getElementById('final-grade-warning-banner')?.remove()
+      if (emptyCount > 0) {
+        const banner = document.createElement('div')
+        banner.id = 'final-grade-warning-banner'
+        banner.style.background = '#f8d7da'
+        banner.style.color = '#721c24'
+        banner.style.fontWeight = 'bold'
+        banner.style.fontSize = '15px'
+        banner.style.textAlign = 'center'
+        banner.style.borderRadius = '4px'
+        banner.style.border = '1px solid #f5c6cb'
+        banner.style.padding = '12px 8px'
+        banner.style.marginBottom = '10px'
+        banner.textContent = `Mõnedel õpilastel puudub Lõpptulemus!`
+        notifications.appendChild(banner)
+      }
+    }
   }
 }
