@@ -52,14 +52,14 @@ export async function loadFeatures() {
 
   // Load non-Kriit features here (they should always be loaded)
 
-  // Load warning triangles feature (always enabled)
+  // Load lesson count warning feature (always enabled)
   try {
-    const WarningTrianglesFeature = (await import('../features/journalList/triangles/WarningTrianglesFeature.js')).default
-    const warningTrianglesFeature = new WarningTrianglesFeature()
-    allAvailableFeatures.journalList.push(warningTrianglesFeature)
-    Logger.debug('Feature "WarningTrianglesFeature" created')
+    const LessonCountWarningFeature = (await import('../features/journalList/lessonCountWarning/LessonCountWarningFeature.js')).default
+    const lessonCountWarningFeature = new LessonCountWarningFeature()
+    allAvailableFeatures.journalList.push(lessonCountWarningFeature)
+    Logger.debug('Feature "LessonCountWarningFeature" created')
   } catch (error) {
-    Logger.error('Error loading WarningTrianglesFeature:', error)
+    Logger.error('Error loading LessonCountWarningFeature:', error)
   }
 
   // Load lesson discrepancies feature (always enabled)
