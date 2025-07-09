@@ -747,8 +747,8 @@ export class DiscrepanciesTable {
       if (text.includes('lõpptulemus')) finalGradeColIdx = idx
     })
     if (finalGradeColIdx === -1) return
-    let emptyCount = 0
     const rows = Array.from(table.querySelectorAll('tbody tr'))
+    let anyHighlighted = false
     rows.forEach(row => {
       const cells = Array.from(row.children)
       const cell = cells[finalGradeColIdx]
@@ -757,7 +757,7 @@ export class DiscrepanciesTable {
       if (!grade) {
         cell.classList.add('highlight-final-grade-red')
         cell.title = 'Lõpptulemus puudub'
-        emptyCount++
+        anyHighlighted = true
       } else {
         cell.classList.remove('highlight-final-grade-red')
         cell.removeAttribute('title')
@@ -767,7 +767,7 @@ export class DiscrepanciesTable {
     const notifications = document.querySelector('[data-discrepancies-table] .notifications-section')
     if (notifications) {
       document.getElementById('final-grade-warning-banner')?.remove()
-      if (emptyCount > 0) {
+      if (anyHighlighted) {
         const banner = document.createElement('div')
         banner.id = 'final-grade-warning-banner'
         banner.style.background = '#f8d7da'
