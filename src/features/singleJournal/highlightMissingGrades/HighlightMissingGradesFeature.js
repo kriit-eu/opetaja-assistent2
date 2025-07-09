@@ -28,7 +28,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
   onActivate() {
     console.debug('[HighlightMissingGradesFeature] onActivate called')
     setTimeout(() => {
-      (async() => {
+      ;(async () => {
         await this.run()
       })()
     }, 1000)
@@ -85,7 +85,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
     const entryColumns = headerCells.slice(2)
     const iseseisevColumns = []
     // Prepare to fetch extra details for each SISSEKANNE_I entry
-    const entryDetailPromises = entryColumns.map(async(th, i) => {
+    const entryDetailPromises = entryColumns.map(async (th, i) => {
       const entry = journalEntries[i]
       if (entry && entry.entryType === 'SISSEKANNE_I') {
         let entryDetail = entry
@@ -171,7 +171,6 @@ class HighlightMissingGradesFeature extends BaseFeature {
    * @returns {Promise<string|null>} - Message to display or null
    */
   static async check(api, journalId) {
-    // Wait for the inline notification to appear (up to 2s)
     let notif = null
     let waited = 0
     const maxWait = 2000
@@ -187,7 +186,6 @@ class HighlightMissingGradesFeature extends BaseFeature {
     const match = notifText.match(/Viimane tund toim(?:us|ub) (\d{2}\.\d{2}\.\d{4})/)
     if (!match) return null
 
-    // Fetch journalEntries from API (cache for performance)
     let journalEntries = []
     try {
       journalEntries = await api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true, cacheExpiration: 6e4 })
@@ -198,44 +196,80 @@ class HighlightMissingGradesFeature extends BaseFeature {
       return null
     }
 
-    // Find overdue independent work columns with missing grades
+    // Find the table and header cells in the DOM to match column order
+    const layoutPadding = document.querySelector('.layout-padding')
+    if (!layoutPadding) return null
+    const table = layoutPadding.querySelector('table.journalTable')
+    if (!table) return null
+    const headerCells = Array.from(table.querySelectorAll('thead th'))
+    const entryColumns = headerCells.slice(2)
     const nowDate = new Date()
-    let hasMissing = false
-    for (const entry of journalEntries) {
-      if (entry.entryType === 'SISSEKANNE_I') {
-        const dueDateStr = entry.homeworkDuedate || entry.entryDate
-        const dueDate = dueDateStr ? new Date(dueDateStr) : null
-        if (dueDate && dueDate < nowDate) {
-          if (entry.journalStudentResults) {
-            for (const studentId in entry.journalStudentResults) {
-              const results = entry.journalStudentResults[studentId]
-              if (Array.isArray(results) && results.length > 0) {
-                let grade = results[0].grade
-                if (grade === null || grade === undefined || grade === '' || (typeof grade === 'object' && (!grade.code || grade.code === ''))) {
-                  grade = ''
-                } else if (typeof grade === 'object' && grade.code) {
-                  grade = grade.code
-                }
-                if (!grade && results[0].verbalGrade) {
-                  grade = results[0].verbalGrade
-                }
-                const absence = results[0].absence || ''
-                if (
-                  (!grade || grade === 'H' || grade === 'P') &&
-                  (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
-                ) {
-                  hasMissing = true
-                  break
-                }
-              }
+
+    // Prepare to fetch extra details for each SISSEKANNE_I entry
+    const entryDetails = await Promise.all(
+      entryColumns.map(async (th, i) => {
+        const entry = journalEntries[i]
+        if (entry && entry.entryType === 'SISSEKANNE_I') {
+          let entryDetail = entry
+          if (!entry.homeworkDuedate) {
+            try {
+              entryDetail = await api.tahvel.get(
+                `/journals/${journalId}/journalEntry/${entry.id}`,
+                { allStudents: true },
+                { cache: true, cacheExpiration: 6e4 }
+              )
+            } catch (e) {
+              // fallback to entry
             }
+          }
+          const dueDateStr = entryDetail.homeworkDuedate || entryDetail.entryDate
+          const dueDate = dueDateStr ? new Date(dueDateStr) : null
+          if (dueDate && dueDate < nowDate) {
+            return { idx: i + 2, entry: entryDetail }
+          }
+        }
+        return null
+      })
+    )
+    const iseseisevColumns = entryDetails.filter(Boolean)
+    if (iseseisevColumns.length > 0) {
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+      for (const row of rows) {
+        for (const { idx, entry } of iseseisevColumns) {
+          const cells = Array.from(row.children)
+          const cell = cells[idx]
+          if (!cell) continue
+          const studentId = cell.getAttribute('data-student-id') || row.getAttribute('data-student-id')
+          let grade = ''
+          let absence = ''
+          if (studentId && entry.journalStudentResults && entry.journalStudentResults[studentId]) {
+            const results = entry.journalStudentResults[studentId]
+            if (Array.isArray(results) && results.length > 0) {
+              const g = results[0].grade
+              if (g === null || g === undefined || g === '' || (typeof g === 'object' && (!g.code || g.code === ''))) {
+                grade = ''
+              } else if (typeof g === 'object' && g.code) {
+                grade = g.code
+              } else {
+                grade = g
+              }
+              if (!grade && results[0].verbalGrade) {
+                grade = results[0].verbalGrade
+              }
+              absence = results[0].absence || ''
+            }
+          } else {
+            grade = cell.getAttribute('data-grade') || cell.textContent.trim()
+            absence = cell.getAttribute('data-absence') || cell.textContent.trim()
+          }
+          if (
+            (!grade || grade === 'H' || grade === 'P') &&
+            (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
+          ) {
+            return 'Mõnedel iseseisvatel töödel on hinded puudu'
           }
         }
       }
-      if (hasMissing) break
-    }
-    if (hasMissing) {
-      return 'Mõnedel iseseisvatel töödel on hinded puudu'
     }
     return null
   }
