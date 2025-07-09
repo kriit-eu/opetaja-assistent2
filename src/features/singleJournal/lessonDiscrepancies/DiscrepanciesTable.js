@@ -194,7 +194,64 @@ export class DiscrepanciesTable {
       )
       this.addDiscrepancyButtonListeners()
       // Highlight final grade column and show notification
-      setTimeout(() => this.highlightFinalGradeColumnAndNotify(), 0)
+      setTimeout(() => {
+        // Highlighting is now handled by HighlightFinalGradesFeature.js
+        // Only check for highlights and inject banners
+        const ovCells = document.querySelectorAll('.highlight-ov-red')
+        Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
+        ovCells.forEach((cell, idx) => {
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
+        })
+        const finalGradeCells = document.querySelectorAll('.highlight-final-grade-red')
+        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeCells.length} .highlight-final-grade-red cells after highlight`)
+        finalGradeCells.forEach((cell, idx) => {
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
+        })
+        const notifications = document.querySelector('.notifications-section')
+        if (notifications) {
+          // Remove old banners
+          notifications.querySelectorAll('.oa2-banner-ov').forEach(b => b.remove())
+          notifications.querySelectorAll('.oa2-banner-final-grade').forEach(b => b.remove())
+          // Inject ÕV banner if needed
+          if (ovCells.length > 0) {
+            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV banner under Hinded')
+            const ovBanner = document.createElement('div')
+            ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
+            ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund!'
+            const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+            if (hindedHeader && hindedHeader.nextSibling) {
+              notifications.insertBefore(ovBanner, hindedHeader.nextSibling)
+            } else {
+              notifications.appendChild(ovBanner)
+            }
+          } else {
+            Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
+          }
+          // Inject final grade banner if needed
+          if (finalGradeCells.length > 0) {
+            Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
+            const fgBanner = document.createElement('div')
+            fgBanner.className = 'oa2-banner oa2-banner--red oa2-banner-final-grade'
+            fgBanner.textContent = 'Mõnedel õpilastel puudub Lõpptulemus!'
+            const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+            // Place after ÕV banner if present, else after Hinded header
+            const ovBanner = notifications.querySelector('.oa2-banner-ov')
+            if (ovBanner && ovBanner.nextSibling) {
+              notifications.insertBefore(fgBanner, ovBanner.nextSibling)
+            } else if (hindedHeader && hindedHeader.nextSibling) {
+              notifications.insertBefore(fgBanner, hindedHeader.nextSibling)
+            } else {
+              notifications.appendChild(fgBanner)
+            }
+          } else {
+            Logger.info('✨ [DiscrepanciesTable] No final grade highlights found, not injecting banner')
+          }
+        } else {
+          Logger.info('✨ [DiscrepanciesTable] No notifications section found')
+        }
+      }, 50)
       return true
     } catch (error) {
       Logger.error(`[${this.name}] insert unified table error`, error)
@@ -796,6 +853,52 @@ export class DiscrepanciesTable {
         banner.className = 'oa2-banner oa2-banner--red'
         banner.textContent = `Mõnedel õpilastel puudub Lõpptulemus!`
         notifications.appendChild(banner)
+      }
+    }
+  }
+
+  highlightOvColumnAndNotify() {
+    const table = document.querySelector('.journalTable')
+    if (!table) return
+    const headerCells = Array.from(table.querySelectorAll('thead th'))
+    let ovColIndices = []
+    headerCells.forEach((th, idx) => {
+      const text = (th.innerText || th.textContent || '').replace(/\s+/g, '').toLowerCase()
+      if (/^õv[\d]*$/i.test(text) || text.includes('õpiväljund')) {
+        ovColIndices.push(idx)
+      }
+    })
+    if (ovColIndices.length === 0) return
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    let anyHighlighted = false
+    rows.forEach(row => {
+      const cells = Array.from(row.children)
+      ovColIndices.forEach(colIdx => {
+        const cell = cells[colIdx]
+        if (!cell) return
+        const value = cell.getAttribute('data-grade') || cell.innerText.trim()
+        if (!value) {
+          cell.classList.add('highlight-ov-red')
+          cell.title = 'Õpiväljund puudub'
+          anyHighlighted = true
+        } else {
+          cell.classList.remove('highlight-ov-red')
+          cell.removeAttribute('title')
+        }
+      })
+    })
+    // Show or remove notification
+    const notifications = document.querySelector('[data-discrepancies-table] .notifications-section')
+    if (notifications) {
+      let banner = document.getElementById('ov-warning-banner')
+      if (banner) banner.remove()
+      if (anyHighlighted) {
+        banner = document.createElement('div')
+        banner.id = 'ov-warning-banner'
+        banner.className = 'oa2-banner oa2-banner--red'
+        banner.textContent = `Mõnedel õpilastel puudub õpiväljund!`
+        // Insert after the title bar (second child)
+        notifications.insertBefore(banner, notifications.children[1]?.nextSibling || null)
       }
     }
   }
