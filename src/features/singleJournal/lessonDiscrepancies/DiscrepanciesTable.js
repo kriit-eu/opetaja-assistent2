@@ -82,6 +82,38 @@ export class DiscrepanciesTable {
       .lesson-discrepancy-table-cell-50 {
         width: 50%;
       }
+      .oa2-banner {
+        color: #721c24;
+        background: #f8d7da;
+        font-weight: bold;
+        font-size: 15px;
+        text-align: center;
+        border-radius: 4px;
+        border: 1px solid #f5c6cb;
+        padding: 12px 8px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+      }
+      .oa2-banner--red {
+        color: #721c24;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+      }
+      .oa2-banner--yellow {
+        color: #856404;
+        background: #fff3cd;
+        border: 1px solid #ffeeba;
+      }
+      .oa2-banner--info {
+        color: #0c5460;
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+      }
+      .oa2-banner--success {
+        color: #155724;
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+      }
     `
     styleService.injectCSS(css, 'lesson-discrepancies-styles')
   }
@@ -222,7 +254,7 @@ export class DiscrepanciesTable {
     </div>`
     // Only show missing grades message in notifications section
     if (missingGradesMessage) {
-      notificationsSection += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${missingGradesMessage}</div>`
+      notificationsSection += `<div class='oa2-banner oa2-banner--red'>${missingGradesMessage}</div>`
     }
     notificationsSection += `</div>`
 
@@ -683,12 +715,11 @@ export class DiscrepanciesTable {
       </div>
     </div>`
     if (missingGradesMessage) {
-      notifications.innerHTML += `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${missingGradesMessage}</div>`
+      notifications.innerHTML += `<div class='oa2-banner oa2-banner--red'>${missingGradesMessage}</div>`
     }
     // If no missingGradesMessage, show nothing
   }
 
-  // New method to update the final grade warning banner
   updateFinalGradeWarningBanner() {
     const notifications = document.querySelector('[data-discrepancies-table] .notifications-section')
     if (!notifications) return
@@ -697,15 +728,7 @@ export class DiscrepanciesTable {
     if (highlighted.length > 0) {
       const banner = document.createElement('div')
       banner.id = 'final-grade-warning-banner'
-      banner.style.background = '#f8d7da'
-      banner.style.color = '#721c24'
-      banner.style.fontWeight = 'bold'
-      banner.style.fontSize = '15px'
-      banner.style.textAlign = 'center'
-      banner.style.borderRadius = '4px'
-      banner.style.border = '1px solid #f5c6cb'
-      banner.style.padding = '12px 8px'
-      banner.style.marginBottom = '10px'
+      banner.className = 'oa2-banner oa2-banner--red'
       banner.textContent = `Mõnedel õpilastel puudub Lõpptulemus!`
       notifications.appendChild(banner)
     }
@@ -770,15 +793,7 @@ export class DiscrepanciesTable {
       if (anyHighlighted) {
         const banner = document.createElement('div')
         banner.id = 'final-grade-warning-banner'
-        banner.style.background = '#f8d7da'
-        banner.style.color = '#721c24'
-        banner.style.fontWeight = 'bold'
-        banner.style.fontSize = '15px'
-        banner.style.textAlign = 'center'
-        banner.style.borderRadius = '4px'
-        banner.style.border = '1px solid #f5c6cb'
-        banner.style.padding = '12px 8px'
-        banner.style.marginBottom = '10px'
+        banner.className = 'oa2-banner oa2-banner--red'
         banner.textContent = `Mõnedel õpilastel puudub Lõpptulemus!`
         notifications.appendChild(banner)
       }
