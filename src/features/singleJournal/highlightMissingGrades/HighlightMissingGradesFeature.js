@@ -17,7 +17,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
       style.textContent = `
                 .highlight-missing-grade {
                     background: #ffdddd !important;
-                    border: 1.5px solid #ff0000ff !important;
+                    box-shadow: 0 0 0 2px #ff0000 inset !important;
                     position: relative;
                     cursor: pointer;
                 }
@@ -29,7 +29,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
   onActivate() {
     console.debug('[HighlightMissingGradesFeature] onActivate called')
     setTimeout(() => {
-      (async() => {
+      ;(async () => {
         await this.run()
       })()
     }, 1000)
@@ -86,7 +86,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
     const entryColumns = headerCells.slice(2)
     const iseseisevColumns = []
     // Prepare to fetch extra details for each SISSEKANNE_I entry
-    const entryDetailPromises = entryColumns.map(async(th, i) => {
+    const entryDetailPromises = entryColumns.map(async (th, i) => {
       const entry = journalEntries[i]
       if (entry && entry.entryType === 'SISSEKANNE_I') {
         let entryDetail = entry
@@ -98,7 +98,9 @@ class HighlightMissingGradesFeature extends BaseFeature {
               { allStudents: true },
               { cache: true, cacheExpiration: 6e4 }
             )
-          } catch (e) { void e }
+          } catch (e) {
+            void e
+          }
         }
         const dueDateStr = entryDetail.homeworkDuedate || entryDetail.entryDate
         const dueDate = dueDateStr ? new Date(dueDateStr) : null
@@ -209,7 +211,9 @@ class HighlightMissingGradesFeature extends BaseFeature {
             { allStudents: true },
             { cache: true, cacheExpiration: 6e4 }
           )
-        } catch (e) { void e }
+        } catch (e) {
+          void e
+        }
       }
       const dueDateStr = entryDetail.homeworkDuedate || entryDetail.entryDate
       const dueDate = dueDateStr ? new Date(dueDateStr) : null

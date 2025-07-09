@@ -17,13 +17,13 @@ class HighlightFinalGradesFeature extends BaseFeature {
         `
         .highlight-final-grade-yellow {
           background: #fff9c4 !important;
-          border: 1.5px solid #ffeaa7 !important;
+          box-shadow: 0 0 0 2px #ffeaa7 inset !important;
           position: relative;
           cursor: pointer;
         }
         .highlight-final-grade-red {
           background: #ffdddd !important;
-          border: 1.5px solid #ff0000 !important;
+          box-shadow: 0 0 0 2px #ff0000 inset !important;
           position: relative;
           cursor: pointer;
         }
