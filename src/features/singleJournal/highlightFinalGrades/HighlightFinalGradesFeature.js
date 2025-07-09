@@ -1,5 +1,4 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
-import { info as LoggerInfo } from '../../../services/Logger.js'
 import { styleService } from '../../../services/StyleService.js'
 
 class HighlightFinalGradesFeature extends BaseFeature {

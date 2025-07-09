@@ -29,7 +29,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
   onActivate() {
     console.debug('[HighlightMissingGradesFeature] onActivate called')
     setTimeout(() => {
-      ;(async () => {
+      (async() => {
         await this.run()
       })()
     }, 1000)
@@ -86,7 +86,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
     const entryColumns = headerCells.slice(2)
     const iseseisevColumns = []
     // Prepare to fetch extra details for each SISSEKANNE_I entry
-    const entryDetailPromises = entryColumns.map(async (th, i) => {
+    const entryDetailPromises = entryColumns.map(async(th, i) => {
       const entry = journalEntries[i]
       if (entry && entry.entryType === 'SISSEKANNE_I') {
         let entryDetail = entry
