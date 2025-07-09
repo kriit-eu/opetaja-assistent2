@@ -291,21 +291,8 @@ export class DiscrepanciesTable {
         <h4 style="margin:0 0 10px 0;color:#495057;">Ebaloogilised sissekande liigi ja tüübi kombinatsioonid</h4>
       </div>`
       const sortedEntries = [...capacityProblems].sort((a, b) => new Date(a.entryDate) - new Date(b.entryDate))
-      const rows = sortedEntries
-        .map(entry => {
-          const row = this.#createCapacityProblemRow(entry)
-          return `<tr style="background-color:white">
-          <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-20">${row.dateWithBadge}</td>
-          <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">${row.message}</td>
-          <td class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">${row.action}</td>
-        </tr>`
-        })
-        .join('')
-      const tableHead = `<thead><tr style="background:#f9f9f9">
-        <th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th>
-        <th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">Märkus</th>
-        <th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th>
-      </tr></thead>`
+      const rows = sortedEntries.map(entry => this.#createCapacityProblemRow(entry)).join('')
+      const tableHead = `<thead><tr style="background:#f9f9f9"><th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-50">Märkus</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th></tr></thead>`
       section +=
         sectionHeader +
         `<table style="width:100%;border-collapse:collapse;background:white;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
@@ -359,7 +346,7 @@ export class DiscrepanciesTable {
           shortDate = `${dateObj.getDate().toString().padStart(2, '0')}.${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`
         }
       } catch (error) {
-        console.log('[DiscrepanciesTable] Date formatting error for display:', error)
+        console.log('[LessonDiscrepanciesTable] Date formatting error for display:', error)
       }
     }
 
