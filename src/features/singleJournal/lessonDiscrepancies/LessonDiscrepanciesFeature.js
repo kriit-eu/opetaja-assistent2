@@ -1998,7 +1998,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Validate against expected state
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
-    const iseseisevValid = actualState.iseseisev === expectedState.iseseiv
+    const iseseisevValid = actualState.iseseisev === expectedState.iseseisev
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
     const teacherValid = actualState.teacher === expectedState.teacher
     const isValid = auditoorneValid && iseseisevValid && praktiliseValid && teacherValid
@@ -2547,7 +2547,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         // Uncheck and highlight Iseseisev õpe in red if checked
         if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseivCheckbox)
+          await this.#clickElement(iseseisevCheckbox)
           this.#highlightProblematicElements([iseseisevCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
         }
         // Check and highlight Praktiline töö in green if not checked
@@ -2595,7 +2595,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(
         checkbox => checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') || checkbox.textContent.includes('Auditoorne õpe')
       )
-      const iseseiveCheckbox = Array.from(capacityTypeCheckboxes).find(
+      const iseseisevCheckbox = Array.from(capacityTypeCheckboxes).find(
         checkbox =>
           checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
           checkbox.getAttribute('aria-label')?.includes('Individuaalne õpe') ||
@@ -2622,8 +2622,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       } else if (entryType === 'SISSEKANNE_I') {
         // For independent work entries: ensure iseseisevCheckbox is checked, others are unchecked
-        if (iseseiveCheckbox && iseseiveCheckbox.getAttribute('aria-checked') !== 'true') {
-          await this.#clickElement(iseseiveCheckbox)
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(iseseisevCheckbox)
         }
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
@@ -2639,16 +2639,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
         }
-        if (iseseiveCheckbox && iseseiveCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseiveCheckbox)
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisevCheckbox)
         }
       } else {
         // For regular lesson entries (SISSEKANNE_T): ensure auditoorne õpe is checked, others are unchecked
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(auditoorneCheckbox)
         }
-        if (iseseiveCheckbox && iseseiveCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseiveCheckbox)
+        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseisevCheckbox)
         }
         if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(praktiliseCheckbox)
@@ -2692,7 +2692,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     for (const checkbox of teacherCheckboxes) {
       if (checkbox && this.#isElementVisible(checkbox)) {
-        const handleTeacherChange = async () => {
+        const handleTeacherChange = async() => {
           Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
           // Small delay to let the change propagate
           await this.#delay(300)
