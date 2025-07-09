@@ -9,7 +9,6 @@ import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
 
-
 console.log('👀 Watching for changes in src directory...')
 
 // Track the last rebuild time to prevent multiple rebuilds in quick succession
@@ -35,7 +34,7 @@ fs.watch('./src', { recursive: true }, (eventType, filename) => {
 })
 
 // Function to trigger a full rebuild
-function triggerRebuild () {
+function triggerRebuild() {
   try {
     lastRebuildTime = Date.now()
     const buildScript = path.join(process.cwd(), 'src', 'assets', 'scripts', 'build.js')

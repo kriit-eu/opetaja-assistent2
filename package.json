@@ -1,4 +1,4 @@
- {
+{
   "name": "opetaja-assistent2",
   "version": "0.1.0",
   "description": "Extension for enhancing Tahvel educational platform functionality",
@@ -12,7 +12,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "eslint": "^8.56.0"
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.5.1"
   },
   "scripts": {
     "start": "bun install && find src -name '*.js' -print0 | xargs -0 ./node_modules/.bin/eslint --fix && bun run dev",

@@ -8,13 +8,22 @@ export default class IndependentWorkCapacityFeature {
    * @param {number} journalId - Journal ID
    * @returns {Promise<string|null>} - Message to display or null
    */
-  static async check (api, journalId) {
-    // Only activate if the last-lesson-banner exists and matches the required message
-    const banner = document.getElementById('last-lesson-banner')
-    if (!banner) return null
-    const bannerText = banner.textContent || ''
-    const match = bannerText.match(/NB! Viimane tund toimus (\d{2}\.\d{2}\.\d{4})/)
-    if (!match) return null
+  static async check(api, journalId) {
+    // Wait for the inline notification to appear (up to 2s)
+    let notif = null
+    let waited = 0
+    const maxWait = 2000
+    const interval = 100
+    while (waited < maxWait) {
+      notif = document.getElementById('last-lesson-inline-notification')
+      if (notif) break
+      await new Promise(r => setTimeout(r, interval))
+      waited += interval
+    }
+    if (!notif) return null
+    const notifText = notif.textContent || ''
+    const notifMatch = notifText.match(/Viimane tund toim(?:us|ub) \d{2}\.\d{2}\.\d{4}/)
+    if (!notifMatch) return null
 
     try {
       const info = await api.tahvel.get(`/journals/${journalId}`)
@@ -24,17 +33,14 @@ export default class IndependentWorkCapacityFeature {
       if (typeof indep.usedHours !== 'number' || typeof indep.plannedHours !== 'number') return null
       const diff = indep.usedHours - indep.plannedHours
       const absDiff = Math.abs(diff)
-      if (diff < 0) {
-        return `Iseseisvaid töid on ${absDiff}h liiga vähe`
-      } else if (diff > 0) {
-        return `Iseseisvaid töid on ${absDiff}h liiga palju`
-      } else {
-        return null
+      if (diff !== 0) {
+        const suffix = diff < 0 ? 'liiga vähe' : 'liiga palju'
+        return `iseseisevaid töid on ${absDiff}h ${suffix}`
       }
+      return null
     } catch (e) {
       // Fail silently
       return null
     }
   }
 }
-

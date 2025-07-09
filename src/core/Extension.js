@@ -12,7 +12,7 @@ const tahvelExtension = {
   activeFeatures: [],
 
   // Initialize the extension
-  async init () {
+  async init() {
     Logger.success('Initializing Õpetaja Assistent 2...')
 
     // Add visual indicator to show the extension is active
@@ -43,7 +43,7 @@ const tahvelExtension = {
   },
 
   // Add visual indicator to show the extension is active
-  addVisualIndicator () {
+  addVisualIndicator() {
     // Keep track of whether we've added the indicator
     this.indicatorAdded = false
 
@@ -85,9 +85,7 @@ const tahvelExtension = {
             padding: 2px;
             margin-left: 4px;
           `
-          indicator.title = isDevKriit
-            ? 'Õpetaja Assistent 2 kasutab dev Kriiti'
-            : 'Õpetaja Assistent 2 on aktiivne'
+          indicator.title = isDevKriit ? 'Õpetaja Assistent 2 kasutab dev Kriiti' : 'Õpetaja Assistent 2 on aktiivne'
           indicator.textContent = isDevKriit ? 'DEV' : 'ÕA2'
 
           // Append the indicator to the user menu button
@@ -146,7 +144,7 @@ const tahvelExtension = {
   },
 
   // Handle navigation events
-  handleNavigation (url) {
+  handleNavigation(url) {
     Logger.debug(`Navigation detected: ${url}`)
 
     // Activate relevant features for current page
@@ -161,7 +159,7 @@ const tahvelExtension = {
         feature.deactivate()
       }
     })
-  },
+  }
 }
 
 // Initialize extension when DOM is fully loaded

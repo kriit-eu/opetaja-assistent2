@@ -9,13 +9,12 @@ import { ApiService } from '../services/ApiService.js'
 /**
  * Get the current Tahvel base URL based on the current domain
  */
-function getTahvelBaseUrl () {
+function getTahvelBaseUrl() {
   const hostname = window.location.hostname
   if (hostname.includes('test.tahvel.eenet.ee')) {
     return 'https://test.tahvel.eenet.ee/hois_back'
   }
   return 'https://tahvel.edu.ee/hois_back'
-
 }
 
 /**
@@ -25,7 +24,7 @@ export const api = {
   // Tahvel API instance - baseUrl is dynamic based on current domain
   tahvel: new ApiService({
     name: 'tahvel',
-    baseUrl: getTahvelBaseUrl(),
+    baseUrl: getTahvelBaseUrl()
   }),
 
   // Kriit API instance - baseUrl will be set from user settings
@@ -33,13 +32,13 @@ export const api = {
     name: 'kriit',
     baseUrl: '', // Empty by default, will be set from chrome.storage.sync
     defaultHeaders: {
-      'Accept': 'application/json',
-    },
-  }),
+      Accept: 'application/json'
+    }
+  })
 }
 
 export class BaseFeature {
-  constructor (name, urlPattern, requiredSelectors = null) {
+  constructor(name, urlPattern, requiredSelectors = null) {
     this.name = name
     this.urlPattern = urlPattern
     this.requiredSelectors = requiredSelectors
@@ -60,7 +59,7 @@ export class BaseFeature {
    * @param {string} url - Current URL
    * @returns {boolean} True if should activate
    */
-  shouldActivate (url) {
+  shouldActivate(url) {
     if (typeof this.urlPattern === 'string') {
       return url.includes(this.urlPattern)
     } else if (this.urlPattern instanceof RegExp) {
@@ -74,7 +73,7 @@ export class BaseFeature {
   /**
    * Activate the feature
    */
-  activate () {
+  activate() {
     // Skip if already active
     if (this.isActive) return
 
@@ -87,25 +86,22 @@ export class BaseFeature {
       Logger.debug(`Feature ${this.name} waiting for required elements: ${this.requiredSelectors}`)
 
       // Set up observer for required elements
-      this.elementsObserver = domService.observeForElements(
-        this.requiredSelectors,
-        (elements, selector, error) => {
-          // Clean up the observer
-          this.elementsObserver = null
+      this.elementsObserver = domService.observeForElements(this.requiredSelectors, (elements, selector, error) => {
+        // Clean up the observer
+        this.elementsObserver = null
 
-          if (error) {
-            Logger.warning(`Feature ${this.name} could not find required elements: ${error.message}`)
-            this.onRequiredElementsNotFound(error)
-            return
-          }
+        if (error) {
+          Logger.warning(`Feature ${this.name} could not find required elements: ${error.message}`)
+          this.onRequiredElementsNotFound(error)
+          return
+        }
 
-          if (elements && elements.length > 0) {
-            Logger.debug(`Feature ${this.name} found required elements with selector: ${selector}`)
-            this.onRequiredElementsFound(elements, selector)
-            this.onActivate(elements)
-          }
-        },
-      )
+        if (elements && elements.length > 0) {
+          Logger.debug(`Feature ${this.name} found required elements with selector: ${selector}`)
+          this.onRequiredElementsFound(elements, selector)
+          this.onActivate(elements)
+        }
+      })
     } else {
       // No required elements, activate immediately
       this.onActivate()
@@ -115,7 +111,7 @@ export class BaseFeature {
   /**
    * Deactivate the feature
    */
-  deactivate () {
+  deactivate() {
     if (this.isActive) {
       this.isActive = false
       Logger.feature(this.name, 'Deactivated')
@@ -130,7 +126,7 @@ export class BaseFeature {
    * NOTE: Do not log 'Activated' in this method - BaseFeature.activate() already does that.
    * This method is for initialization logic only.
    */
-  onActivate () {
+  onActivate() {
     // Default implementation - override in subclasses
     Logger.debug(`Feature "${this.name}" activated, but no onActivate handler implemented`)
   }
@@ -139,7 +135,7 @@ export class BaseFeature {
    * Called when the feature is deactivated
    * Should be overridden by child classes
    */
-  onDeactivate () {
+  onDeactivate() {
     // Default implementation - override in subclasses
 
     // Clean up any observers
@@ -155,7 +151,7 @@ export class BaseFeature {
    * @param {NodeList} elements - The found elements
    * @param {string} selector - The selector that matched
    */
-  onRequiredElementsFound (elements, selector) {
+  onRequiredElementsFound(elements, selector) {
     // Default implementation - override in subclasses if needed
     Logger.debug(`Feature "${this.name}" found ${elements.length} required elements with selector: ${selector}`)
   }
@@ -165,7 +161,7 @@ export class BaseFeature {
    * Can be overridden by child classes
    * @param {Error} error - The error that occurred
    */
-  onRequiredElementsNotFound (error) {
+  onRequiredElementsNotFound(error) {
     // Default implementation - override in subclasses if needed
     Logger.warning(`Feature "${this.name}" could not find required elements: ${error.message}`)
   }
@@ -173,7 +169,7 @@ export class BaseFeature {
   /**
    * Initialize Kriit API with settings from chrome.storage.sync
    */
-  initializeKriitApi () {
+  initializeKriitApi() {
     // Check if API is properly initialized
     if (!this.api || !this.api.kriit) {
       Logger.error('API not properly initialized', { api: this.api })
