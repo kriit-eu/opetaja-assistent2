@@ -54,7 +54,7 @@ export async function loadFeatures() {
 
   // Load warning triangles feature (always enabled)
   try {
-    const WarningTrianglesFeature = (await import('../features/triangles/WarningTrianglesFeature.js')).default
+    const WarningTrianglesFeature = (await import('../features/journalList/triangles/WarningTrianglesFeature.js')).default
     const warningTrianglesFeature = new WarningTrianglesFeature()
     allAvailableFeatures.journalList.push(warningTrianglesFeature)
     Logger.debug('Feature "WarningTrianglesFeature" created')

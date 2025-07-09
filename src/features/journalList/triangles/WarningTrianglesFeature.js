@@ -9,8 +9,8 @@
  * - Only counts past timetable lessons
  */
 
-import { BaseFeature } from '../../core/BaseFeature.js'
-import Logger from '../../services/Logger.js'
+import { BaseFeature } from '../../../core/BaseFeature.js'
+import Logger from '../../../services/Logger.js'
 
 export default class WarningTrianglesFeature extends BaseFeature {
   constructor() {
