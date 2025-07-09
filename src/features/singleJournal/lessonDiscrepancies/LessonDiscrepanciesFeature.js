@@ -641,6 +641,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const originalState = this.#captureButtonState(button)
     this.#setButtonProcessingState(button)
 
+    let fadeTarget = null
+    let fadeTable = null
     try {
       const data = this.#parseButtonData(button)
       Logger.debug(`[${this.name}] Raw button dataset:`, button.dataset)
@@ -650,11 +652,31 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Object.entries(data).map(([key, value]) => [key, typeof value, value])
       )
 
+      // Fade out row or table for 'Lisa' button
+      if (data.handler === 'addMissing') {
+        fadeTarget = button.closest('tr')
+        if (fadeTarget) {
+          fadeTarget.classList.add('fade-up')
+          // If this is the last row, fade out the table as well
+          const tbody = fadeTarget.parentElement
+          if (tbody && tbody.children.length === 1) {
+            fadeTable = tbody.closest('table')
+            if (fadeTable) fadeTable.classList.add('fade-up')
+          }
+        }
+      }
+
       await this.#executeButtonAction(data)
+      if (data.handler === 'addMissing') {
+        Logger.debug(`[${this.name}] Lisa button clicked, waiting for table refresh...`)
+        await this.#delay(1000)
+        await this.#refreshTableWithRetry()
+      }
     } catch (error) {
       Logger.error(`[${this.name}] button action error`, error)
     } finally {
-      this.#restoreButtonState(button, originalState)
+      const isLisaButton = this.#parseButtonData(button).handler === 'addMissing'
+      this.#restoreButtonState(button, originalState, isLisaButton)
     }
   }
 
@@ -763,14 +785,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #restoreButtonState(button, originalState) {
+  #restoreButtonState(button, originalState, isLisaButton = false) {
+    const delayTime = isLisaButton ? 5000 : 2000
     setTimeout(() => {
       button.disabled = false
       button.textContent = originalState.text
       button.style.background = originalState.background
       button.style.opacity = originalState.opacity || ''
       button.style.cursor = originalState.cursor || ''
-    }, 2000)
+    }, delayTime)
   }
 
   async #handleAddMissingEntry(date, start, count, timetableData = {}) {
@@ -1598,7 +1621,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#originalFetch = window.fetch
 
       // Monitor for journal entry dialog saves by watching for PUT requests to journal entry endpoints
-      window.fetch = async(...args) => {
+      window.fetch = async (...args) => {
         const response = await this.#originalFetch.apply(window, args)
 
         // Check if this is a PUT request to a journal entry endpoint
@@ -1608,7 +1631,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           const journalIdMatch = url.match(/\/journals\/(\d+)\/journalEntry\//)
           if (journalIdMatch && parseInt(journalIdMatch[1]) === this.#currentJournalId) {
             // Wait a bit for the save to complete, then refresh validation
-            setTimeout(async() => {
+            setTimeout(async () => {
               await this.#refreshCapacityValidationAfterSave()
             }, 1500)
           }
@@ -1975,7 +1998,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Validate against expected state
     const auditoorneValid = actualState.auditoorne === expectedState.auditoorne
-    const iseseisevValid = actualState.iseseisev === expectedState.iseseisev
+    const iseseisevValid = actualState.iseseisev === expectedState.iseseiv
     const praktiliseValid = actualState.praktiline === expectedState.praktiline
     const teacherValid = actualState.teacher === expectedState.teacher
     const isValid = auditoorneValid && iseseisevValid && praktiliseValid && teacherValid
@@ -2524,7 +2547,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
         // Uncheck and highlight Iseseisev õpe in red if checked
         if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseisevCheckbox)
+          await this.#clickElement(iseseivCheckbox)
           this.#highlightProblematicElements([iseseisevCheckbox], 'Iseseisev õpe linnuke eemaldati!', '#ff0000')
         }
         // Check and highlight Praktiline töö in green if not checked
@@ -2572,7 +2595,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const auditoorneCheckbox = Array.from(capacityTypeCheckboxes).find(
         checkbox => checkbox.getAttribute('aria-label')?.includes('Auditoorne õpe') || checkbox.textContent.includes('Auditoorne õpe')
       )
-      const iseseisevCheckbox = Array.from(capacityTypeCheckboxes).find(
+      const iseseiveCheckbox = Array.from(capacityTypeCheckboxes).find(
         checkbox =>
           checkbox.getAttribute('aria-label')?.includes('Iseseisev õpe') ||
           checkbox.getAttribute('aria-label')?.includes('Individuaalne õpe') ||
@@ -2599,8 +2622,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       } else if (entryType === 'SISSEKANNE_I') {
         // For independent work entries: ensure iseseisevCheckbox is checked, others are unchecked
-        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') !== 'true') {
-          await this.#clickElement(iseseisevCheckbox)
+        if (iseseiveCheckbox && iseseiveCheckbox.getAttribute('aria-checked') !== 'true') {
+          await this.#clickElement(iseseiveCheckbox)
         }
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
@@ -2616,16 +2639,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(auditoorneCheckbox)
         }
-        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseisevCheckbox)
+        if (iseseiveCheckbox && iseseiveCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseiveCheckbox)
         }
       } else {
         // For regular lesson entries (SISSEKANNE_T): ensure auditoorne õpe is checked, others are unchecked
         if (auditoorneCheckbox && auditoorneCheckbox.getAttribute('aria-checked') !== 'true') {
           await this.#clickElement(auditoorneCheckbox)
         }
-        if (iseseisevCheckbox && iseseisevCheckbox.getAttribute('aria-checked') === 'true') {
-          await this.#clickElement(iseseisevCheckbox)
+        if (iseseiveCheckbox && iseseiveCheckbox.getAttribute('aria-checked') === 'true') {
+          await this.#clickElement(iseseiveCheckbox)
         }
         if (praktiliseCheckbox && praktiliseCheckbox.getAttribute('aria-checked') === 'true') {
           await this.#clickElement(praktiliseCheckbox)
@@ -2669,7 +2692,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     for (const checkbox of teacherCheckboxes) {
       if (checkbox && this.#isElementVisible(checkbox)) {
-        const handleTeacherChange = async() => {
+        const handleTeacherChange = async () => {
           Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
           // Small delay to let the change propagate
           await this.#delay(300)
