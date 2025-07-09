@@ -10,9 +10,7 @@ const VERSION = '6'
 Logger.info(`Content script loaded - version ${VERSION}`)
 
 // Initialize immediately or when DOM is ready
-document.readyState === 'loading'
-  ? document.addEventListener('DOMContentLoaded', TahvelExtension.init)
-  : TahvelExtension.init()
+document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', TahvelExtension.init) : TahvelExtension.init()
 
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -56,7 +54,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {string} comparisonDate - The comparison date in YYYY-MM-DD format
  * @returns {Promise<Array>} Array of future lesson subjects
  */
-async function handleGetFutureSubjects (comparisonDate) {
+async function handleGetFutureSubjects(comparisonDate) {
   try {
     // Import the API service
     const { api } = await import('./core/BaseFeature.js')
@@ -67,10 +65,14 @@ async function handleGetFutureSubjects (comparisonDate) {
     }
 
     // Get user info to get school ID
-    const userInfo = await apiService.get('/user', {}, {
-      cache: true,
-      cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
-    })
+    const userInfo = await apiService.get(
+      '/user',
+      {},
+      {
+        cache: true,
+        cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
+      }
+    )
 
     if (!userInfo || !userInfo.school) {
       throw new Error('Kasutaja pole sisse logitud või kool pole saadaval')
@@ -89,19 +91,21 @@ async function handleGetFutureSubjects (comparisonDate) {
     const thru = new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
 
     // First, get all active teachers in the school
-    const teachersData = await apiService.get(`/teachers?isActive=true&lang=ET&page=0&size=1000`, {}, {
-      cache: true,
-      cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
-    })
+    const teachersData = await apiService.get(
+      `/teachers?isActive=true&lang=ET&page=0&size=1000`,
+      {},
+      {
+        cache: true,
+        cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
+      }
+    )
 
     if (!teachersData || !teachersData.content) {
       throw new Error('Õpetajate andmed pole saadaval')
     }
 
     // Filter teachers by school
-    const schoolTeachers = teachersData.content.filter(teacher =>
-      teacher.school && teacher.school.id === schoolId
-    )
+    const schoolTeachers = teachersData.content.filter(teacher => teacher.school && teacher.school.id === schoolId)
 
     Logger.debug(`Found ${schoolTeachers.length} teachers in school ${schoolId}`)
 
@@ -118,10 +122,14 @@ async function handleGetFutureSubjects (comparisonDate) {
 
     Logger.debug(`Fetching timetable for ${teacherIds.length} teachers`)
 
-    const timetableData = await apiService.get(endpoint, {}, {
-      cache: true,
-      cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
-    })
+    const timetableData = await apiService.get(
+      endpoint,
+      {},
+      {
+        cache: true,
+        cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
+      }
+    )
 
     if (!timetableData || !timetableData.timetableEvents) {
       throw new Error('Tunniplaani andmed pole saadaval')
@@ -138,9 +146,10 @@ async function handleGetFutureSubjects (comparisonDate) {
       return eventDate >= compareDate && event.journalId !== null && event.journalId !== undefined
     })
 
-    Logger.debug(`Found ${futureEvents.length} future timetable events from all teachers (from ${comparisonDate || 'today'}, excluding lessons without journalId)`)
+    Logger.debug(
+      `Found ${futureEvents.length} future timetable events from all teachers (from ${comparisonDate || 'today'}, excluding lessons without journalId)`
+    )
     return futureEvents
-
   } catch (error) {
     Logger.error('Error in handleGetFutureSubjects:', error)
     throw error

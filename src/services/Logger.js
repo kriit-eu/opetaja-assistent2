@@ -13,7 +13,7 @@ export const LogLevel = {
   WARNING: '✨',
   ERROR: '✨',
   DEBUG: '✨',
-  FEATURE: '✨',
+  FEATURE: '✨'
 }
 
 // Debug mode configuration
@@ -21,7 +21,7 @@ const DEBUG_MODE_KEY = 'OA_debug_mode'
 let debugModeCache = false
 
 // Initialize debug mode from storage
-chrome.storage.sync.get([DEBUG_MODE_KEY], function (result) {
+chrome.storage.sync.get([DEBUG_MODE_KEY], function(result) {
   debugModeCache = result[DEBUG_MODE_KEY] === true
 })
 
@@ -29,14 +29,14 @@ chrome.storage.sync.get([DEBUG_MODE_KEY], function (result) {
  * Check if debug mode is enabled
  * @returns {boolean} True if debug mode is enabled
  */
-export function isDebugMode () {
+export function isDebugMode() {
   return debugModeCache
 }
 
 /**
  * Enable debug mode
  */
-export function enableDebugMode () {
+export function enableDebugMode() {
   debugModeCache = true
   chrome.storage.sync.set({ [DEBUG_MODE_KEY]: true })
   console.log('[Logger] Debug mode enabled - all log messages will be shown')
@@ -45,7 +45,7 @@ export function enableDebugMode () {
 /**
  * Disable debug mode
  */
-export function disableDebugMode () {
+export function disableDebugMode() {
   debugModeCache = false
   chrome.storage.sync.set({ [DEBUG_MODE_KEY]: false })
   console.log('[Logger] Debug mode disabled - only important log messages will be shown')
@@ -55,7 +55,7 @@ export function disableDebugMode () {
  * Get the number of seconds elapsed since page load
  * @returns {number} Seconds elapsed (integer)
  */
-function getSecondsElapsed () {
+function getSecondsElapsed() {
   return Math.floor((Date.now() - PAGE_LOAD_TIME) / 1000)
 }
 
@@ -65,7 +65,7 @@ function getSecondsElapsed () {
  * @param {string} emoji - The emoji prefix (use LogLevel constants)
  * @param {any[]} args - Additional arguments to log
  */
-export function log (message, emoji = LogLevel.INFO, ...args) {
+export function log(message, emoji = LogLevel.INFO, ...args) {
   // Get seconds elapsed since page load
   const secondsElapsed = getSecondsElapsed()
 
@@ -94,7 +94,7 @@ export function log (message, emoji = LogLevel.INFO, ...args) {
  * @param {string} message - The message to log
  * @param {any[]} args - Additional arguments to log
  */
-export function info (message, ...args) {
+export function info(message, ...args) {
   log(message, LogLevel.INFO, ...args)
 }
 
@@ -103,7 +103,7 @@ export function info (message, ...args) {
  * @param {string} message - The message to log
  * @param {any[]} args - Additional arguments to log
  */
-export function success (message, ...args) {
+export function success(message, ...args) {
   log(message, LogLevel.SUCCESS, ...args)
 }
 
@@ -112,7 +112,7 @@ export function success (message, ...args) {
  * @param {string} message - The message to log
  * @param {any[]} args - Additional arguments to log
  */
-export function warning (message, ...args) {
+export function warning(message, ...args) {
   log(message, LogLevel.WARNING, ...args)
 }
 
@@ -121,7 +121,7 @@ export function warning (message, ...args) {
  * @param {string} message - The message to log
  * @param {...any} args - Additional arguments to log
  */
-export function error (message, ...args) {
+export function error(message, ...args) {
   log(message, LogLevel.ERROR, ...args)
 }
 
@@ -130,7 +130,7 @@ export function error (message, ...args) {
  * @param {string} message - The message to log
  * @param {any[]} args - Additional arguments to log
  */
-export function debug (message, ...args) {
+export function debug(message, ...args) {
   // Check if we're in development mode
   let isDev = true
 
@@ -151,7 +151,7 @@ export function debug (message, ...args) {
  * @param {string} message - The message to log
  * @param {any[]} args - Additional arguments to log
  */
-export function feature (featureName, message, ...args) {
+export function feature(featureName, message, ...args) {
   log(`[${featureName}] ${message}`, LogLevel.FEATURE, ...args)
 }
 
@@ -167,5 +167,5 @@ export default {
   LogLevel,
   isDebugMode,
   enableDebugMode,
-  disableDebugMode,
+  disableDebugMode
 }

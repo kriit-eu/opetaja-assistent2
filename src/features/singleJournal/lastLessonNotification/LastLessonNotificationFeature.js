@@ -11,7 +11,7 @@ import { BaseFeature } from '../../../core/BaseFeature.js'
 export default class LastLessonNotificationFeature extends BaseFeature {
   static SCHOOL_ID_FALLBACK = 9
 
-  constructor () {
+  constructor() {
     super('lastLessonNotification', /\/journal\/(\d+)\/edit/)
     this.name = 'LastLessonNotificationFeature'
 
@@ -23,11 +23,10 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       month: '2-digit',
       day: '2-digit'
     }).format(new Date())
-    // this.comparisonDate = "2023-06-22" // Uncomment for testing with a fixed date
-
+    // this.comparisonDate = '2024-12-08' // Uncomment for testing with a fixed date
   }
 
-  async activate () {
+  async activate() {
     console.debug('[LastLessonNotificationFeature] activate called')
     console.debug('[LastLessonNotificationFeature] Using comparison date:', this.comparisonDate)
     console.debug('[LastLessonNotificationFeature] Current URL:', window.location.href)
@@ -35,40 +34,17 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     try {
       // Only show the last lesson notification banner
       await this.#showLastLessonNotification()
-      // Table creation is now handled by LessonDiscrepanciesTable
+      // Table creation is now handled by DiscrepanciesTable
     } catch (error) {
       console.error('[LastLessonNotificationFeature] Error in activate:', error)
     }
   }
 
-  onDeactivate () {
+  onDeactivate() {
     this._removeBanner()
     super.onDeactivate()
   }
-
-  async #waitForDiscrepanciesTable () {
-    console.debug('[LastLessonNotificationFeature] Waiting for discrepancies table...')
-    const maxWaitTime = 3000 // 3 seconds
-    const checkInterval = 100 // Check every 100ms
-    let waited = 0
-
-    while (waited < maxWaitTime) {
-      const container = this._findInsertionPoint()
-      const existingTable = container.querySelector('[data-discrepancies-table]')
-
-      if (existingTable) {
-        console.debug('[LastLessonNotificationFeature] Discrepancies table found, proceeding...')
-        return
-      }
-
-      await new Promise(resolve => setTimeout(resolve, checkInterval))
-      waited += checkInterval
-    }
-
-    console.debug('[LastLessonNotificationFeature] Timeout waiting for discrepancies table, proceeding anyway...')
-  }
-
-  async #showLastLessonNotification () {
+  async #showLastLessonNotification() {
     const journalId = this.#extractJournalId()
     console.debug('[LastLessonNotificationFeature] journalId:', journalId)
     if (!journalId) {
@@ -96,6 +72,39 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       lastLessonDate = sortedTimetable[sortedTimetable.length - 1].date
     }
 
+    // Prepare independent work messages for all deadlines after last lesson
+    let independentWorkMessages = []
+    if (lastLessonDate && Array.isArray(journalEntries)) {
+      const lastLesson = new Date(lastLessonDate)
+      lastLesson.setHours(0, 0, 0, 0)
+      const futureIndependents = journalEntries
+        .filter(entry => entry.entryType === 'SISSEKANNE_I')
+        .map(entry => {
+          const dueDateStr = entry.homeworkDuedate || entry.entryDate
+          if (!dueDateStr) return null
+          const deadline = new Date(dueDateStr)
+          deadline.setHours(0, 0, 0, 0)
+          return { deadline, entry }
+        })
+        .filter(Boolean)
+        .filter(({ deadline }) => deadline > lastLesson)
+        .sort((a, b) => a.deadline - b.deadline)
+      if (futureIndependents.length > 0) {
+        independentWorkMessages = futureIndependents.map(({ deadline }) => {
+          const diffDays = Math.round((deadline - lastLesson) / (1000 * 60 * 60 * 24))
+          const deadlineStr = this.#formatDisplayDate(deadline)
+          return `${deadlineStr} iseseiseva töö tähtaeg on ${diffDays} päeva hiljem kui viimane tund`
+        })
+      }
+    }
+
+    // Always set the global message(s) before table creation
+    if (independentWorkMessages.length > 0) {
+      window.__lastLessonNotification_independentWorkMessage = independentWorkMessages
+      document.getElementById('independent-work-deadline-banner')?.remove()
+      console.debug('[LastLessonNotificationFeature] Provided independent work messages to table:', independentWorkMessages)
+    }
+
     const timetableCount = timetable.length
     const journalCount = journalEntries.length
     console.debug('[LastLessonNotificationFeature] timetableCount:', timetableCount, 'journalCount:', journalCount)
@@ -104,11 +113,13 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     const comparisonDateTime = new Date(this.comparisonDate)
     comparisonDateTime.setHours(0, 0, 0, 0)
 
-    const allPast = timetable.length > 0 && timetable.every(lesson => {
-      const lessonDate = new Date(lesson.date)
-      lessonDate.setHours(0, 0, 0, 0)
-      return lessonDate < comparisonDateTime
-    })
+    const allPast =
+      timetable.length > 0 &&
+      timetable.every(lesson => {
+        const lessonDate = new Date(lesson.date)
+        lessonDate.setHours(0, 0, 0, 0)
+        return lessonDate < comparisonDateTime
+      })
     console.debug('[LastLessonNotificationFeature] allPast (compared to ' + this.comparisonDate + '):', allPast)
 
     // Show detailed condition check
@@ -134,95 +145,81 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     }
   }
 
-  _showBanner (date, allPast = false) {
-    console.log('[LastLessonNotificationFeature] Last lesson date:', date)
+  _showBanner(date, allPast = false) {
     this._removeBanner()
-    const banner = document.createElement('div')
-    banner.setAttribute('id', 'last-lesson-banner')
-
-    // Determine if the last lesson date is the comparison date
+    const subjectSpan = document.querySelector('.hois-collapse-header .flex-gt-md-50 span')
+    if (!subjectSpan) {
+      console.debug('[LastLessonNotificationFeature] Subject span not found, cannot show notification')
+      return
+    }
+    const oldNotif = document.getElementById('last-lesson-inline-notification')
+    if (oldNotif) oldNotif.remove()
     let isLastLessonToday = false
+    let isPast = false
     if (date !== 'not found in timetable') {
       const d1 = new Date(date)
       const d2 = new Date(this.comparisonDate)
       d1.setHours(0, 0, 0, 0)
       d2.setHours(0, 0, 0, 0)
-      isLastLessonToday = d1.getTime() === d2.getTime()
+      if (d1.getTime() === d2.getTime()) {
+        isLastLessonToday = true
+      } else if (d1.getTime() < d2.getTime()) {
+        isPast = true
+      }
     }
-
-    banner.style.cssText = `
-      background: ${isLastLessonToday ? '#ffcccc' : '#fff3cd'};
-      border: 1px solid #ffeaa7;
-      border-radius: 4px;
-      padding: 15px;
-      margin: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,.1);
-      width: 600px;
-      min-width: 430px;
-    `
-
     const comparisonDateStr = this.#formatDisplayDate(this.comparisonDate)
     const todayStr = this.#formatDisplayDate(new Date())
     const showComparisonDate = comparisonDateStr !== todayStr
-
     let bannerMessage
     if (date === 'not found in timetable') {
       bannerMessage = `NB! Õppetöö kirjed on olemas, kuid tunniplaani andmeid ei leitud${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
     } else {
       const verb = allPast ? 'toimus' : 'toimub'
-      bannerMessage = `NB! Viimane tund ${verb} ${this.#formatDisplayDate(date)}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
+      bannerMessage = `Viimane tund ${verb} ${this.#formatDisplayDate(date)}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
     }
-
-    // Header bar: left = logo + Õpetaja Assistent 2, right = Last lesson notification label
-    const titleBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
-        <div style="display:flex;align-items:center;">
-            <span style="font-size:20px;margin-right:10px;">🎓</span>
-            <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
-        </div>
-        <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-            Viimase tunni teavitus
-        </div>
-    </div>`
-
-    banner.innerHTML = `
-        ${titleBar}
-        <div style="font-size:16px;font-weight:bold;color:#212529;">${bannerMessage}</div>
+    let bgColor = '#fff3cd' // yellow default
+    let borderColor = '#ffeaa7'
+    if (isLastLessonToday) {
+      bgColor = '#ffcccc' // red
+      borderColor = '#ff8888'
+    } else if (isPast) {
+      bgColor = '#e9ecef' // gray
+      borderColor = '#adb5bd'
+    }
+    // Force red if last lesson date equals comparison date
+    if (date !== 'not found in timetable') {
+      const d1 = new Date(date)
+      const d2 = new Date(this.comparisonDate)
+      d1.setHours(0, 0, 0, 0)
+      d2.setHours(0, 0, 0, 0)
+      if (d1.getTime() === d2.getTime()) {
+        bgColor = '#ffcccc'
+        borderColor = '#ff8888'
+      }
+    }
+    const notif = document.createElement('span')
+    notif.id = 'last-lesson-inline-notification'
+    notif.style.cssText = `
+      display: inline-block;
+      margin-left: 16px;
+      background: ${bgColor};
+      border: 1px solid ${borderColor};
+      border-radius: 12px;
+      padding: 4px 12px;
+      font-size: 15px;
+      font-weight: bold;
+      color: #212529;
+      vertical-align: middle;
     `
-
-    const container = this._findInsertionPoint()
-
-    // Check if there's already a discrepancies table and insert after it
-    const existingTable = container.querySelector('[data-discrepancies-table]')
-    console.debug('[LastLessonNotificationFeature] Container:', container)
-    console.debug('[LastLessonNotificationFeature] Existing table found:', !!existingTable)
-
-    if (existingTable) {
-      // Insert after the discrepancies table
-      console.debug('[LastLessonNotificationFeature] Inserting after discrepancies table')
-      container.insertBefore(banner, existingTable.nextSibling)
-    } else {
-      // Insert at the beginning if no table exists
-      console.debug('[LastLessonNotificationFeature] Inserting at beginning of container')
-      container.insertBefore(banner, container.firstChild)
-    }
+    notif.textContent = bannerMessage
+    subjectSpan.parentNode.insertBefore(notif, subjectSpan.nextSibling)
   }
 
-  _removeBanner () {
+  _removeBanner() {
+    document.getElementById('last-lesson-inline-notification')?.remove()
     document.getElementById('last-lesson-banner')?.remove()
   }
-
-  _findInsertionPoint () {
-    // Use the same insertion point logic as LessonDiscrepanciesFeature
-    const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-    const container = selectors
-      .map(selector => document.querySelector(selector))
-      .find(element => element && element.getBoundingClientRect().width > 100) || document.body
-
-    console.debug('[LastLessonNotificationFeature] Found insertion container:', container)
-    return container
-  }
-
-  #formatDisplayDate (date) {
+  #formatDisplayDate(date) {
     const d = new Date(date)
     const day = d.getDate().toString().padStart(2, '0')
     const month = (d.getMonth() + 1).toString().padStart(2, '0')
@@ -230,12 +227,12 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     return `${day}.${month}.${year}`
   }
 
-  #extractJournalId () {
+  #extractJournalId() {
     const match = window.location.href.match(/\/journal\/(\d+)/)
     return match ? parseInt(match[1], 10) : null
   }
 
-  async #fetchData (journalId) {
+  async #fetchData(journalId) {
     console.debug('[LastLessonNotificationFeature] #fetchData called with journalId:', journalId)
 
     // Fetch journal info to get schoolId and teacherId
@@ -279,18 +276,38 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       })
     }
 
-    const timetable = timetableData?.timetableEvents?.filter(event => {
-      const matches = event.journalId == journalId
-      console.debug(`[LastLessonNotificationFeature] Event journalId ${event.journalId} ${matches ? 'MATCHES' : 'does not match'} target journalId ${journalId}`)
-      return matches
-    }) || []
+    const timetable =
+      timetableData?.timetableEvents?.filter(event => {
+        const matches = event.journalId == journalId
+        console.debug(
+          `[LastLessonNotificationFeature] Event journalId ${event.journalId} ${matches ? 'MATCHES' : 'does not match'} target journalId ${journalId}`
+        )
+        return matches
+      }) || []
 
     console.debug('[LastLessonNotificationFeature] Filtered timetable events for journal:', timetable)
 
     // Fetch journal entries
-    const journalEntries = await this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true, cacheExpiration: 6e4 })
+    const journalEntries = await this.api.tahvel.get(
+      `/journals/${journalId}/journalEntriesByDate`,
+      { allStudents: true },
+      { cache: true, cacheExpiration: 6e4 }
+    )
     console.debug('[LastLessonNotificationFeature] Journal entries:', journalEntries)
 
     return { timetable, journalEntries: journalEntries ?? [] }
   }
+
+  static async refresh(api) {
+    if (!window.location.href.match(/\/journal\/(\d+)\/edit/)) return
+    const feature = new LastLessonNotificationFeature()
+    feature.api = api || (window.__opetajaAssistentApiService && window.__opetajaAssistentApiService.api)
+    if (!feature.api) return
+    await feature.#showLastLessonNotification()
+  }
+}
+
+// Attach refresh to window for global access (outside class)
+if (typeof window !== 'undefined' && !window.__lastLessonNotificationRefresh) {
+  window.__lastLessonNotificationRefresh = LastLessonNotificationFeature.refresh
 }

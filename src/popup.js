@@ -11,7 +11,7 @@ const KRIIT_API_KEY_KEY = 'OA_kriitApiToken'
 const DEFAULT_KRIIT_API_URL = 'https://kriit.vikk.ee/api'
 
 // Initialize popup when DOM is loaded
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function() {
   console.log('Popup DOM loaded')
 
   try {
@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function () {
 })
 
 // Helper to parse DD.MM.YYYY to Date
-function parseEuDate (str) {
+function parseEuDate(str) {
   if (!/^[0-9]{2}\.[0-9]{2}\.[0-9]{4}$/.test(str)) return null
   const [day, month, year] = str.split('.').map(Number)
   const d = new Date(year, month - 1, day)
@@ -33,7 +33,7 @@ function parseEuDate (str) {
 }
 
 // Format date for display
-function formatDisplayDate (date) {
+function formatDisplayDate(date) {
   const day = date.getDate().toString().padStart(2, '0')
   const month = (date.getMonth() + 1).toString().padStart(2, '0')
   const year = date.getFullYear()
@@ -43,7 +43,7 @@ function formatDisplayDate (date) {
 /**
  * Initialize the popup
  */
-function initPopup () {
+function initPopup() {
   // Get DOM elements
   const debugModeCheckbox = document.getElementById('debug-mode')
   const clearCacheButton = document.getElementById('clear-cache')
@@ -78,22 +78,25 @@ function initPopup () {
 
   // Set version from manifest
   try {
-    chrome.runtime.getManifest().then(manifest => {
-      versionElement.textContent = manifest.version
-    }).catch(error => {
-      console.error('Error getting manifest:', error)
-    })
+    chrome.runtime
+      .getManifest()
+      .then(manifest => {
+        versionElement.textContent = manifest.version
+      })
+      .catch(error => {
+        console.error('Error getting manifest:', error)
+      })
   } catch (error) {
     console.error('Error accessing manifest:', error)
   }
 
   // Initialize debug mode checkbox
-  chrome.storage.sync.get([DEBUG_MODE_KEY], function (result) {
+  chrome.storage.sync.get([DEBUG_MODE_KEY], function(result) {
     debugModeCheckbox.checked = result[DEBUG_MODE_KEY] === true
   })
 
   // Initialize Kriit API settings
-  chrome.storage.sync.get([KRIIT_ENABLED_KEY, KRIIT_API_URL_KEY, KRIIT_API_KEY_KEY], function (result) {
+  chrome.storage.sync.get([KRIIT_ENABLED_KEY, KRIIT_API_URL_KEY, KRIIT_API_KEY_KEY], function(result) {
     const kriitEnabled = result[KRIIT_ENABLED_KEY] === true
     kriitEnabledCheckbox.checked = kriitEnabled
 
@@ -110,26 +113,26 @@ function initPopup () {
   comparisonDateInput.value = formatDisplayDate(today)
 
   // On load, initialize comparison date from storage if present
-  chrome.storage.local.get(['OA_comparisonDate'], function (result) {
+  chrome.storage.local.get(['OA_comparisonDate'], function(result) {
     const dateStr = result['OA_comparisonDate']
     if (dateStr && parseEuDate(dateStr)) {
       comparisonDateInput.value = dateStr
     } else {
       const today = new Date()
       comparisonDateInput.value = formatDisplayDate(today)
-      chrome.storage.local.set({ 'OA_comparisonDate': comparisonDateInput.value })
+      chrome.storage.local.set({ OA_comparisonDate: comparisonDateInput.value })
     }
   })
 
   // Add event listener for date change/blur to validate, save, and reset if empty
-  comparisonDateInput.addEventListener('blur', function () {
+  comparisonDateInput.addEventListener('blur', function() {
     const val = comparisonDateInput.value.trim()
     if (!val) {
       // If empty, reset to today and save
       const today = new Date()
       const todayStr = formatDisplayDate(today)
       comparisonDateInput.value = todayStr
-      chrome.storage.local.set({ 'OA_comparisonDate': todayStr })
+      chrome.storage.local.set({ OA_comparisonDate: todayStr })
       comparisonDateInput.style.borderColor = ''
       showError('')
       return
@@ -140,12 +143,12 @@ function initPopup () {
     } else {
       comparisonDateInput.style.borderColor = ''
       showError('')
-      chrome.storage.local.set({ 'OA_comparisonDate': val })
+      chrome.storage.local.set({ OA_comparisonDate: val })
     }
   })
 
   // Add event listeners
-  debugModeCheckbox.addEventListener('change', function () {
+  debugModeCheckbox.addEventListener('change', function() {
     try {
       toggleDebugMode(debugModeCheckbox.checked)
     } catch (error) {
@@ -154,7 +157,7 @@ function initPopup () {
     }
   })
 
-  kriitEnabledCheckbox.addEventListener('change', function () {
+  kriitEnabledCheckbox.addEventListener('change', function() {
     try {
       toggleKriitEnabled(kriitEnabledCheckbox.checked, kriitSettingsContainer)
     } catch (error) {
@@ -163,7 +166,7 @@ function initPopup () {
     }
   })
 
-  clearCacheButton.addEventListener('click', function () {
+  clearCacheButton.addEventListener('click', function() {
     try {
       clearCache()
     } catch (error) {
@@ -172,7 +175,7 @@ function initPopup () {
     }
   })
 
-  saveKriitSettingsButton.addEventListener('click', function () {
+  saveKriitSettingsButton.addEventListener('click', function() {
     try {
       saveKriitSettings(kriitApiUrlInput.value, kriitApiKeyInput.value, saveStatusElement)
     } catch (error) {
@@ -182,7 +185,7 @@ function initPopup () {
   })
 
   // Add event listeners for cache statistics
-  viewCacheDetailsButton.addEventListener('click', function () {
+  viewCacheDetailsButton.addEventListener('click', function() {
     try {
       toggleCacheDetails()
     } catch (error) {
@@ -191,7 +194,7 @@ function initPopup () {
     }
   })
 
-  refreshCacheStatsButton.addEventListener('click', function () {
+  refreshCacheStatsButton.addEventListener('click', function() {
     try {
       loadCacheStatistics()
     } catch (error) {
@@ -201,7 +204,7 @@ function initPopup () {
   })
 
   // Add event listeners for subjects
-  showFutureSubjectsButton.addEventListener('click', function () {
+  showFutureSubjectsButton.addEventListener('click', function() {
     try {
       showFutureSubjects()
     } catch (error) {
@@ -220,19 +223,21 @@ function initPopup () {
  * Toggle debug mode
  * @param {boolean} enabled - Whether debug mode should be enabled
  */
-function toggleDebugMode (enabled) {
-  chrome.storage.sync.set({ [DEBUG_MODE_KEY]: enabled }, function () {
+function toggleDebugMode(enabled) {
+  chrome.storage.sync.set({ [DEBUG_MODE_KEY]: enabled }, function() {
     console.log('Debug mode set to:', enabled)
 
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'toggleDebugMode',
-          enabled: enabled,
-        }).catch(error => {
-          console.error('Error sending message:', error)
-        })
+        chrome.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'toggleDebugMode',
+            enabled: enabled
+          })
+          .catch(error => {
+            console.error('Error sending message:', error)
+          })
       }
     })
   })
@@ -243,8 +248,8 @@ function toggleDebugMode (enabled) {
  * @param {boolean} enabled - Whether Kriit integration should be enabled
  * @param {HTMLElement} settingsContainer - Container for Kriit settings
  */
-function toggleKriitEnabled (enabled, settingsContainer) {
-  chrome.storage.sync.set({ [KRIIT_ENABLED_KEY]: enabled }, function () {
+function toggleKriitEnabled(enabled, settingsContainer) {
+  chrome.storage.sync.set({ [KRIIT_ENABLED_KEY]: enabled }, function() {
     console.log('Kriit integration set to:', enabled)
 
     // Show/hide settings container
@@ -253,12 +258,14 @@ function toggleKriitEnabled (enabled, settingsContainer) {
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'kriitEnabledChanged',
-          enabled: enabled,
-        }).catch(error => {
-          console.error('Error sending message:', error)
-        })
+        chrome.tabs
+          .sendMessage(tabs[0].id, {
+            action: 'kriitEnabledChanged',
+            enabled: enabled
+          })
+          .catch(error => {
+            console.error('Error sending message:', error)
+          })
       }
     })
   })
@@ -270,7 +277,7 @@ function toggleKriitEnabled (enabled, settingsContainer) {
  * @param {string} apiKey - The API key
  * @param {HTMLElement} statusElement - Element to show status message
  */
-function saveKriitSettings (apiUrl, apiKey, statusElement) {
+function saveKriitSettings(apiUrl, apiKey, statusElement) {
   apiUrl = apiUrl.trim()
   apiKey = apiKey.trim()
 
@@ -281,39 +288,44 @@ function saveKriitSettings (apiUrl, apiKey, statusElement) {
   }
 
   // Save settings to chrome.storage.sync
-  chrome.storage.sync.set({
-    [KRIIT_ENABLED_KEY]: true, // Enable Kriit integration when settings are saved
-    [KRIIT_API_URL_KEY]: apiUrl || DEFAULT_KRIIT_API_URL,
-    [KRIIT_API_KEY_KEY]: apiKey,
-  }, function () {
-    console.log('Kriit API settings saved')
+  chrome.storage.sync.set(
+    {
+      [KRIIT_ENABLED_KEY]: true, // Enable Kriit integration when settings are saved
+      [KRIIT_API_URL_KEY]: apiUrl || DEFAULT_KRIIT_API_URL,
+      [KRIIT_API_KEY_KEY]: apiKey
+    },
+    function() {
+      console.log('Kriit API settings saved')
 
-    // Show success message
-    statusElement.textContent = 'Salvestatud!'
-    setTimeout(() => {
-      statusElement.textContent = ''
-    }, 2000)
+      // Show success message
+      statusElement.textContent = 'Salvestatud!'
+      setTimeout(() => {
+        statusElement.textContent = ''
+      }, 2000)
 
-    // Notify content script about the settings change
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'kriitSettingsUpdated',
-          enabled: true,
-          apiUrl: apiUrl,
-          apiKey: apiKey,
-        }).catch(error => {
-          console.error('Error sending message:', error)
-        })
-      }
-    })
-  })
+      // Notify content script about the settings change
+      chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+        if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
+          chrome.tabs
+            .sendMessage(tabs[0].id, {
+              action: 'kriitSettingsUpdated',
+              enabled: true,
+              apiUrl: apiUrl,
+              apiKey: apiKey
+            })
+            .catch(error => {
+              console.error('Error sending message:', error)
+            })
+        }
+      })
+    }
+  )
 }
 
 /**
  * Load and display cache statistics
  */
-function loadCacheStatistics () {
+function loadCacheStatistics() {
   const cacheStatsContainer = document.getElementById('cache-stats-container')
 
   if (!cacheStatsContainer) {
@@ -324,7 +336,7 @@ function loadCacheStatistics () {
   cacheStatsContainer.innerHTML = '<div>Laadimine...</div>'
 
   // Send message to background script to get cache statistics
-  chrome.runtime.sendMessage({ action: 'getCacheStats' }, function (response) {
+  chrome.runtime.sendMessage({ action: 'getCacheStats' }, function(response) {
     if (!response || !response.stats) {
       cacheStatsContainer.innerHTML = '<div>Vahemälu statistika pole saadaval</div>'
       return
@@ -352,7 +364,7 @@ function loadCacheStatistics () {
  * Update cache details content
  * @param {Object} stats - Cache statistics
  */
-function updateCacheDetailsContent (stats) {
+function updateCacheDetailsContent(stats) {
   const cacheDetailsContainer = document.getElementById('cache-details')
 
   if (!cacheDetailsContainer) return
@@ -405,7 +417,7 @@ function updateCacheDetailsContent (stats) {
 /**
  * Toggle cache details visibility
  */
-function toggleCacheDetails () {
+function toggleCacheDetails() {
   const cacheDetailsContainer = document.getElementById('cache-details')
   const viewCacheDetailsButton = document.getElementById('view-cache-details')
 
@@ -427,7 +439,7 @@ function toggleCacheDetails () {
  * @param {number} bytes - Size in bytes
  * @returns {string} Formatted size
  */
-function formatSize (bytes) {
+function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
@@ -438,7 +450,7 @@ function formatSize (bytes) {
  * @param {number} minutes - Age in minutes
  * @returns {string} Formatted age
  */
-function formatAge (minutes) {
+function formatAge(minutes) {
   if (minutes < 1) return 'äsja'
   if (minutes < 60) return minutes + ' min'
   if (minutes < 24 * 60) return Math.round(minutes / 60) + ' h'
@@ -448,7 +460,7 @@ function formatAge (minutes) {
 /**
  * Show future subjects with upcoming lessons
  */
-function showFutureSubjects () {
+function showFutureSubjects() {
   const subjectsContainer = document.getElementById('subjects-container')
   const subjectsLoading = document.getElementById('subjects-loading')
   const subjectsContent = document.getElementById('subjects-content')
@@ -477,21 +489,24 @@ function showFutureSubjects () {
   }
 
   // Send message to background script to fetch future subjects
-  chrome.runtime.sendMessage({
-    action: 'getFutureSubjects',
-    comparisonDate: isoDate
-  }, function (response) {
-    subjectsLoading.style.display = 'none'
+  chrome.runtime.sendMessage(
+    {
+      action: 'getFutureSubjects',
+      comparisonDate: isoDate
+    },
+    function(response) {
+      subjectsLoading.style.display = 'none'
 
-    if (!response || response.status !== 'success') {
-      subjectsContent.innerHTML = '<div style="color: red;">Viga: ' + (response?.message || 'Tundmatu viga') + '</div>'
+      if (!response || response.status !== 'success') {
+        subjectsContent.innerHTML = '<div style="color: red;">Viga: ' + (response?.message || 'Tundmatu viga') + '</div>'
+        subjectsContent.style.display = 'block'
+        return
+      }
+
+      displaySubjects(response.data, isoDate)
       subjectsContent.style.display = 'block'
-      return
     }
-
-    displaySubjects(response.data, isoDate)
-    subjectsContent.style.display = 'block'
-  })
+  )
 }
 
 /**
@@ -499,7 +514,7 @@ function showFutureSubjects () {
  * @param {Array} subjects - Array of subject objects
  * @param {string} comparisonDate - The comparison date in YYYY-MM-DD format
  */
-function displaySubjects (subjects, comparisonDate) {
+function displaySubjects(subjects, comparisonDate) {
   const subjectsContent = document.getElementById('subjects-content')
 
   if (!subjects || subjects.length === 0) {
@@ -544,8 +559,7 @@ function displaySubjects (subjects, comparisonDate) {
   })
 
   // Sort subjects by next lesson date
-  const sortedSubjects = Object.entries(subjectStats)
-    .sort(([, a], [, b]) => a.nextLesson - b.nextLesson)
+  const sortedSubjects = Object.entries(subjectStats).sort(([, a], [, b]) => a.nextLesson - b.nextLesson)
 
   // Create HTML
   const selectedDateStr = formatDisplayDate(compareDate)
@@ -591,12 +605,12 @@ function displaySubjects (subjects, comparisonDate) {
 /**
  * Clear all cache items
  */
-function clearCache () {
-  chrome.storage.local.get(null, function (items) {
+function clearCache() {
+  chrome.storage.local.get(null, function(items) {
     const keysToRemove = Object.keys(items).filter(key => key.startsWith(CACHE_PREFIX))
 
     if (keysToRemove.length > 0) {
-      chrome.storage.local.remove(keysToRemove, function () {
+      chrome.storage.local.remove(keysToRemove, function() {
         console.log(`Cleared ${keysToRemove.length} cache items`)
 
         // Notify the user
@@ -608,11 +622,13 @@ function clearCache () {
         // Notify content script about the cache clear
         chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
           if (tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'cacheClearedFromPopup',
-            }).catch(error => {
-              console.error('Error sending message:', error)
-            })
+            chrome.tabs
+              .sendMessage(tabs[0].id, {
+                action: 'cacheClearedFromPopup'
+              })
+              .catch(error => {
+                console.error('Error sending message:', error)
+              })
           }
         })
       })
@@ -626,7 +642,7 @@ function clearCache () {
  * Show error message in the error log element
  * @param {string} message - Error message to display
  */
-function showError (message) {
+function showError(message) {
   const errorLogElement = document.getElementById('error-log')
   if (errorLogElement) {
     if (message) {

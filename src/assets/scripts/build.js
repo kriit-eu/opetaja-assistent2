@@ -33,11 +33,7 @@ const CONFIG = {
   ],
 
   // Files to bundle with Bun
-  bundleFiles: [
-    'content.js',
-    'background.js',
-    'popup.js'
-  ],
+  bundleFiles: ['content.js', 'background.js', 'popup.js'],
 
   // Build mode
   isProd: isProd,
@@ -47,7 +43,7 @@ const CONFIG = {
 }
 
 // Main build function
-async function build () {
+async function build() {
   console.log(`🚀 Starting ${CONFIG.isProd ? 'PRODUCTION' : 'DEVELOPMENT'} build process...`)
 
   try {
@@ -71,7 +67,7 @@ async function build () {
 }
 
 // Clean dist directory
-async function cleanDist () {
+async function cleanDist() {
   console.log('🧹 Cleaning dist directory...')
 
   if (fs.existsSync(CONFIG.distDir)) {
@@ -82,19 +78,13 @@ async function cleanDist () {
 }
 
 // Bundle JavaScript files using Bun
-async function bundleJavaScript () {
+async function bundleJavaScript() {
   console.log('📦 Bundling JavaScript files...')
 
   const files = CONFIG.bundleFiles.map(file => path.join(CONFIG.srcDir, file))
 
   return new Promise((resolve, reject) => {
-    const bunBuild = spawn('bun', [
-      'build',
-      ...files,
-      '--outdir',
-      CONFIG.distDir,
-      ...CONFIG.bundleOptions
-    ])
+    const bunBuild = spawn('bun', ['build', ...files, '--outdir', CONFIG.distDir, ...CONFIG.bundleOptions])
 
     bunBuild.stdout.on('data', data => {
       console.log(`  ${data.toString().trim()}`)
@@ -115,7 +105,7 @@ async function bundleJavaScript () {
 }
 
 // Convert SVG icons to PNG
-async function convertIcons () {
+async function convertIcons() {
   console.log('🖼️  Converting SVG icons to PNG...')
 
   try {
@@ -128,10 +118,7 @@ async function convertIcons () {
     for (const icon of CONFIG.icons) {
       console.log(`  Converting ${icon.name} (${icon.size}x${icon.size})...`)
 
-      await sharp(CONFIG.iconSource)
-        .resize(icon.size, icon.size)
-        .png()
-        .toFile(path.join(CONFIG.distDir, icon.name))
+      await sharp(CONFIG.iconSource).resize(icon.size, icon.size).png().toFile(path.join(CONFIG.distDir, icon.name))
     }
   } catch (error) {
     console.error('Error converting icons:', error)
@@ -140,7 +127,7 @@ async function convertIcons () {
 }
 
 // Copy static assets to dist
-async function copyStaticAssets () {
+async function copyStaticAssets() {
   console.log('📋 Copying static assets...')
 
   // Copy manifest.json

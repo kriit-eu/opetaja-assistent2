@@ -9,7 +9,7 @@ const styleService = {
    * @param {string} id - Unique identifier for the style element
    * @returns {HTMLStyleElement} The created style element
    */
-  injectCSS (css, id) {
+  injectCSS(css, id) {
     // Check if style already exists
     const existingStyle = document.getElementById(id)
     if (existingStyle) {
@@ -29,7 +29,7 @@ const styleService = {
    * Remove injected CSS
    * @param {string} id - Identifier of the style to remove
    */
-  removeCSS (id) {
+  removeCSS(id) {
     const style = document.getElementById(id)
     if (style) {
       style.remove()

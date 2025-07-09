@@ -7,7 +7,7 @@ import Logger from '../services/Logger.js'
  * Provides a structured approach to loading features
  * @returns {Promise<Array>} Array of all features
  */
-export async function loadFeatures () {
+export async function loadFeatures() {
   Logger.debug('Loading features...')
 
   // Check if Kriit is enabled
@@ -22,7 +22,7 @@ export async function loadFeatures () {
   // Define all available features - load them conditionally
   const allAvailableFeatures = {
     journalList: [],
-    singleJournal: [], // TODO: Add features when implemented
+    singleJournal: [] // TODO: Add features when implemented
   }
 
   // Only import and instantiate features that should be loaded
@@ -61,11 +61,20 @@ export async function loadFeatures () {
   } catch (error) {
     Logger.error('Error loading LastLessonNotificationFeature:', error)
   }
+  // Load highlight missing grades feature (always enabled)
+  try {
+    const HighlightMissingGradesFeature = (await import('../features/singleJournal/highlightMissingGrades/HighlightMissingGradesFeature.js')).default
+    const highlightMissingGradesFeature = new HighlightMissingGradesFeature()
+    allAvailableFeatures.singleJournal.push(highlightMissingGradesFeature)
+    Logger.debug('Feature "HighlightMissingGradesFeature" created')
+  } catch (error) {
+    Logger.error('Error loading HighlightMissingGradesFeature:', error)
+  }
 
   // Create a copy of the features structure for returning
   const featureGroups = {
     journalList: [...allAvailableFeatures.journalList],
-    singleJournal: [...allAvailableFeatures.singleJournal],
+    singleJournal: [...allAvailableFeatures.singleJournal]
   }
 
   // Flatten all features into a single array
