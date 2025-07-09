@@ -641,6 +641,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const originalState = this.#captureButtonState(button)
     this.#setButtonProcessingState(button)
 
+    let fadeTarget = null
+    let fadeTable = null
+    let restorePending = false
     try {
       const data = this.#parseButtonData(button)
       Logger.debug(`[${this.name}] Raw button dataset:`, button.dataset)
@@ -650,11 +653,46 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Object.entries(data).map(([key, value]) => [key, typeof value, value])
       )
 
+      // Fade out row or table for 'Lisa' button
+      if (data.handler === 'addMissing') {
+        fadeTarget = button.closest('tr')
+        if (fadeTarget) {
+          fadeTarget.classList.add('fade-up')
+          // If this is the last row, fade out the table as well
+          const tbody = fadeTarget.parentElement
+          if (tbody && tbody.children.length === 1) {
+            fadeTable = tbody.closest('table')
+            if (fadeTable) fadeTable.classList.add('fade-up')
+          }
+        }
+      }
+
       await this.#executeButtonAction(data)
+      if (data.handler === 'addMissing') {
+        Logger.debug(`[${this.name}] Lisa button clicked, waiting for table refresh...`)
+        await this.#delay(1000)
+        await this.#refreshTableWithRetry()
+        restorePending = true
+      }
     } catch (error) {
       Logger.error(`[${this.name}] button action error`, error)
+      // On error, allow restore
+      restorePending = true
     } finally {
-      this.#restoreButtonState(button, originalState)
+      const isLisaButton = this.#parseButtonData(button).handler === 'addMissing'
+      if (isLisaButton && fadeTarget) {
+        // Only restore when the row is actually removed from DOM
+        const checkRowRemoved = () => {
+          if (!fadeTarget.isConnected) {
+            this.#restoreButtonState(button, originalState, isLisaButton)
+          } else {
+            setTimeout(checkRowRemoved, 200)
+          }
+        }
+        if (restorePending) checkRowRemoved()
+      } else {
+        this.#restoreButtonState(button, originalState, isLisaButton)
+      }
     }
   }
 
@@ -763,14 +801,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  #restoreButtonState(button, originalState) {
+  #restoreButtonState(button, originalState, isLisaButton = false) {
+    const delayTime = isLisaButton ? 5000 : 2000
     setTimeout(() => {
       button.disabled = false
       button.textContent = originalState.text
       button.style.background = originalState.background
       button.style.opacity = originalState.opacity || ''
       button.style.cursor = originalState.cursor || ''
-    }, 2000)
+    }, delayTime)
   }
 
   async #handleAddMissingEntry(date, start, count, timetableData = {}) {
@@ -1598,7 +1637,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       this.#originalFetch = window.fetch
 
       // Monitor for journal entry dialog saves by watching for PUT requests to journal entry endpoints
-      window.fetch = async(...args) => {
+      window.fetch = async (...args) => {
         const response = await this.#originalFetch.apply(window, args)
 
         // Check if this is a PUT request to a journal entry endpoint
@@ -1608,7 +1647,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           const journalIdMatch = url.match(/\/journals\/(\d+)\/journalEntry\//)
           if (journalIdMatch && parseInt(journalIdMatch[1]) === this.#currentJournalId) {
             // Wait a bit for the save to complete, then refresh validation
-            setTimeout(async() => {
+            setTimeout(async () => {
               await this.#refreshCapacityValidationAfterSave()
             }, 1500)
           }
@@ -2669,7 +2708,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     for (const checkbox of teacherCheckboxes) {
       if (checkbox && this.#isElementVisible(checkbox)) {
-        const handleTeacherChange = async() => {
+        const handleTeacherChange = async () => {
           Logger.debug(`[${this.name}] Teacher checkbox state changed, refreshing validation...`)
           // Small delay to let the change propagate
           await this.#delay(300)
