@@ -15,12 +15,12 @@ class HighlightFinalGradesFeature extends BaseFeature {
     if (!document.getElementById(this.finalGradeStyleId)) {
       styleService.injectCSS(
         `
-        .highlight-final-grade-yellow {
+        /* .highlight-final-grade-yellow {
           background: #fff9c4 !important;
           box-shadow: 0 0 0 2px #ffeaa7 inset !important;
           position: relative;
           cursor: pointer;
-        }
+        } */
         .highlight-final-grade-red {
           background: #ffdddd !important;
           box-shadow: 0 0 0 2px #ff0000 inset !important;
@@ -69,9 +69,9 @@ class HighlightFinalGradesFeature extends BaseFeature {
 
   findColumnIndices(table) {
     const headerRows = Array.from(table.querySelectorAll('thead tr'))
-    let finalGradeCols = []
-    let ovCols = []
-    let debugHeaders = []
+    const finalGradeCols = []
+    const ovCols = []
+    const debugHeaders = []
     headerRows.forEach(row => {
       let colIdx = 0
       Array.from(row.children).forEach(th => {
@@ -153,7 +153,7 @@ class HighlightFinalGradesFeature extends BaseFeature {
           if (!cell.textContent.trim()) {
             cell.classList.add('highlight-final-grade-red')
           } else {
-            cell.classList.add('highlight-final-grade-yellow')
+            cell.classList.remove('highlight-final-grade-red')
           }
         }
       })
@@ -163,6 +163,8 @@ class HighlightFinalGradesFeature extends BaseFeature {
           Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting ÕV cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
           if (!cell.textContent.trim()) {
             cell.classList.add('highlight-ov-red')
+          } else {
+            cell.classList.remove('highlight-ov-red')
           }
         }
       })
