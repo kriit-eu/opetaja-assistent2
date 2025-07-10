@@ -215,10 +215,16 @@ export class DiscrepanciesTable {
         // Highlighting is now handled by HighlightFinalGradesFeature.js
         // Only check for highlights and inject banners
         const ovCells = document.querySelectorAll('.highlight-ov-red')
+        const ovYellowCells = document.querySelectorAll('.highlight-ov-yellow')
         Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
+        Logger.info(`✨ [DiscrepanciesTable] Found ${ovYellowCells.length} .highlight-ov-yellow cells after highlight`)
         ovCells.forEach((cell, idx) => {
           Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
           Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
+        })
+        ovYellowCells.forEach((cell, idx) => {
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}]:`, cell)
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}] parent:`, cell.parentNode)
         })
         const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
         const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
@@ -238,8 +244,19 @@ export class DiscrepanciesTable {
           notifications.querySelectorAll('.oa2-banner-ov').forEach(b => b.remove())
           notifications.querySelectorAll('.oa2-banner-final-grade').forEach(b => b.remove())
           // Inject ÕV banner if needed
-          if (ovCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV banner under Hinded')
+          if (ovYellowCells.length > 0) {
+            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV yellow banner under Hinded')
+            const ovBanner = document.createElement('div')
+            ovBanner.className = 'oa2-banner oa2-banner--yellow oa2-banner-ov'
+            ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund (tähtaeg läheneb)!'
+            const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+            if (hindedHeader && hindedHeader.nextSibling) {
+              notifications.insertBefore(ovBanner, hindedHeader.nextSibling)
+            } else {
+              notifications.appendChild(ovBanner)
+            }
+          } else if (ovCells.length > 0) {
+            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV red banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund!'

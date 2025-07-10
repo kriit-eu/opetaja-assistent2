@@ -33,6 +33,12 @@ class HighlightFinalGradesFeature extends BaseFeature {
           position: relative;
           cursor: pointer;
         }
+        .highlight-ov-yellow {
+          background: #ffe066 !important;
+          box-shadow: 0 0 0 2px #ffd43b inset !important;
+          position: relative;
+          cursor: pointer;
+        }
       `,
         this.finalGradeStyleId
       )
@@ -288,9 +294,19 @@ class HighlightFinalGradesFeature extends BaseFeature {
         if (cell) {
           Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting ÕV cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
           if (!cell.textContent.trim()) {
-            cell.classList.add('highlight-ov-red')
+            if (shouldHighlight) {
+              if (inWarningWindow) {
+                cell.classList.add('highlight-ov-yellow')
+                cell.classList.remove('highlight-ov-red')
+              } else {
+                cell.classList.add('highlight-ov-red')
+                cell.classList.remove('highlight-ov-yellow')
+              }
+            } else {
+              cell.classList.remove('highlight-ov-yellow', 'highlight-ov-red')
+            }
           } else {
-            cell.classList.remove('highlight-ov-red')
+            cell.classList.remove('highlight-ov-red', 'highlight-ov-yellow')
           }
         }
       })
