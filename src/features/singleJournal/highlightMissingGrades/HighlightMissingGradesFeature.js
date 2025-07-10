@@ -2,7 +2,6 @@
 // Highlights cells in independent work columns in red if due date has passed and no grade is assigned
 
 import { BaseFeature } from '../../../core/BaseFeature.js'
-import { info as LoggerInfo } from '../../../services/Logger.js'
 
 class HighlightMissingGradesFeature extends BaseFeature {
   constructor() {
@@ -17,7 +16,7 @@ class HighlightMissingGradesFeature extends BaseFeature {
       style.textContent = `
                 .highlight-missing-grade {
                     background: #ffdddd !important;
-                    border: 1.5px solid #ff0000ff !important;
+                    box-shadow: 0 0 0 2px #ff0000 inset !important;
                     position: relative;
                     cursor: pointer;
                 }
@@ -57,6 +56,11 @@ class HighlightMissingGradesFeature extends BaseFeature {
     if (!table) {
       return
     }
+    // Remove all previous highlights
+    table.querySelectorAll('.highlight-missing-grade').forEach(cell => {
+      cell.classList.remove('highlight-missing-grade')
+      cell.title = ''
+    })
     const headerCells = Array.from(table.querySelectorAll('thead th'))
     const nowDate = new Date()
 
@@ -98,7 +102,9 @@ class HighlightMissingGradesFeature extends BaseFeature {
               { allStudents: true },
               { cache: true, cacheExpiration: 6e4 }
             )
-          } catch (e) { void e }
+          } catch (e) {
+            void e
+          }
         }
         const dueDateStr = entryDetail.homeworkDuedate || entryDetail.entryDate
         const dueDate = dueDateStr ? new Date(dueDateStr) : null
@@ -163,162 +169,6 @@ class HighlightMissingGradesFeature extends BaseFeature {
         })
       })
     }
-  }
-
-  /**
-   * Checks for missing grades in independent work columns for a journal
-   * @param {object} api - API object with tahvel.get
-   * @param {number} journalId - Journal ID
-   * @returns {Promise<string|null>} - Message to display or null
-   */
-  static async check(api, journalId) {
-    let notif = null
-    let waited = 0
-    const maxWait = 2000
-    const interval = 100
-    while (waited < maxWait) {
-      notif = document.getElementById('last-lesson-inline-notification')
-      if (notif) break
-      await new Promise(r => setTimeout(r, interval))
-      waited += interval
-    }
-    if (!notif) return null
-    const notifText = notif.textContent || ''
-    const match = notifText.match(/Viimane tund toim(?:us|ub) (\d{2}\.\d{2}\.\d{4})/)
-    if (!match) return null
-
-    let journalEntries = []
-    try {
-      journalEntries = await api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true, cacheExpiration: 6e4 })
-    } catch (e) {
-      return null
-    }
-    if (!Array.isArray(journalEntries) || journalEntries.length === 0) {
-      return null
-    }
-
-    const nowDate = new Date()
-    const validGrades = new Set(['A', 'MA', '1', '2', '3', '4', '5'])
-    for (const entry of journalEntries) {
-      if (entry.entryType !== 'SISSEKANNE_I') continue
-      let entryDetail = entry
-      if (!entry.homeworkDuedate) {
-        try {
-          entryDetail = await api.tahvel.get(
-            `/journals/${journalId}/journalEntry/${entry.id}`,
-            { allStudents: true },
-            { cache: true, cacheExpiration: 6e4 }
-          )
-        } catch (e) { void e }
-      }
-      const dueDateStr = entryDetail.homeworkDuedate || entryDetail.entryDate
-      const dueDate = dueDateStr ? new Date(dueDateStr) : null
-      if (!dueDate || dueDate >= nowDate) {
-        LoggerInfo('✨ [HighlightMissingGradesFeature.check] Skipping entry', { entryId: entry.id, dueDateStr })
-        continue
-      }
-      let foundMissing = false
-      if (Array.isArray(entryDetail.journalEntryStudents) && entryDetail.journalEntryStudents.length > 0) {
-        for (const student of entryDetail.journalEntryStudents) {
-          let grade = ''
-          if (student.grade) {
-            if (typeof student.grade === 'object' && student.grade.code) {
-              grade = student.grade.code
-            } else if (typeof student.grade === 'string') {
-              grade = student.grade
-            }
-          }
-          if (!grade && student.verbalGrade) {
-            grade = student.verbalGrade
-          }
-          const absence = student.absence || ''
-          LoggerInfo('✨ [HighlightMissingGradesFeature.check] Checking student', { entryId: entry.id, studentId: student.id, grade, absence })
-          if (
-            (!grade || !validGrades.has(grade)) &&
-            (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
-          ) {
-            LoggerInfo('✨ [HighlightMissingGradesFeature.check] MISSING GRADE DETECTED', { entryId: entry.id, studentId: student.id, grade, absence })
-            foundMissing = true
-            break
-          }
-        }
-      } else if (entryDetail.journalStudentResults && typeof entryDetail.journalStudentResults === 'object') {
-        for (const studentId in entryDetail.journalStudentResults) {
-          const results = entryDetail.journalStudentResults[studentId]
-          if (Array.isArray(results) && results.length > 0) {
-            let grade = ''
-            const g = results[0].grade
-            if (g === null || g === undefined || g === '' || (typeof g === 'object' && (!g.code || g.code === ''))) {
-              grade = ''
-            } else if (typeof g === 'object' && g.code) {
-              grade = g.code
-            } else {
-              grade = g
-            }
-            if (!grade && results[0].verbalGrade) {
-              grade = results[0].verbalGrade
-            }
-            const absence = results[0].absence || ''
-            LoggerInfo('✨ [HighlightMissingGradesFeature.check] Checking student', { entryId: entry.id, studentId, grade, absence })
-            if (
-              (!grade || !validGrades.has(grade)) &&
-              (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
-            ) {
-              LoggerInfo('✨ [HighlightMissingGradesFeature.check] MISSING GRADE DETECTED', { entryId: entry.id, studentId, grade, absence })
-              foundMissing = true
-              break
-            }
-          }
-        }
-      }
-      if (foundMissing) {
-        return 'Mõnedel iseseisevatel töödel on hinded puudu'
-      }
-    }
-    return null
-  }
-
-  static findMissingGrades({ table, iseseisevColumns }) {
-    const missing = []
-    const validGrades = new Set(['A', 'MA', '1', '2', '3', '4', '5'])
-    const rows = Array.from(table.querySelectorAll('tbody tr'))
-    rows.forEach((row, rowIdx) => {
-      iseseisevColumns.forEach(({ idx, entry }) => {
-        const cells = Array.from(row.children)
-        const cell = cells[idx]
-        if (!cell) return
-        const studentId = cell.getAttribute('data-student-id') || row.getAttribute('data-student-id')
-        let grade = ''
-        let absence = ''
-        if (studentId && entry.journalStudentResults && entry.journalStudentResults[studentId]) {
-          const results = entry.journalStudentResults[studentId]
-          if (Array.isArray(results) && results.length > 0) {
-            const g = results[0].grade
-            if (g === null || g === undefined || g === '' || (typeof g === 'object' && (!g.code || g.code === ''))) {
-              grade = ''
-            } else if (typeof g === 'object' && g.code) {
-              grade = g.code
-            } else {
-              grade = g
-            }
-            if (!grade && results[0].verbalGrade) {
-              grade = results[0].verbalGrade
-            }
-            absence = results[0].absence || ''
-          }
-        } else {
-          grade = cell.getAttribute('data-grade') || cell.textContent.trim()
-          absence = cell.getAttribute('data-absence') || cell.textContent.trim()
-        }
-        if (
-          (!grade || !validGrades.has(grade)) &&
-          (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
-        ) {
-          missing.push({ cell, entry, row, rowIdx, colIdx: idx })
-        }
-      })
-    })
-    return missing
   }
 }
 
