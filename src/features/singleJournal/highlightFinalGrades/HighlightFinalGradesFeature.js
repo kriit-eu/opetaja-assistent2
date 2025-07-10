@@ -155,17 +155,36 @@ class HighlightFinalGradesFeature extends BaseFeature {
     setTimeout(() => {
       Logger.info('✨ [HighlightFinalGradesFeature] Calling run() after timeout')
       void this.run()
+      this._setupTableObserver()
     }, 1000)
-    if (!this._docObserver) {
-      this._docObserver = new MutationObserver(() => {
+  }
+
+  _setupTableObserver() {
+    if (this._docObserver) {
+      this._docObserver.disconnect()
+      this._docObserver = null
+    }
+    const layoutPadding = document.querySelector('.layout-padding')
+    if (!layoutPadding) return
+    const table = layoutPadding.querySelector('table.journalTable')
+    if (!table) return
+    this._docObserver = new MutationObserver(mutations => {
+      let relevant = false
+      for (const m of mutations) {
+        if (m.target === table || table.contains(m.target)) {
+          relevant = true
+          break
+        }
+      }
+      if (relevant) {
         if (this._debounceTimeout) clearTimeout(this._debounceTimeout)
         this._debounceTimeout = setTimeout(() => {
-          Logger.info('✨ [HighlightFinalGradesFeature] MutationObserver triggered run()')
+          Logger.info('✨ [HighlightFinalGradesFeature] Table MutationObserver triggered run()')
           void this.run()
         }, 50)
-      })
-      this._docObserver.observe(document.body, { childList: true, subtree: true })
-    }
+      }
+    })
+    this._docObserver.observe(table, { childList: true, subtree: true, attributes: false })
   }
 
   async run() {
@@ -180,6 +199,11 @@ class HighlightFinalGradesFeature extends BaseFeature {
     if (!table) {
       Logger.info('✨ [HighlightFinalGradesFeature] .journalTable not found')
       return
+    }
+    // If observer is not set or table changed, re-setup observer
+    if (!this._docObserver || this._docObserverTable !== table) {
+      this._setupTableObserver()
+      this._docObserverTable = table
     }
     const { finalGradeCols, ovCols } = this.findColumnIndices(table)
     Logger.info('✨ [HighlightFinalGradesFeature] finalGradeCols:', finalGradeCols)
