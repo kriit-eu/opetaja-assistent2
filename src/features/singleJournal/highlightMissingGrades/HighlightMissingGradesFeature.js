@@ -56,6 +56,11 @@ class HighlightMissingGradesFeature extends BaseFeature {
     if (!table) {
       return
     }
+    // Remove all previous highlights
+    table.querySelectorAll('.highlight-missing-grade').forEach(cell => {
+      cell.classList.remove('highlight-missing-grade')
+      cell.title = ''
+    })
     const headerCells = Array.from(table.querySelectorAll('thead th'))
     const nowDate = new Date()
 
