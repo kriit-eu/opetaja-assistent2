@@ -93,16 +93,33 @@ export class DiscrepanciesTable {
         padding: 12px 8px;
         margin-bottom: 10px;
         box-sizing: border-box;
+        box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.10);
       }
       .oa2-banner--red {
         color: #721c24;
         background: #f8d7da;
-        border: 1px solid #f5c6cb;
+        border: 1.5px solid #f5c6cb;
+        font-weight: bold;
+        font-size: 15px;
+        text-align: center;
+        border-radius: 4px;
+        padding: 12px 8px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+        box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.10);
       }
       .oa2-banner--yellow {
         color: #856404;
-        background: #fff3cd;
-        border: 1px solid #ffeeba;
+        background: #ffe066;
+        border: 1.5px solid #ffd43b;
+        font-weight: bold;
+        font-size: 15px;
+        text-align: center;
+        border-radius: 4px;
+        padding: 12px 8px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+        box-shadow: 0 1px 3px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.10);
       }
       .oa2-banner--info {
         color: #0c5460;
@@ -203,11 +220,17 @@ export class DiscrepanciesTable {
           Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
           Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
         })
-        const finalGradeCells = document.querySelectorAll('.highlight-final-grade-red')
-        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeCells.length} .highlight-final-grade-red cells after highlight`)
-        finalGradeCells.forEach((cell, idx) => {
+        const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
+        const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
+        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeRedCells.length} .highlight-final-grade-red cells after highlight`)
+        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeYellowCells.length} .highlight-final-grade-yellow cells after highlight`)
+        finalGradeRedCells.forEach((cell, idx) => {
           Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
           Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
+        })
+        finalGradeYellowCells.forEach((cell, idx) => {
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}]:`, cell)
+          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}] parent:`, cell.parentNode)
         })
         const notifications = document.querySelector('.notifications-section')
         if (notifications) {
@@ -230,11 +253,17 @@ export class DiscrepanciesTable {
             Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
           }
           // Inject final grade banner if needed
-          if (finalGradeCells.length > 0) {
+          if (finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0) {
             Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
             const fgBanner = document.createElement('div')
-            fgBanner.className = 'oa2-banner oa2-banner--red oa2-banner-final-grade'
-            fgBanner.textContent = 'Mõnedel õpilastel puudub Lõpptulemus!'
+            fgBanner.className = 'oa2-banner oa2-banner-final-grade'
+            if (finalGradeYellowCells.length > 0) {
+              fgBanner.classList.add('oa2-banner--yellow')
+              fgBanner.textContent = 'Mõnedel õpilastel puudub Lõpptulemus (tähtaeg läheneb)!'
+            } else if (finalGradeRedCells.length > 0) {
+              fgBanner.classList.add('oa2-banner--red')
+              fgBanner.textContent = 'Mõnedel õpilastel puudub Lõpptulemus!'
+            }
             const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
             // Place after ÕV banner if present, else after Hinded header
             const ovBanner = notifications.querySelector('.oa2-banner-ov')
@@ -289,12 +318,7 @@ export class DiscrepanciesTable {
     // Show all independent work banners if present
     let indepWorkBanners = ''
     if (independentWorkMessages && independentWorkMessages.length > 0) {
-      indepWorkBanners = independentWorkMessages
-        .map(
-          msg =>
-            `<div style='color:#721c24;font-weight:bold;font-size:15px;text-align:center;background:#f8d7da;border-radius:4px;border:1px solid #f5c6cb;padding:12px 8px;margin-bottom:10px;'>${msg}</div>`
-        )
-        .join('')
+      indepWorkBanners = independentWorkMessages.map(msg => `<div class='oa2-banner oa2-banner--red'>${msg}</div>`).join('')
     }
 
     // Notifications section (side table)
