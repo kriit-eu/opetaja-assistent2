@@ -39,6 +39,7 @@ class JournalListSyncFeature extends BaseFeature {
     this.isLoading = false
     this.error = null
     this.journalLinks = null
+    this.isActive = false
 
     // Global teacher cache to avoid redundant API calls across journals
     this.globalTeacherCache = {}
@@ -55,6 +56,14 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {NodeList} elements - The found elements (journal links)
    */
   onActivate(elements) {
+    this.isActive = true
+    // Only activate if the URL is exactly 'journals?_menu'
+    const url = window.location.hash.replace(/^#\/?/, '').split('&')[0]
+    if (url !== 'journals?_menu') {
+      Logger.debug('JournalListSync not activated: URL does not match journals?_menu')
+      return
+    }
+
     // Log a specific message for this feature's activation
     Logger.feature(this.name, 'Journal List Sync feature initialized')
 
@@ -90,6 +99,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Called when the feature is deactivated
    */
   onDeactivate() {
+    this.isActive = false
     // Call parent method to clean up observers
     super.onDeactivate()
 
@@ -554,6 +564,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Update the UI based on current state
    */
   updateUI() {
+    if (!this.isActive) return
     // Don't remove banner if we're currently syncing (loading state)
     if (!this.isLoading) {
       bannerService.removeBanner()
@@ -590,6 +601,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {number} total - Total items
    */
   updateProgressUI(current, total) {
+    if (!this.isActive) return
     bannerService.updateProgressUI(current, total, 'Sünkroniseerin hindeid Kriidist Tahvlisse...')
   }
 
@@ -598,6 +610,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {string} message - Success message
    */
   showSuccessBanner(message) {
+    if (!this.isActive) return
     bannerService.showSuccessBanner(message, {
       onRefresh: () => this.fetchJournalData(),
       onClose: () => bannerService.removeBanner()
@@ -2646,13 +2659,13 @@ class JournalListSyncFeature extends BaseFeature {
           const cachedStudent = await this.getCachedStudent(student.journalStudent)
           const studentName = cachedStudent ? cachedStudent.name : 'Unknown'
           const studentPersonalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
+          const isActive = cachedStudent ? cachedStudent.isActive : 'Unknown'
+          const isDeleted = cachedStudent ? cachedStudent.isDeleted : 'Unknown'
+          const gradeCode = student.grade?.code || 'No grade'
 
-          // Log cache lookup details for debugging
-          if (!cachedStudent) {
-            Logger.warning(`Cache lookup failed for journalStudent=${student.journalStudent}`)
-          } else {
-            Logger.debug(`Cache lookup successful for journalStudent=${student.journalStudent}: ${studentName} (${studentPersonalCode})`)
-          }
+          Logger.info(
+            `Student: ${studentName} (${studentPersonalCode}) - Active: ${isActive}, Deleted: ${isDeleted}, Grade: ${gradeCode}, JournalStudentId: ${student.journalStudent}`
+          )
 
           studentsWithNames.push({
             ...student,
