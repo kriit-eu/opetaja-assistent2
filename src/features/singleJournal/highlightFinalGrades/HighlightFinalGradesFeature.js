@@ -45,6 +45,38 @@ class HighlightFinalGradesFeature extends BaseFeature {
     }
   }
 
+  _getStudyYearRange(info) {
+    const now = new Date()
+    const studyYear = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear()
+    const from = info.studyYearStartDate || new Date(Date.UTC(studyYear, 8, 1)).toISOString()
+    const thru = info.studyYearEndDate || new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
+    return { from, thru }
+  }
+
+  _getComparisonDate(finalLessonDate, lastLessonBanner) {
+    const finalDate = new Date(finalLessonDate)
+    finalDate.setHours(0, 0, 0, 0)
+    let now
+    let comparisonDateStr = null
+    if (lastLessonBanner) {
+      const compMatch = lastLessonBanner.textContent && lastLessonBanner.textContent.match(/\(võrdlus kuupäevaga (\d{2})\.(\d{2})\.(\d{4})\)/)
+      if (compMatch) {
+        const [_, day, month, year] = compMatch
+        comparisonDateStr = `${year}-${month}-${day}`
+      }
+    }
+    if (!comparisonDateStr && window.__oa2ComparisonDate) {
+      comparisonDateStr = window.__oa2ComparisonDate
+    }
+    if (comparisonDateStr) {
+      now = new Date(comparisonDateStr)
+    } else {
+      now = new Date()
+    }
+    now.setHours(0, 0, 0, 0)
+    return { now, finalDate }
+  }
+
   async getFinalLessonDate(journalId) {
     const info = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true, cacheExpiration: 864e5 })
     // Try to extract schoolId from curriculumVersions[0].curriculumId if available
@@ -53,10 +85,7 @@ class HighlightFinalGradesFeature extends BaseFeature {
       schoolId = info.curriculumVersions[0].curriculumId
     }
     const teacherId = info.journalTeachers?.[0]?.id
-    const now = new Date()
-    const studyYear = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear()
-    const from = info.studyYearStartDate || new Date(Date.UTC(studyYear, 8, 1)).toISOString()
-    const thru = info.studyYearEndDate || new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
+    const { from, thru } = this._getStudyYearRange(info)
     let timetable = []
     if (schoolId && teacherId) {
       const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherId}&thru=${thru}`
@@ -125,14 +154,14 @@ class HighlightFinalGradesFeature extends BaseFeature {
     Logger.info('✨ [HighlightFinalGradesFeature] onActivate called')
     setTimeout(() => {
       Logger.info('✨ [HighlightFinalGradesFeature] Calling run() after timeout')
-      this.run()
+      void this.run()
     }, 1000)
     if (!this._docObserver) {
       this._docObserver = new MutationObserver(() => {
         if (this._debounceTimeout) clearTimeout(this._debounceTimeout)
         this._debounceTimeout = setTimeout(() => {
           Logger.info('✨ [HighlightFinalGradesFeature] MutationObserver triggered run()')
-          this.run()
+          void this.run()
         }, 50)
       })
       this._docObserver.observe(document.body, { childList: true, subtree: true })
@@ -193,31 +222,7 @@ class HighlightFinalGradesFeature extends BaseFeature {
       }
     }
     if (finalLessonDate) {
-      // Normalize all dates to local midnight
-      const finalDate = new Date(finalLessonDate)
-      finalDate.setHours(0, 0, 0, 0)
-      // Use comparison date from banner, global, or fallback to today
-      let now
-      let comparisonDateStr = null
-      // Try to extract from banner (if present)
-      if (lastLessonBanner) {
-        // Try to parse comparison date from banner text: (võrdlus kuupäevaga DD.MM.YYYY)
-        const compMatch = lastLessonBanner.textContent && lastLessonBanner.textContent.match(/\(võrdlus kuupäevaga (\d{2})\.(\d{2})\.(\d{4})\)/)
-        if (compMatch) {
-          const [_, day, month, year] = compMatch
-          comparisonDateStr = `${year}-${month}-${day}`
-        }
-      }
-      // Try global variable if set
-      if (!comparisonDateStr && window.__oa2ComparisonDate) {
-        comparisonDateStr = window.__oa2ComparisonDate
-      }
-      if (comparisonDateStr) {
-        now = new Date(comparisonDateStr)
-      } else {
-        now = new Date()
-      }
-      now.setHours(0, 0, 0, 0)
+      const { now, finalDate } = this._getComparisonDate(finalLessonDate, lastLessonBanner)
       const warningStart = new Date(finalDate)
       warningStart.setDate(finalDate.getDate() - 7)
       const warningEnd = new Date(finalDate)
@@ -235,31 +240,11 @@ class HighlightFinalGradesFeature extends BaseFeature {
       inWarningWindow = now >= warningStart && now <= warningEnd
       Logger.info('✨ [HighlightFinalGradesFeature] inWarningWindow:', inWarningWindow)
     }
-
     // Only highlight if within 7 days of the final lesson date
     const shouldHighlight =
       finalLessonDate &&
       (() => {
-        const finalDate = new Date(finalLessonDate)
-        finalDate.setHours(0, 0, 0, 0)
-        let now
-        let comparisonDateStr = null
-        if (lastLessonBanner) {
-          const compMatch = lastLessonBanner.textContent && lastLessonBanner.textContent.match(/\(võrdlus kuupäevaga (\d{2})\.(\d{2})\.(\d{4})\)/)
-          if (compMatch) {
-            const [_, day, month, year] = compMatch
-            comparisonDateStr = `${year}-${month}-${day}`
-          }
-        }
-        if (!comparisonDateStr && window.__oa2ComparisonDate) {
-          comparisonDateStr = window.__oa2ComparisonDate
-        }
-        if (comparisonDateStr) {
-          now = new Date(comparisonDateStr)
-        } else {
-          now = new Date()
-        }
-        now.setHours(0, 0, 0, 0)
+        const { now, finalDate } = this._getComparisonDate(finalLessonDate, lastLessonBanner)
         const warningStart = new Date(finalDate)
         warningStart.setDate(finalDate.getDate() - 7)
         return now >= warningStart
