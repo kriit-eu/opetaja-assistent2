@@ -56,23 +56,18 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     console.debug('[LastLessonNotificationFeature] timetable:', timetable)
     console.debug('[LastLessonNotificationFeature] journalEntries:', journalEntries)
 
-    if (!timetable.length) {
-      console.debug('[LastLessonNotificationFeature] No timetable data found')
-    }
-
     if (!journalEntries.length) {
       console.debug('[LastLessonNotificationFeature] No journal entries, exiting')
+      this._removeBanner()
       return
     }
 
-    // Find last lesson in timetable (if any)
     let lastLessonDate = null
     if (timetable.length > 0) {
       const sortedTimetable = timetable.slice().sort((a, b) => new Date(a.date) - new Date(b.date))
       lastLessonDate = sortedTimetable[sortedTimetable.length - 1].date
     }
 
-    // Prepare independent work messages for all deadlines after last lesson
     let independentWorkMessages = []
     if (lastLessonDate && Array.isArray(journalEntries)) {
       const lastLesson = new Date(lastLessonDate)
@@ -98,51 +93,30 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       }
     }
 
-    // Always set the global message(s) before table creation
     if (independentWorkMessages.length > 0) {
       window.__lastLessonNotification_independentWorkMessage = independentWorkMessages
       document.getElementById('independent-work-deadline-banner')?.remove()
       console.debug('[LastLessonNotificationFeature] Provided independent work messages to table:', independentWorkMessages)
     }
 
-    const timetableCount = timetable.length
-    const journalCount = journalEntries.length
-    console.debug('[LastLessonNotificationFeature] timetableCount:', timetableCount, 'journalCount:', journalCount)
-
-    // Check if all timetable lessons are in the past
     const comparisonDateTime = new Date(this.comparisonDate)
     comparisonDateTime.setHours(0, 0, 0, 0)
-
-    const allPast =
-      timetable.length > 0 &&
-      timetable.every(lesson => {
+    let allPast = false
+    if (timetable.length > 0) {
+      allPast = timetable.every(lesson => {
         const lessonDate = new Date(lesson.date)
         lessonDate.setHours(0, 0, 0, 0)
         return lessonDate < comparisonDateTime
       })
-    console.debug('[LastLessonNotificationFeature] allPast (compared to ' + this.comparisonDate + '):', allPast)
-
-    // Show detailed condition check
-    const countsMatchOrExceed = timetableCount >= journalCount
-    const hasFutureLessons = !allPast
-    const hasJournalEntriesButNoTimetable = journalCount > 0 && timetableCount === 0
-
-    console.debug('[LastLessonNotificationFeature] Condition check:')
-    console.debug('  - Counts match or exceed (timetable >= journal):', countsMatchOrExceed, `(${timetableCount} >= ${journalCount})`)
-    console.debug('  - Has future lessons (!allPast):', hasFutureLessons)
-    console.debug('  - Has journal entries but no timetable:', hasJournalEntriesButNoTimetable)
-    console.debug('  - Show banner condition met:', (countsMatchOrExceed && hasFutureLessons) || hasJournalEntriesButNoTimetable)
-
-    if ((countsMatchOrExceed && hasFutureLessons) || hasJournalEntriesButNoTimetable) {
-      const displayDate = timetableCount > 0 ? lastLessonDate : 'not found in timetable'
-      this._showBanner(displayDate, allPast)
-    } else if (countsMatchOrExceed && allPast) {
-      // If all scheduled lessons are in the past, show 'toimus'
-      const displayDate = timetableCount > 0 ? lastLessonDate : 'not found in timetable'
-      this._showBanner(displayDate, true)
-    } else {
-      this._removeBanner()
     }
+
+    let displayDate = 'not found in timetable'
+    if (timetable.length > 0) {
+      displayDate = lastLessonDate
+    }
+
+    // Always show the banner if there are journal entries
+    this._showBanner(displayDate, allPast)
   }
 
   _showBanner(date, allPast = false) {
