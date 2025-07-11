@@ -19,7 +19,24 @@ import { setupKriitMessageListener } from '../../services/MessageListenerService
 import { bannerService } from '../../services/BannerService.js'
 import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
 
+import { sendFinalGradesToKriit } from './FinalGradesSync.js'
+
 class JournalListSyncFeature extends BaseFeature {
+  /**
+   * Send only outcome entries (SISSEKANNE_O) to Kriit API
+   */
+  async sendFinalGradesToKriit() {
+    if (!this.api || !this.api.kriit || !this.api.kriit.authToken) {
+      Logger.error('No Kriit API token set')
+      return
+    }
+    if (!this.journalLinks || this.journalLinks.length === 0) {
+      Logger.warning('No journal links available for final grades sync')
+      return
+    }
+    Logger.debug('Triggering final grades sync (outcome entries only)')
+    await sendFinalGradesToKriit(this.api, this.journalLinks)
+  }
   constructor() {
     // Define selectors for journal links - using the most reliable selector first
     const journalLinkSelectors = [
@@ -187,6 +204,9 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Make the API call directly
       await this.proceedWithKriitApiCall(journalData)
+
+      // Automatically sync outcome entries (SISSEKANNE_O) to Kriit
+      await this.sendFinalGradesToKriit()
     } catch (error) {
       Logger.error('Error fetching journal data:', error)
       this.isLoading = false
@@ -664,7 +684,17 @@ class JournalListSyncFeature extends BaseFeature {
       totalDifferences,
       () => this.syncWithKriit(),
       () => this.fetchJournalData(),
-      container => this.renderDifferences(container)
+      container => {
+        this.renderDifferences(container)
+        // Add Sync Final Grades button
+        const finalGradesBtn = domService.createAndInsertElement(
+          'button',
+          { classList: ['ta-sync-final-grades-btn'] },
+          'Sync Final Grades (Outcomes Only)',
+          container
+        )
+        finalGradesBtn.onclick = () => this.sendFinalGradesToKriit()
+      }
     )
   }
 
@@ -1497,12 +1527,11 @@ class JournalListSyncFeature extends BaseFeature {
       return assignments
     }
 
-    // Filter for graded entries only
+    // Filter for graded entries only (exclude outcome entries)
     const gradedEntries = journalEntries.filter(
       entry =>
         entry.entryType === 'SISSEKANNE_H' || // Graded entry
-        entry.entryType === 'SISSEKANNE_I' || // Independent work
-        entry.entryType === 'SISSEKANNE_O' // Outcome entry
+        entry.entryType === 'SISSEKANNE_I' // Independent work
     )
 
     // Debug: Log count of different entry types

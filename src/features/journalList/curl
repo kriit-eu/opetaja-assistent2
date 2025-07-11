@@ -1,0 +1,35 @@
+curl 'https://test.tahvel.eenet.ee/hois_back/journals/347734/journalStudents?allStudents=true' \
+  -H 'Accept: application/json, text/plain, */*' \
+  -H 'Accept-Language: en-US,en;q=0.9' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json;charset=UTF-8' \
+  -b 'SESSION=ZjRjZWNjZmUtMTQwZS00YWViLThiYmMtZGE1MGMxZDRjNmQw; taraStateToken=18e686ab-00bb-414d-af04-de6c12727894; XSRF-TOKEN=efff222a-64dd-4315-aad9-7f71fd772ca0' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: https://test.tahvel.eenet.ee/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"'
+
+  response:
+
+  curl 'https://test.tahvel.eenet.ee/hois_back/journals/347734/journalStudents?allStudents=true' \
+  -H 'Accept: application/json, text/plain, */*' \
+  -H 'Accept-Language: en-US,en;q=0.9' \
+  -H 'Cache-Control: no-cache' \
+  -H 'Connection: keep-alive' \
+  -H 'Content-Type: application/json;charset=UTF-8' \
+  -b 'SESSION=ZjRjZWNjZmUtMTQwZS00YWViLThiYmMtZGE1MGMxZDRjNmQw; taraStateToken=18e686ab-00bb-414d-af04-de6c12727894; XSRF-TOKEN=efff222a-64dd-4315-aad9-7f71fd772ca0' \
+  -H 'Pragma: no-cache' \
+  -H 'Referer: https://test.tahvel.eenet.ee/' \
+  -H 'Sec-Fetch-Dest: empty' \
+  -H 'Sec-Fetch-Mode: cors' \
+  -H 'Sec-Fetch-Site: same-origin' \
+  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36' \
+  -H 'sec-ch-ua: "Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"'
