@@ -248,7 +248,6 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         const name = link.textContent.trim()
-        Logger.debug(`Found journal: ${name} (ID: ${id})`)
 
         try {
           const [journalInfo, journalEntries, journalEntriesWithGrades, journalStudents] = await Promise.all([
@@ -267,12 +266,10 @@ class JournalListSyncFeature extends BaseFeature {
             return null
           }
           if (!Array.isArray(journalStudents)) {
-            Logger.warning(`Could not get students for journal ${id}`)
             return null
           }
 
           if (journalInfo.studentGroups) {
-            Logger.debug(`Journal ${id} student groups:`, JSON.stringify(journalInfo.studentGroups))
           }
 
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
@@ -303,7 +300,6 @@ class JournalListSyncFeature extends BaseFeature {
                   // Also store in instance cache for backward compatibility
                   this.globalTeacherCache[teacherId] = teacherData
 
-                  Logger.debug(`Got teacher personal code for ${teacherName} (ID: ${teacherId}): ${teacherPersonalCode}`)
                 }
               } catch (error) {
                 Logger.warning(`Failed to get teacher personal code: ${error.message}`)
@@ -336,20 +332,15 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Debug logging for multigroup journals
           if (studentGroups.length > 1) {
-            Logger.debug(`Processing multigroup journal ${journalInfo.nameEt} with groups: ${studentGroups.join(', ')}`)
-            Logger.debug(`Total assignments: ${assignments.length}`)
             if (assignments.length > 0) {
-              Logger.debug(`First assignment "${assignments[0].assignmentName}" has ${assignments[0].results.length} students`)
             }
           }
 
           for (const groupName of studentGroups) {
-            Logger.debug(`\n=== Processing group: ${groupName} ===`)
 
             // Filter assignments to include only students from this group
             const filteredAssignments = assignments
               .map(assignment => {
-                Logger.debug(`Processing assignment "${assignment.assignmentName}" with ${assignment.results.length} total students`)
 
                 const filteredResults = assignment.results.filter(result => {
                   // Find the student in journalStudents to get their group
@@ -359,7 +350,6 @@ class JournalListSyncFeature extends BaseFeature {
                     const matches = personalCode === result.studentPersonalCode
 
                     if (matches) {
-                      Logger.debug(`  Student ${result.studentPersonalCode} (${result.studentName}) belongs to group: ${js.studentGroup}`)
                     }
 
                     return matches
@@ -368,13 +358,11 @@ class JournalListSyncFeature extends BaseFeature {
                   // Include student if they belong to this group
                   const belongsToGroup = student && student.studentGroup === groupName
                   if (student && !belongsToGroup) {
-                    Logger.debug(`  Excluding student ${result.studentPersonalCode} (group: ${student.studentGroup}, expected: ${groupName})`)
                   }
 
                   return belongsToGroup
                 })
 
-                Logger.debug(`  Filtered results for group ${groupName}: ${filteredResults.length} students`)
 
                 return {
                   ...assignment,
@@ -383,7 +371,6 @@ class JournalListSyncFeature extends BaseFeature {
               })
               .filter(assignment => assignment.results.length > 0) // Only include assignments with students
 
-            Logger.debug(`Group ${groupName} will have ${filteredAssignments.length} assignments`)
 
             groupJournalEntries.push({
               subjectName: journalInfo.nameEt || name,
@@ -425,7 +412,6 @@ class JournalListSyncFeature extends BaseFeature {
 
     // Process each journal student to get their personal code
     if (journalStudents && Array.isArray(journalStudents)) {
-      Logger.debug(`Journal ${journalId}: Processing ${journalStudents.length} students`)
 
       // Initialize pending requests tracker if not exists
       if (!this.pendingStudentRequests) {
@@ -559,7 +545,6 @@ class JournalListSyncFeature extends BaseFeature {
         }
       }
 
-      Logger.debug(`Journal ${journalId}: Successfully processed ${successCount} out of ${journalStudents.length} student records`)
     }
 
     return studentDetailsMap
@@ -1140,7 +1125,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntries(journalId) {
     try {
-      Logger.debug(`Fetching journal entries for ${journalId} from API (NO CACHE)`)
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntry`,
         {},
@@ -1153,13 +1137,11 @@ class JournalListSyncFeature extends BaseFeature {
       // The response is paginated with a different structure than journalEntriesByDate
       // Extract the content array which contains the actual entries
       if (response && response.content && Array.isArray(response.content)) {
-        Logger.debug(`Successfully fetched journal entries for ${journalId} (${response.content.length} entries)`)
         return response.content
       }
       Logger.warning(`Unexpected response format from journalEntry endpoint: ${JSON.stringify(response)}`)
       return []
     } catch (error) {
-      Logger.error(`Error fetching journal entries for ${journalId}:`, error)
       return null
     }
   }
@@ -1172,7 +1154,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntriesWithGrades(journalId) {
     try {
-      Logger.debug(`Fetching journal entries with grades for ${journalId} from API (NO CACHE)`)
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntriesByDate`,
         { allStudents: true },
@@ -1183,13 +1164,11 @@ class JournalListSyncFeature extends BaseFeature {
       )
 
       if (Array.isArray(response)) {
-        Logger.debug(`Successfully fetched journal entries with grades for ${journalId} (${response.length} entries)`)
         return response
       }
       Logger.warning(`Unexpected response format from journalEntriesByDate endpoint: ${JSON.stringify(response)}`)
       return []
     } catch (error) {
-      Logger.error(`Error fetching journal entries with grades for ${journalId}:`, error)
       return null
     }
   }
@@ -1201,7 +1180,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalStudents(journalId) {
     try {
-      Logger.debug(`Fetching journal students for ${journalId}`)
       // Use a shorter cache time (1 hour) to ensure data is relatively fresh
       // Use allStudents=true to get all students including their personal codes
       const response = await this.api.tahvel.get(
@@ -1213,7 +1191,6 @@ class JournalListSyncFeature extends BaseFeature {
       )
 
       if (response) {
-        Logger.debug(`Retrieved ${response.length} students for journal ${journalId}`)
 
         // Check if we have personal codes in the response
         const hasPersonalCodes = response.some(student => student.student?.idcode)
@@ -1229,13 +1206,11 @@ class JournalListSyncFeature extends BaseFeature {
             }
           }
         } else {
-          Logger.warning(`Journal students response does not include personal codes for journal ${journalId}`)
         }
       }
 
       return response
     } catch (error) {
-      Logger.error(`Error fetching journal students for ${journalId}:`, error)
       return null
     }
   }
@@ -1497,13 +1472,10 @@ class JournalListSyncFeature extends BaseFeature {
       })
 
       // Log mapping statistics
-      Logger.debug(
-        `Student mapping created: ${Object.keys(studentMap.journalStudentIdToId).length} journal student IDs, ` +
-          `${Object.keys(studentMap.idToPersonalCode).length} personal codes, ` +
-          `${Object.keys(studentMap.personalCodeToName).length} names`
-      )
+
+
     } else {
-      Logger.warning('No journal students provided for mapping')
+
     }
 
     return studentMap
@@ -1539,13 +1511,11 @@ class JournalListSyncFeature extends BaseFeature {
       'SISSEKANNE_I': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
       'SISSEKANNE_O': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
     }
-    Logger.debug(`Found gradable entries: ${entryCounts['SISSEKANNE_H']} assignments, ${entryCounts['SISSEKANNE_I']} independent work, ${entryCounts['SISSEKANNE_O']} outcomes`)
     
     // Debug: Log outcome entries specifically
     if (entryCounts['SISSEKANNE_O'] > 0) {
       const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
       outcomeEntries.forEach(entry => {
-        Logger.debug(`Found outcome entry: "${entry.nameEt}" with curriculumModuleOutcomes: ${entry.curriculumModuleOutcomes}`)
       })
     }
 
@@ -1562,13 +1532,11 @@ class JournalListSyncFeature extends BaseFeature {
           entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`] = entry
         }
       })
-      Logger.debug(`Created map of ${Object.keys(entriesWithGradesMap).length} entries with grades`)
     }
 
     gradedEntries.forEach(entry => {
       // Log when we process an outcome entry
       if (entry.entryType === 'SISSEKANNE_O') {
-        Logger.debug(`Processing outcome entry: ${entry.nameEt || 'Unnamed'} (outcomeId: ${entry.curriculumModuleOutcomes})`)
       }
       
       // Extract results for this assignment
@@ -1589,14 +1557,12 @@ class JournalListSyncFeature extends BaseFeature {
       if (entryWithGrades) {
         if (entry.entryType === 'SISSEKANNE_O' && entryWithGrades.studentOutcomeResults) {
           // Handle outcome entries with studentOutcomeResults
-          Logger.debug(`Using outcome entry with grades for outcome ${entry.curriculumModuleOutcomes} (${entry.nameEt || 'Unnamed'})`)
           Object.entries(entryWithGrades.studentOutcomeResults).forEach(([journalStudentId, studentResults]) => {
             studentResultsMap[journalStudentId] = studentResults
           })
         } else if (entryWithGrades.journalStudentResults) {
           // Handle regular entries with journalStudentResults
           const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
-          Logger.debug(`Using entry with grades for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'})`)
           Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
             studentResultsMap[journalStudentId] = studentResults
           })
@@ -1702,7 +1668,6 @@ class JournalListSyncFeature extends BaseFeature {
         })
 
         // Log whether this assignment has results or not
-        Logger.debug('Added assignment ' + assignmentId + ' (' + assignmentName + ') with ' + results.length + ' results')
       }
     })
 
@@ -1923,11 +1888,6 @@ class JournalListSyncFeature extends BaseFeature {
             }
           })
         }
-
-        Logger.debug(`Total assignments: ${totalAssignments}`)
-        Logger.debug(`Total results: ${totalResults}`)
-        Logger.debug(`Skipped results (same grade): ${skippedResults}`)
-        Logger.debug(`Expected differences: ${totalResults - skippedResults}`)
 
         // Show a more informative message to the user
         this.isLoading = false
@@ -2460,7 +2420,6 @@ class JournalListSyncFeature extends BaseFeature {
           // Try to create a student entry with the journalStudentId
           // This handles cases where the API doesn't return all enrolled students but they exist in the database
           if (info.journalStudentId) {
-            Logger.info(`Found journalStudentId ${info.journalStudentId} for student ${studentName} (${targetPersonalCode}) - creating entry`)
 
             // Create a new student entry with the correct journalStudentId
             studentEntry = {
@@ -3145,20 +3104,17 @@ async function getTeacherPersonalCodeCached(api, teacher) {
 
   // Check global cache first
   if (globalModuleTeacherCache[cacheKey]) {
-    Logger.debug(`Using global teacher cache for ${teacherName} (ID: ${teacherId}) with key: ${cacheKey}`)
     return globalModuleTeacherCache[cacheKey]
   }
 
   // Check if request is already pending to prevent duplicate requests
   if (pendingTeacherRequests.has(cacheKey)) {
-    Logger.debug(`Teacher request already pending for ${teacherName} (ID: ${teacherId}) with key: ${cacheKey}, waiting...`)
     return await pendingTeacherRequests.get(cacheKey)
   }
 
   // Create the fetch promise
   const fetchPromise = (async() => {
     try {
-      Logger.debug(`Fetching teacher personal code for ${teacherName} (ID: ${teacherId}) with endpoint: ${endpoint}`)
 
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
@@ -3184,7 +3140,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
 
         // Store in global cache using URL-based key
         globalModuleTeacherCache[cacheKey] = teacherData
-        Logger.debug(`Cached teacher data with key ${cacheKey}: ${teacherId} -> ${teacherData.name} (${teacherData.personalCode})`)
 
         return teacherData
       }

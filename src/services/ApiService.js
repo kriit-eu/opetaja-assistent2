@@ -132,9 +132,6 @@ class ApiService {
         requestOptions.body = JSON.stringify(data)
       }
 
-      // Log request details for debugging
-      const shortUrl = urlString.replace(/^https?:\/\/[^/]+\/hois_back/, '')
-      Logger.debug(`[${this.name}] ${method} ${shortUrl}`)
 
       // Log credentials mode for debugging CORS issues
       if (this.name === 'kriit') {
@@ -258,7 +255,6 @@ class ApiService {
 
     // Log caching decision for debugging
     if (endpoint.includes('journalEntriesByDate')) {
-      Logger.debug(`[${this.name}] Cache decision for ${endpoint}: cache=${cache}, forceRefresh=${forceRefresh}`)
     }
 
     return this.request({

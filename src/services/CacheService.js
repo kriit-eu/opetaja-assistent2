@@ -76,7 +76,6 @@ const cacheService = {
               ? `journal students for journal ${key.match(/journals\/(\d+)\/journalStudents/)?.[1] || 'unknown'}`
               : `data for ${key}`
 
-          Logger.debug(`Using cached ${itemDescription} (${ageText} old)`)
           return storageData.data
         }
       }
