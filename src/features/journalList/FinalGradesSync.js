@@ -50,16 +50,36 @@ export async function sendFinalGradesToKriit(api, journalLinks) {
         console.log('RAW OUTCOME ENTRY:', entry)
         // Always use curriculumModuleOutcomes as assignmentExternalId for SISSEKANNE_O
         const assignmentExternalId = entry.curriculumModuleOutcomes || null
-        // Populate results with all journal students, even if grades are not present
-        const results = journalStudents.map(student => {
-          console.log('RAW JOURNAL STUDENT:', student)
-          return {
-            studentPersonalCode: student.studentId || '',
-            studentName: student.fullname || '',
-            grade: '',
-            currentGrade: ''
+        // Enrich journalStudents with personal codes using the same logic as JournalListSync.js
+        const enrichedStudents = await Promise.all(journalStudents.map(async student => {
+          if (typeof student.idcode === 'string' && student.idcode.length > 0) {
+            return student
           }
-        })
+          if (student.studentId) {
+            try {
+              // Fetch student details from API (cached by tahvel service)
+              const details = await api.tahvel.get(`/students/${student.studentId}`)
+              if (details && details.person && details.person.idcode) {
+                student.idcode = details.person.idcode
+              }
+            } catch (err) {
+              Logger.debug('API lookup failed for student', student.studentId, err)
+            }
+          }
+          return student
+        }))
+        // Only include students with a valid personal code (idcode)
+        const results = enrichedStudents
+          .filter(student => typeof student.idcode === 'string' && student.idcode.length > 0)
+          .map(student => {
+            console.log('RAW JOURNAL STUDENT:', student)
+            return {
+              studentPersonalCode: student.idcode,
+              studentName: student.fullname || '',
+              grade: '',
+              currentGrade: ''
+            }
+          })
         return {
           assignmentName: entry.nameEt || 'Õppetulemus',
           assignmentExternalId,
