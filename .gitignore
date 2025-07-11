@@ -3,6 +3,8 @@ node_modules
 
 # Dev files and links
 
+opetaja-assistent
+.vscode
 kriit
 src/features/journalList/output.txt
 

@@ -41,8 +41,7 @@
   - No comments—prefer self-documenting code (see `.augment-guidelines`).
   - Eliminate duplication, merge similar logic, and avoid deep nesting.
   - Use only services for DOM/network; never access directly in features.
-- **Legacy Code:**
-  - `old-code/` is read-only for reference—never edit or add files there.
+
 - **Feature Examples:**
   - See `src/features/journalList/JournalListSync.js` for a complete feature module.
   - See `src/features/singleJournal/lessonDiscrepancies/LessonDiscrepanciesFeature.js` for advanced validation and logging patterns.

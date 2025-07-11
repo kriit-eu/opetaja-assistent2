@@ -2,7 +2,8 @@
  * Journal List Sync Feature
  *
  * Syncs data between Tahvel and Kriit:
- * - Assignments and their grades
+ * - Assignments and their grades (SISSEKANNE_H, SISSEKANNE_I)
+ * - Curriculum outcomes and their grades (SISSEKANNE_O)
  * - Students and their personal codes
  * - Student statuses (active/inactive)
  *
@@ -276,7 +277,11 @@ class JournalListSyncFeature extends BaseFeature {
 
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
-          const assignments = this.extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
+          
+          // Use journalEntriesWithGrades as the primary source since it contains all entry types including outcomes
+          // Fall back to journalEntries if journalEntriesWithGrades is empty
+          const primaryEntries = (journalEntriesWithGrades && journalEntriesWithGrades.length > 0) ? journalEntriesWithGrades : journalEntries
+          const assignments = this.extractAssignmentsFromEntries(primaryEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
           let teacherName = ''
           let teacherPersonalCode = ''
@@ -1334,25 +1339,49 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Found ${journalEntries.length} entries in journal ${journalId}`)
 
         for (const entry of journalEntries) {
-          // Only process entries that are homework or graded entries
-          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H') {
-            // Get the entry details with allStudents=true to get data for all students
-            const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
+          // Only process entries that are homework, graded entries, or outcomes
+          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_O') {
+            // Handle outcome entries differently since they don't have regular entry IDs
+            if (entry.entryType === 'SISSEKANNE_O') {
+              // For outcome entries, we need to use the journalOutcome endpoint
+              const outcomeDetails = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
+              
+              if (outcomeDetails && outcomeDetails.outcomeStudents) {
+                const isInOutcome = outcomeDetails.outcomeStudents.some(
+                  student => student.journalStudent && String(student.journalStudent) === String(studentId)
+                )
 
-            if (entryDetails && entryDetails.journalEntryStudents) {
-              const isInAssignment = entryDetails.journalEntryStudents.some(
-                student => student.journalStudent && String(student.journalStudent) === String(studentId)
-              )
+                if (isInOutcome) {
+                  // Get the outcome name
+                  const assignmentName = entry.nameEt || outcomeDetails.nameEt || 'Õppetulemus'
+                  Logger.debug(`Student ${studentId} is enrolled in outcome: ${assignmentName}`)
 
-              if (isInAssignment) {
-                // Get the assignment name
-                const assignmentName = entry.nameEt || entry.name
+                  enrolledAssignments.push({
+                    id: entry.curriculumModuleOutcomes,
+                    name: assignmentName,
+                    entryType: entry.entryType
+                  })
+                }
+              }
+            } else {
+              // Get the entry details with allStudents=true to get data for all students
+              const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
 
-                enrolledAssignments.push({
-                  id: entry.id,
-                  name: assignmentName,
-                  date: entry.homeworkDuedate || entry.entryDate
-                })
+              if (entryDetails && entryDetails.journalEntryStudents) {
+                const isInAssignment = entryDetails.journalEntryStudents.some(
+                  student => student.journalStudent && String(student.journalStudent) === String(studentId)
+                )
+
+                if (isInAssignment) {
+                  // Get the assignment name
+                  const assignmentName = entry.nameEt || entry.name
+
+                  enrolledAssignments.push({
+                    id: entry.id,
+                    name: assignmentName,
+                    entryType: entry.entryType
+                  })
+                }
               }
             }
           }
@@ -1500,41 +1529,87 @@ class JournalListSyncFeature extends BaseFeature {
     const gradedEntries = journalEntries.filter(
       entry =>
         entry.entryType === 'SISSEKANNE_H' || // Graded entry
-        entry.entryType === 'SISSEKANNE_I' // Independent work
+        entry.entryType === 'SISSEKANNE_I' || // Independent work
+        entry.entryType === 'SISSEKANNE_O' // Outcome entry
     )
+
+    // Debug: Log count of different entry types
+    const entryCounts = {
+      'SISSEKANNE_H': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
+      'SISSEKANNE_I': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
+      'SISSEKANNE_O': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
+    }
+    Logger.debug(`Found gradable entries: ${entryCounts['SISSEKANNE_H']} assignments, ${entryCounts['SISSEKANNE_I']} independent work, ${entryCounts['SISSEKANNE_O']} outcomes`)
+    
+    // Debug: Log outcome entries specifically
+    if (entryCounts['SISSEKANNE_O'] > 0) {
+      const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
+      outcomeEntries.forEach(entry => {
+        Logger.debug(`Found outcome entry: "${entry.nameEt}" with curriculumModuleOutcomes: ${entry.curriculumModuleOutcomes}`)
+      })
+    }
 
     // Create a map of entry IDs to entries with grades from journalEntriesByDate
     const entriesWithGradesMap = {}
     if (journalEntriesWithGrades && Array.isArray(journalEntriesWithGrades)) {
       journalEntriesWithGrades.forEach(entry => {
+        // Handle regular entries with IDs
         if (entry.id && (entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_I')) {
           entriesWithGradesMap[entry.id] = entry
+        }
+        // Handle outcome entries with curriculumModuleOutcomes
+        if (entry.curriculumModuleOutcomes && entry.entryType === 'SISSEKANNE_O') {
+          entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`] = entry
         }
       })
       Logger.debug(`Created map of ${Object.keys(entriesWithGradesMap).length} entries with grades`)
     }
 
     gradedEntries.forEach(entry => {
+      // Log when we process an outcome entry
+      if (entry.entryType === 'SISSEKANNE_O') {
+        Logger.debug(`Processing outcome entry: ${entry.nameEt || 'Unnamed'} (outcomeId: ${entry.curriculumModuleOutcomes})`)
+      }
+      
       // Extract results for this assignment
       const results = []
 
-      // First check if we have this entry in the entriesWithGradesMap
-      const entryWithGrades = entriesWithGradesMap[entry.id]
+      // Handle different entry types for finding grades
+      let entryWithGrades = null
+      if (entry.entryType === 'SISSEKANNE_O') {
+        // For outcome entries, look up by curriculumModuleOutcomes
+        entryWithGrades = entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`]
+      } else {
+        // For regular entries, look up by ID
+        entryWithGrades = entriesWithGradesMap[entry.id]
+      }
 
       // Create a map of students who have results for this assignment
       const studentResultsMap = {}
-      if (entryWithGrades && entryWithGrades.journalStudentResults) {
-        Logger.debug(`Using entry with grades for assignment ${entry.id} (${entry.nameEt || 'Unnamed'})`)
-        Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
-          studentResultsMap[journalStudentId] = studentResults
-        })
+      if (entryWithGrades) {
+        if (entry.entryType === 'SISSEKANNE_O' && entryWithGrades.studentOutcomeResults) {
+          // Handle outcome entries with studentOutcomeResults
+          Logger.debug(`Using outcome entry with grades for outcome ${entry.curriculumModuleOutcomes} (${entry.nameEt || 'Unnamed'})`)
+          Object.entries(entryWithGrades.studentOutcomeResults).forEach(([journalStudentId, studentResults]) => {
+            studentResultsMap[journalStudentId] = studentResults
+          })
+        } else if (entryWithGrades.journalStudentResults) {
+          // Handle regular entries with journalStudentResults
+          const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+          Logger.debug(`Using entry with grades for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'})`)
+          Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
+            studentResultsMap[journalStudentId] = studentResults
+          })
+        }
       } else if (entry.journalStudentResults) {
-        Logger.debug(`Using fallback entry for assignment ${entry.id} (${entry.nameEt || 'Unnamed'})`)
+        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+        Logger.debug(`Using fallback entry for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'})`)
         Object.entries(entry.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
           studentResultsMap[journalStudentId] = studentResults
         })
       } else {
-        Logger.debug(`No grades found for assignment ${entry.id} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
+        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+        Logger.debug(`No grades found for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
       }
 
       // Include ALL journal students for this assignment, not just those with results
@@ -1604,7 +1679,8 @@ class JournalListSyncFeature extends BaseFeature {
           })
         })
       } else {
-        Logger.warning(`No journal students provided for assignment ${entry.id}, cannot include all students`)
+        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+        Logger.warning(`No journal students provided for assignment ${entryIdForLog}, cannot include all students`)
       }
 
       // Get the assignment name
@@ -1612,9 +1688,12 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Always include assignments with valid ID and name, even if they don't have results yet
       // This ensures all assignments are sent to Kriit, not just those with grades
-      if (entry.id && assignmentName) {
+      // Handle both regular entries (with id) and outcome entries (with curriculumModuleOutcomes)
+      const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+      
+      if (assignmentId && assignmentName) {
         assignments.push({
-          assignmentExternalId: entry.id,
+          assignmentExternalId: assignmentId,
           assignmentName: assignmentName,
           assignmentInstructions: entry.content || '',
           assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
@@ -1623,7 +1702,7 @@ class JournalListSyncFeature extends BaseFeature {
         })
 
         // Log whether this assignment has results or not
-        Logger.debug('Added assignment ' + entry.id + ' (' + assignmentName + ') with ' + results.length + ' results')
+        Logger.debug('Added assignment ' + assignmentId + ' (' + assignmentName + ') with ' + results.length + ' results')
       }
     })
 
@@ -1687,7 +1766,10 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Use a type-specific name if nothing else is available
-    return entry.entryType === 'SISSEKANNE_H' ? 'Hindeline töö' : entry.entryType === 'SISSEKANNE_I' ? 'Iseseisev töö' : 'Päeviku sissekanne'
+    return entry.entryType === 'SISSEKANNE_H' ? 'Hindeline töö' : 
+           entry.entryType === 'SISSEKANNE_I' ? 'Iseseisev töö' : 
+           entry.entryType === 'SISSEKANNE_O' ? 'Õppetulemus' : 
+           'Päeviku sissekanne'
   }
 
   /**
