@@ -19,7 +19,7 @@ import { setupKriitMessageListener } from '../../services/MessageListenerService
 import { bannerService } from '../../services/BannerService.js'
 import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
 
-import { sendFinalGradesToKriit } from './FinalGradesSync.js'
+import { sendFinalGradesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
