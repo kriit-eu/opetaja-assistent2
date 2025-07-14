@@ -79,6 +79,16 @@ export async function loadFeatures() {
   } catch (error) {
     Logger.error('Error loading HighlightFinalGradesFeature:', error)
   }
+  
+  // Load markdown editor feature (always enabled)
+  try {
+    const MarkdownEditorFeature = (await import('../features/singleJournal/markdownEditor/MarkdownEditorFeature.js')).default
+    const markdownEditorFeature = new MarkdownEditorFeature()
+    allAvailableFeatures.singleJournal.push(markdownEditorFeature)
+    Logger.debug('Feature "MarkdownEditorFeature" created')
+  } catch (error) {
+    Logger.error('Error loading MarkdownEditorFeature:', error)
+  }
 
   // Create a copy of the features structure for returning
   const featureGroups = {
