@@ -79,7 +79,7 @@ export async function loadFeatures() {
   } catch (error) {
     Logger.error('Error loading HighlightFinalGradesFeature:', error)
   }
-  
+
   // Load markdown editor feature (always enabled)
   try {
     const MarkdownEditorFeature = (await import('../features/singleJournal/markdownEditor/MarkdownEditorFeature.js')).default

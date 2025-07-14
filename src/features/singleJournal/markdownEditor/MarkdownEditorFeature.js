@@ -18,13 +18,13 @@ export default class MarkdownEditorFeature extends BaseFeature {
 
   async activate() {
     Logger.debug(`[${this.name}] Activating markdown editor feature`)
-    
+
     // Inject CSS styles
     styleService.injectCSS('markdown-editor-styles', markdownEditorStyles)
-    
+
     // Set up dialog observer
     this.#setupDialogObserver()
-    
+
     // Check for existing dialog
     this.#checkForExistingDialog()
   }
@@ -45,12 +45,12 @@ export default class MarkdownEditorFeature extends BaseFeature {
   }
 
   #setupDialogObserver() {
-    this.#dialogObserver = new MutationObserver((mutations) => {
+    this.#dialogObserver = new MutationObserver(mutations => {
       if (this.#isProcessing) return
 
-      mutations.forEach((mutation) => {
+      mutations.forEach(mutation => {
         // Check for added nodes (dialog opening)
-        mutation.addedNodes.forEach((node) => {
+        mutation.addedNodes.forEach(node => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             const dialog = node.matches('md-dialog') ? node : node.querySelector('md-dialog')
             if (dialog) {
@@ -60,7 +60,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
         })
 
         // Check for removed nodes (dialog closing)
-        mutation.removedNodes.forEach((node) => {
+        mutation.removedNodes.forEach(node => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             const dialog = node.matches('md-dialog') ? node : node.querySelector('md-dialog')
             if (dialog === this.#currentDialog) {
@@ -93,7 +93,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
     try {
       // Wait for dialog content to be ready
       await this.#waitForDialogContent(dialog)
-      
+
       // Check if this is an "iseseisev töö" entry dialog
       if (await this.#isIndependentWorkDialog(dialog)) {
         await this.#enhanceDialog(dialog)
@@ -148,7 +148,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
 
     // Check if "Iseseisev töö" is selected or if we can detect it by background color
     const isIseseisvToo = this.#detectIndependentWorkEntry(dialog)
-    
+
     return isIseseisvToo
   }
 
@@ -164,9 +164,9 @@ export default class MarkdownEditorFeature extends BaseFeature {
     for (const element of elementsWithBackground) {
       const style = window.getComputedStyle(element)
       const backgroundColor = style.backgroundColor
-      
+
       // Check for yellow-ish background that typically indicates independent work
-      if (backgroundColor.includes('rgb(255, 255, 0)') || 
+      if (backgroundColor.includes('rgb(255, 255, 0)') ||
           backgroundColor.includes('rgb(255, 255, 204)') ||
           backgroundColor.includes('yellow')) {
         return true
@@ -203,7 +203,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
 
     // Create markdown editor
     const markdownEditor = this.#createMarkdownEditor(existingContent, sisuField)
-    
+
     // Replace the original field
     container.style.display = 'none'
     container.parentNode.insertBefore(markdownEditor, container.nextSibling)
@@ -326,7 +326,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
     textarea.addEventListener('input', () => {
       // Update original field
       originalField.value = textarea.value
-      
+
       // Trigger change event on original field
       originalField.dispatchEvent(new Event('input', { bubbles: true }))
       originalField.dispatchEvent(new Event('change', { bubbles: true }))
@@ -334,14 +334,14 @@ export default class MarkdownEditorFeature extends BaseFeature {
 
     // Toolbar buttons
     toolbarButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', e => {
         e.preventDefault()
         this.#handleToolbarAction(btn.dataset.action, textarea)
       })
     })
 
     // Keyboard shortcuts
-    textarea.addEventListener('keydown', (e) => {
+    textarea.addEventListener('keydown', e => {
       if (e.ctrlKey || e.metaKey) {
         switch (e.key) {
           case 'b':
@@ -356,7 +356,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
             e.preventDefault()
             this.#handleToolbarAction('link', textarea)
             break
-          case 'Enter':
+          case 'Enter': {
             e.preventDefault()
             // Trigger save - find save button and click it
             const saveButton = this.#currentDialog.querySelector('button[ng-click*="save"], md-button[ng-click*="save"]')
@@ -364,6 +364,7 @@ export default class MarkdownEditorFeature extends BaseFeature {
               saveButton.click()
             }
             break
+          }
         }
       }
     })
@@ -397,11 +398,12 @@ export default class MarkdownEditorFeature extends BaseFeature {
       case 'italic':
         replacement = `*${selectedText || 'italic text'}*`
         break
-      case 'link':
+      case 'link': {
         const url = selectedText.startsWith('http') ? selectedText : 'https://example.com'
         const linkText = selectedText.startsWith('http') ? 'link text' : (selectedText || 'link text')
         replacement = `[${linkText}](${url})`
         break
+      }
       case 'list':
         replacement = `\n- ${selectedText || 'list item'}\n- \n- `
         break
@@ -412,11 +414,11 @@ export default class MarkdownEditorFeature extends BaseFeature {
 
     if (replacement) {
       textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(end)
-      
+
       // Update cursor position
       const newPos = start + replacement.length
       textarea.setSelectionRange(newPos, newPos)
-      
+
       // Trigger input event
       textarea.dispatchEvent(new Event('input', { bubbles: true }))
       textarea.focus()
@@ -432,10 +434,10 @@ export default class MarkdownEditorFeature extends BaseFeature {
   #isElementVisible(element) {
     if (!element) return false
     const style = window.getComputedStyle(element)
-    return style.display !== 'none' && 
-           style.visibility !== 'hidden' && 
+    return style.display !== 'none' &&
+           style.visibility !== 'hidden' &&
            style.opacity !== '0' &&
-           element.offsetWidth > 0 && 
+           element.offsetWidth > 0 &&
            element.offsetHeight > 0
   }
 }

@@ -1,14 +1,38 @@
 export class MarkdownRenderer {
   constructor() {
     this.allowedTags = [
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      'p', 'br', 'strong', 'b', 'em', 'i',
-      'ul', 'ol', 'li', 'blockquote',
-      'code', 'pre', 'a', 'img',
-      'hr', 'del', 'ins', 'mark',
-      'table', 'thead', 'tbody', 'tr', 'th', 'td'
+      'h1',
+'h2',
+'h3',
+'h4',
+'h5',
+'h6',
+      'p',
+'br',
+'strong',
+'b',
+'em',
+'i',
+      'ul',
+'ol',
+'li',
+'blockquote',
+      'code',
+'pre',
+'a',
+'img',
+      'hr',
+'del',
+'ins',
+'mark',
+      'table',
+'thead',
+'tbody',
+'tr',
+'th',
+'td'
     ]
-    
+
     this.allowedAttributes = {
       'a': ['href', 'title', 'target'],
       'img': ['src', 'alt', 'title', 'width', 'height'],
@@ -26,7 +50,7 @@ export class MarkdownRenderer {
 
     let html = this.#parseMarkdown(markdown)
     html = this.#sanitizeHtml(html)
-    
+
     return html
   }
 
@@ -80,22 +104,22 @@ export class MarkdownRenderer {
     const result = []
     let inList = false
     let listType = null
-    let listLevel = 0
+    let _listLevel = 0
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       const trimmed = line.trim()
-      
+
       // Check for list items
       const unorderedMatch = line.match(/^(\s*)-\s+(.*)/)
       const orderedMatch = line.match(/^(\s*)\d+\.\s+(.*)/)
-      
+
       if (unorderedMatch || orderedMatch) {
         const match = unorderedMatch || orderedMatch
         const indent = match[1].length
         const content = match[2]
         const currentType = unorderedMatch ? 'ul' : 'ol'
-        
+
         if (!inList || currentType !== listType) {
           // Start new list
           if (inList) {
@@ -104,9 +128,9 @@ export class MarkdownRenderer {
           result.push(`<${currentType}>`)
           inList = true
           listType = currentType
-          listLevel = indent
+          _listLevel = indent
         }
-        
+
         result.push(`<li>${content}</li>`)
       } else {
         // Not a list item
@@ -115,37 +139,37 @@ export class MarkdownRenderer {
           inList = false
           listType = null
         }
-        
+
         if (trimmed !== '') {
           result.push(line)
         }
       }
     }
-    
+
     // Close any remaining list
     if (inList) {
       result.push(`</${listType}>`)
     }
-    
+
     return result.join('\n')
   }
 
   #parseParagraphs(html) {
     // Split by double newlines to get paragraphs
     const paragraphs = html.split(/\n\s*\n/)
-    
+
     return paragraphs.map(paragraph => {
       const trimmed = paragraph.trim()
       if (!trimmed) return ''
-      
+
       // Don't wrap block elements in paragraphs
       if (this.#isBlockElement(trimmed)) {
         return trimmed
       }
-      
+
       // Convert single newlines to line breaks within paragraphs
       const withBreaks = trimmed.replace(/\n/g, '<br>')
-      
+
       return `<p>${withBreaks}</p>`
     }).filter(p => p !== '').join('\n')
   }
@@ -159,21 +183,21 @@ export class MarkdownRenderer {
     // Create a temporary DOM element for parsing
     const temp = document.createElement('div')
     temp.innerHTML = html
-    
+
     // Recursively sanitize all nodes
     this.#sanitizeNode(temp)
-    
+
     return temp.innerHTML
   }
 
   #sanitizeNode(node) {
     // Process all child nodes
     const childNodes = Array.from(node.childNodes)
-    
+
     childNodes.forEach(child => {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const tagName = child.tagName.toLowerCase()
-        
+
         // Check if tag is allowed
         if (!this.allowedTags.includes(tagName)) {
           // Remove disallowed tags but keep content
@@ -182,19 +206,19 @@ export class MarkdownRenderer {
           child.parentNode.replaceChild(textNode, child)
           return
         }
-        
+
         // Sanitize attributes
         const attributes = Array.from(child.attributes)
         attributes.forEach(attr => {
           const attrName = attr.name.toLowerCase()
           const allowedAttrs = this.allowedAttributes[tagName] || []
-          
+
           if (!allowedAttrs.includes(attrName)) {
             child.removeAttribute(attr.name)
           } else {
             // Additional sanitization for specific attributes
             const attrValue = attr.value
-            
+
             if (attrName === 'href' || attrName === 'src') {
               // Only allow safe URLs
               if (!this.#isSafeUrl(attrValue)) {
@@ -203,7 +227,7 @@ export class MarkdownRenderer {
             }
           }
         })
-        
+
         // Recursively sanitize children
         this.#sanitizeNode(child)
       }
@@ -212,15 +236,15 @@ export class MarkdownRenderer {
 
   #isSafeUrl(url) {
     if (!url) return false
-    
+
     // Allow relative URLs
     if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
       return true
     }
-    
+
     // Allow safe protocols
     const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:']
-    
+
     try {
       const urlObj = new URL(url)
       return safeProtocols.includes(urlObj.protocol)
