@@ -2,12 +2,12 @@ import Logger from '../../services/Logger.js'
 
 /**
  * Collect and send only outcome entries (SISSEKANNE_O) to Kriit API
- * Stores results in the finalGrades table via /api/finalgrades/sync
+ * Stores results in the outcomes table via /outcomes/sync
  * @param {Object} api - API service instance
  * @param {Array} journalLinks - List of journal link elements
  * @returns {Promise<void>}
  */
-export async function sendFinalGradesToKriit(api, journalLinks) {
+export async function sendOutcomeEntriesToKriit(api, journalLinks) {
   if (!api || !api.kriit || !api.kriit.authToken) {
     Logger.error('No Kriit API token set')
     return

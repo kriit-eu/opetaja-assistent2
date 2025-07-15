@@ -19,7 +19,7 @@ import { setupKriitMessageListener } from '../../services/MessageListenerService
 import { bannerService } from '../../services/BannerService.js'
 import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
 
-import { sendFinalGradesToKriit } from './OutComes.js'
+import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -95,17 +95,17 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Send only outcome entries (SISSEKANNE_O) to Kriit API
    */
-  async sendFinalGradesToKriit() {
+  async sendOutcomeEntriesToKriit() {
     if (!this.api || !this.api.kriit || !this.api.kriit.authToken) {
       Logger.error('No Kriit API token set')
       return
     }
     if (!this.journalLinks || this.journalLinks.length === 0) {
-      Logger.warning('No journal links available for final grades sync')
+      Logger.warning('No journal links available for outcome sync')
       return
     }
-    Logger.debug('Triggering final grades sync (outcome entries only)')
-    await sendFinalGradesToKriit(this.api, this.journalLinks)
+    Logger.debug('Triggering outcome sync (outcome entries only)')
+    await sendOutcomeEntriesToKriit(this.api, this.journalLinks)
   }
   constructor() {
     // Define selectors for journal links - using the most reliable selector first
@@ -276,7 +276,7 @@ class JournalListSyncFeature extends BaseFeature {
       await this.proceedWithKriitApiCall(journalData)
 
       // Automatically sync outcome entries (SISSEKANNE_O) to Kriit
-      await this.sendFinalGradesToKriit()
+      await this.sendOutcomeEntriesToKriit()
     } catch (error) {
       Logger.error('Error fetching journal data:', error)
       this.isLoading = false
@@ -835,14 +835,6 @@ class JournalListSyncFeature extends BaseFeature {
             })
           }
         })
-        // Add Sync Final Grades button
-        const finalGradesBtn = domService.createAndInsertElement(
-          'button',
-          { classList: ['ta-sync-final-grades-btn'] },
-          'Sync Final Grades (Outcomes Only)',
-          container
-        )
-        finalGradesBtn.onclick = () => this.sendFinalGradesToKriit()
       }
     )
   }
