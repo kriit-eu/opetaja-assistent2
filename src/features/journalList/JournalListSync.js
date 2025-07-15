@@ -796,6 +796,31 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
+    // Log the grade differences to the console for debugging
+    console.log('Grade differences:', this.differences)
+    Logger.info('✨ [showDifferencesBanner] Grade differences:', JSON.stringify(this.differences, null, 2))
+
+    // Print each detected grade difference with details
+    if (Array.isArray(this.differences)) {
+      this.differences.forEach(subject => {
+        if (subject && Array.isArray(subject.assignments)) {
+          subject.assignments.forEach(assignment => {
+            if (assignment && Array.isArray(assignment.results)) {
+              assignment.results.forEach(result => {
+                const tahvelGrade = result.currentGrade || '(puudub)'
+                const kriitGrade = result.grade || '(puudub)'
+                // Only log if there is a difference and kriitGrade is not null/empty
+                if (kriitGrade !== '(puudub)' && tahvelGrade !== kriitGrade) {
+                  console.log(
+                    `[GRADE DIFF] Subject: ${subject.subjectName}, Assignment: ${assignment.assignmentName}, Student: ${result.studentName || '(nimi puudub)'}, Tahvel: ${tahvelGrade}, Kriit: ${kriitGrade}`
+                  )
+                }
+              })
+            }
+          })
+        }
+      })
+    }
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
       async () => {
@@ -808,8 +833,8 @@ class JournalListSyncFeature extends BaseFeature {
         // Group differences by subject
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
+        // Render assignment name differences first (if any)
         assignmentNameDiffs.forEach(subjectDiff => {
-          // Subject block
           const subjectBlock = domService.createAndInsertElement(
             'div',
             { classList: ['ta-sync-diff-subject'], style: 'margin-bottom: 1.5em;' },
@@ -822,7 +847,6 @@ class JournalListSyncFeature extends BaseFeature {
             subjectDiff.subjectName,
             subjectBlock
           )
-          // Assignment name differences (single row, arrow style)
           subjectDiff.nameDiffs.forEach(nameDiff => {
             const row = domService.createAndInsertElement(
               'div',
@@ -847,50 +871,81 @@ class JournalListSyncFeature extends BaseFeature {
               row
             )
           })
-          // Grade differences for this subject
-          const subjectGradeDiff = gradeDiffs.find(s => s.subjectName === subjectDiff.subjectName)
-          if (subjectGradeDiff && Array.isArray(subjectGradeDiff.assignments)) {
-            subjectGradeDiff.assignments.forEach(assignment => {
-              // Only render assignments with grade differences
-              const resultsWithDifferences = Array.isArray(assignment.results)
-                ? assignment.results.filter(result => {
-                    const tahvelGrade = result.currentGrade || '(puudub)'
-                    const kriitGrade = result.grade || '(puudub)'
-                    if (result.grade === null || result.grade === undefined || result.grade === '') {
-                      return false
-                    }
-                    return tahvelGrade !== kriitGrade
-                  })
-                : []
-              if (resultsWithDifferences.length === 0) return
-              // Assignment title
-              domService.createAndInsertElement(
+        })
+
+        // Only render subject blocks for subjects with at least one assignment with a grade difference
+        gradeDiffs.forEach(subjectGradeDiff => {
+          if (!Array.isArray(subjectGradeDiff.assignments)) return
+          // Filter assignments for those with at least one grade difference
+          const assignmentsWithDiffs = subjectGradeDiff.assignments.filter(assignment => {
+            const resultsWithDifferences = Array.isArray(assignment.results)
+              ? assignment.results.filter(result => {
+                  const tahvelGrade = result.currentGrade || '(puudub)'
+                  const kriitGrade = result.grade || '(puudub)'
+                  if (result.grade === null || result.grade === undefined || result.grade === '') {
+                    return false
+                  }
+                  return tahvelGrade !== kriitGrade
+                })
+              : []
+            return resultsWithDifferences.length > 0
+          })
+          if (assignmentsWithDiffs.length === 0) return
+          // If this subject was already rendered above, reuse the block, else create a new one
+          let subjectBlock = Array.from(container.children).find(
+            el => el.classList.contains('ta-sync-diff-subject') &&
+              el.querySelector('.ta-sync-diff-subject-title')?.textContent === subjectGradeDiff.subjectName
+          )
+          if (!subjectBlock) {
+            subjectBlock = domService.createAndInsertElement(
+              'div',
+              { classList: ['ta-sync-diff-subject'], style: 'margin-bottom: 1.5em;' },
+              '',
+              container
+            )
+            domService.createAndInsertElement(
+              'div',
+              { classList: ['ta-sync-diff-subject-title'], style: 'font-weight: 600; margin-bottom: 0.5em; font-size: 1.1em;' },
+              subjectGradeDiff.subjectName,
+              subjectBlock
+            )
+          }
+          assignmentsWithDiffs.forEach(assignment => {
+            const resultsWithDifferences = Array.isArray(assignment.results)
+              ? assignment.results.filter(result => {
+                  const tahvelGrade = result.currentGrade || '(puudub)'
+                  const kriitGrade = result.grade || '(puudub)'
+                  if (result.grade === null || result.grade === undefined || result.grade === '') {
+                    return false
+                  }
+                  return tahvelGrade !== kriitGrade
+                })
+              : []
+            domService.createAndInsertElement(
+              'div',
+              { classList: ['ta-sync-assignment-title'], style: 'margin-top: 0.5em; font-weight: 500;' },
+              assignment.assignmentName || '',
+              subjectBlock
+            )
+            resultsWithDifferences.forEach(result => {
+              const resultRow = domService.createAndInsertElement(
                 'div',
-                { classList: ['ta-sync-assignment-title'], style: 'margin-top: 0.5em; font-weight: 500;' },
-                assignment.assignmentName || '',
+                { classList: ['ta-sync-result-row'], style: 'margin-bottom: 0.25em;' },
+                '',
                 subjectBlock
               )
-              // Results
-              resultsWithDifferences.forEach(result => {
-                const resultRow = domService.createAndInsertElement(
-                  'div',
-                  { classList: ['ta-sync-result-row'], style: 'margin-bottom: 0.25em;' },
-                  '',
-                  subjectBlock
-                )
-                domService.createAndInsertElement(
-                  'span',
-                  { classList: ['ta-sync-student-name'], style: 'margin-right: 0.5em;' },
-                  result.studentName,
-                  resultRow
-                )
-                const tahvelGrade = result.currentGrade || '(puudub)'
-                const kriitGrade = result.grade || '(puudub)'
-                domService.createAndInsertElement('span', { classList: ['ta-sync-grade-arrow'], style: 'margin: 0 0.5em;' }, '→', resultRow)
-                domService.createAndInsertElement('span', { classList: ['ta-sync-grade-kriit'] }, kriitGrade, resultRow)
-              })
+              domService.createAndInsertElement(
+                'span',
+                { classList: ['ta-sync-student-name'], style: 'margin-right: 0.5em;' },
+                result.studentName,
+                resultRow
+              )
+              const tahvelGrade = result.currentGrade || '(puudub)'
+              const kriitGrade = result.grade || '(puudub)'
+              domService.createAndInsertElement('span', { classList: ['ta-sync-grade-arrow'], style: 'margin: 0 0.5em;' }, '→', resultRow)
+              domService.createAndInsertElement('span', { classList: ['ta-sync-grade-kriit'] }, kriitGrade, resultRow)
             })
-          }
+          })
         })
       }
     )
