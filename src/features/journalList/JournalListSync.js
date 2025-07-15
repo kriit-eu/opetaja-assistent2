@@ -23,6 +23,76 @@ import { sendFinalGradesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
+   * Extract assignment name differences from Kriit response
+   */
+  extractAssignmentNameDifferences() {
+    Logger.info('✨ [extractAssignmentNameDifferences] Called')
+    const groupedDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) {
+      Logger.info('✨ [extractAssignmentNameDifferences] No differences array found.')
+      return groupedDiffs
+    }
+    this.differences.forEach(subject => {
+      if (subject && Array.isArray(subject.assignments)) {
+        const nameDiffs = subject.assignments
+          .filter(a => a.assignmentName && a.assignmentName.kriit !== a.assignmentName.remote)
+          .map(a => ({ kriit: a.assignmentName.kriit, remote: a.assignmentName.remote }))
+        if (nameDiffs.length > 0) {
+          groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
+        }
+      }
+    })
+    Logger.info(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
+    return groupedDiffs
+  }
+
+  /**
+   * Render assignment name differences section in the sync banner
+   */
+  renderAssignmentNameDifferences(container, groupedDiffs) {
+    Logger.info('✨ [renderAssignmentNameDifferences] Called with', groupedDiffs.length, 'subjects')
+    if (!groupedDiffs || groupedDiffs.length === 0) {
+      Logger.info('✨ [renderAssignmentNameDifferences] No assignment name differences to render.')
+      return
+    }
+    const section = domService.createAndInsertElement('div', { classList: ['ta-sync-assignment-name-diff-section'] }, '', container)
+    domService.createAndInsertElement(
+      'h3',
+      { style: 'margin-bottom: 0.75em; font-size: 1.1em; font-weight: bold;' },
+      'Assignment Name Differences',
+      section
+    )
+    groupedDiffs.forEach(subjectDiff => {
+      const subjectBlock = domService.createAndInsertElement(
+        'div',
+        { classList: ['ta-sync-assignment-name-diff-subject'], style: 'margin-bottom: 1em;' },
+        '',
+        section
+      )
+      domService.createAndInsertElement(
+        'div',
+        { classList: ['ta-sync-assignment-name-diff-subject-title'], style: 'font-weight: 600; margin-bottom: 0.5em;' },
+        subjectDiff.subjectName,
+        subjectBlock
+      )
+      subjectDiff.nameDiffs.forEach(nameDiff => {
+        const row = domService.createAndInsertElement(
+          'div',
+          { classList: ['ta-sync-assignment-name-diff-row'], style: 'margin-bottom: 0.5em; padding: 0.5em; border-bottom: 1px solid #eee;' },
+          '',
+          subjectBlock
+        )
+        domService.createAndInsertElement(
+          'div',
+          { classList: ['ta-sync-assignment-name-diff-kriit'], style: 'margin-bottom: 0.15em;' },
+          `Kriit: ${nameDiff.kriit}`,
+          row
+        )
+        domService.createAndInsertElement('div', { classList: ['ta-sync-assignment-name-diff-remote'] }, `Tahvel: ${nameDiff.remote}`, row)
+      })
+    })
+  }
+  /**
    * Send only outcome entries (SISSEKANNE_O) to Kriit API
    */
   async sendFinalGradesToKriit() {
@@ -294,10 +364,10 @@ class JournalListSyncFeature extends BaseFeature {
 
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
-          
+
           // Use journalEntriesWithGrades as the primary source since it contains all entry types including outcomes
           // Fall back to journalEntries if journalEntriesWithGrades is empty
-          const primaryEntries = (journalEntriesWithGrades && journalEntriesWithGrades.length > 0) ? journalEntriesWithGrades : journalEntries
+          const primaryEntries = journalEntriesWithGrades && journalEntriesWithGrades.length > 0 ? journalEntriesWithGrades : journalEntries
           const assignments = this.extractAssignmentsFromEntries(primaryEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
           let teacherName = ''
@@ -319,7 +389,6 @@ class JournalListSyncFeature extends BaseFeature {
 
                   // Also store in instance cache for backward compatibility
                   this.globalTeacherCache[teacherId] = teacherData
-
                 }
               } catch (error) {
                 Logger.warning(`Failed to get teacher personal code: ${error.message}`)
@@ -357,11 +426,9 @@ class JournalListSyncFeature extends BaseFeature {
           }
 
           for (const groupName of studentGroups) {
-
             // Filter assignments to include only students from this group
             const filteredAssignments = assignments
               .map(assignment => {
-
                 const filteredResults = assignment.results.filter(result => {
                   // Find the student in journalStudents to get their group
                   const student = journalStudents.find(js => {
@@ -383,14 +450,12 @@ class JournalListSyncFeature extends BaseFeature {
                   return belongsToGroup
                 })
 
-
                 return {
                   ...assignment,
                   results: filteredResults
                 }
               })
               .filter(assignment => assignment.results.length > 0) // Only include assignments with students
-
 
             groupJournalEntries.push({
               subjectName: journalInfo.nameEt || name,
@@ -432,7 +497,6 @@ class JournalListSyncFeature extends BaseFeature {
 
     // Process each journal student to get their personal code
     if (journalStudents && Array.isArray(journalStudents)) {
-
       // Initialize pending requests tracker if not exists
       if (!this.pendingStudentRequests) {
         this.pendingStudentRequests = new Map()
@@ -485,7 +549,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async() => {
+        const fetchStudentDetails = async () => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -512,7 +576,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async() => {
+        const fetchPromise = (async () => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -564,7 +628,6 @@ class JournalListSyncFeature extends BaseFeature {
           successCount++
         }
       }
-
     }
 
     return studentDetailsMap
@@ -685,7 +748,93 @@ class JournalListSyncFeature extends BaseFeature {
       () => this.syncWithKriit(),
       () => this.fetchJournalData(),
       container => {
-        this.renderDifferences(container)
+        // Group differences by subject
+        const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+        const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
+        assignmentNameDiffs.forEach(subjectDiff => {
+          // Subject block
+          const subjectBlock = domService.createAndInsertElement(
+            'div',
+            { classList: ['ta-sync-diff-subject'], style: 'margin-bottom: 1.5em;' },
+            '',
+            container
+          )
+          domService.createAndInsertElement(
+            'div',
+            { classList: ['ta-sync-diff-subject-title'], style: 'font-weight: 600; margin-bottom: 0.5em; font-size: 1.1em;' },
+            subjectDiff.subjectName,
+            subjectBlock
+          )
+          // Assignment name differences (single row, arrow style)
+          subjectDiff.nameDiffs.forEach(nameDiff => {
+            const row = domService.createAndInsertElement(
+              'div',
+              {
+                classList: ['ta-sync-assignment-name-diff-row'],
+                style: 'display: flex; align-items: center; margin-bottom: 0.5em; padding: 0.5em; border-bottom: 1px solid #eee;'
+              },
+              '',
+              subjectBlock
+            )
+            domService.createAndInsertElement(
+              'span',
+              { classList: ['ta-sync-assignment-name-remote'], style: 'flex: 1; font-weight: 400;' },
+              nameDiff.remote,
+              row
+            )
+            domService.createAndInsertElement('span', { classList: ['ta-sync-grade-arrow'], style: 'margin: 0 0.5em;' }, '→', row)
+            domService.createAndInsertElement(
+              'span',
+              { classList: ['ta-sync-assignment-name-kriit'], style: 'flex: 1; font-weight: 400;' },
+              nameDiff.kriit,
+              row
+            )
+          })
+          // Grade differences for this subject
+          const subjectGradeDiff = gradeDiffs.find(s => s.subjectName === subjectDiff.subjectName)
+          if (subjectGradeDiff && Array.isArray(subjectGradeDiff.assignments)) {
+            subjectGradeDiff.assignments.forEach(assignment => {
+              // Only render assignments with grade differences
+              const resultsWithDifferences = Array.isArray(assignment.results)
+                ? assignment.results.filter(result => {
+                    const tahvelGrade = result.currentGrade || '(puudub)'
+                    const kriitGrade = result.grade || '(puudub)'
+                    if (result.grade === null || result.grade === undefined || result.grade === '') {
+                      return false
+                    }
+                    return tahvelGrade !== kriitGrade
+                  })
+                : []
+              if (resultsWithDifferences.length === 0) return
+              // Assignment title
+              domService.createAndInsertElement(
+                'div',
+                { classList: ['ta-sync-assignment-title'], style: 'margin-top: 0.5em; font-weight: 500;' },
+                assignment.assignmentName || '',
+                subjectBlock
+              )
+              // Results
+              resultsWithDifferences.forEach(result => {
+                const resultRow = domService.createAndInsertElement(
+                  'div',
+                  { classList: ['ta-sync-result-row'], style: 'margin-bottom: 0.25em;' },
+                  '',
+                  subjectBlock
+                )
+                domService.createAndInsertElement(
+                  'span',
+                  { classList: ['ta-sync-student-name'], style: 'margin-right: 0.5em;' },
+                  result.studentName,
+                  resultRow
+                )
+                const tahvelGrade = result.currentGrade || '(puudub)'
+                const kriitGrade = result.grade || '(puudub)'
+                domService.createAndInsertElement('span', { classList: ['ta-sync-grade-arrow'], style: 'margin: 0 0.5em;' }, '→', resultRow)
+                domService.createAndInsertElement('span', { classList: ['ta-sync-grade-kriit'] }, kriitGrade, resultRow)
+              })
+            })
+          }
+        })
         // Add Sync Final Grades button
         const finalGradesBtn = domService.createAndInsertElement(
           'button',
@@ -880,8 +1029,17 @@ class JournalListSyncFeature extends BaseFeature {
                 const matchingAssignment = matchingSubject.assignments.find(a => a.assignmentExternalId === diffAssignment.assignmentExternalId)
 
                 if (matchingAssignment) {
-                  // Add assignment name from our data
-                  diffAssignment.assignmentName = matchingAssignment.assignmentName
+                  // Preserve assignmentName object from diffAssignment if present, otherwise use matchingAssignment.assignmentName
+                  if (
+                    diffAssignment.assignmentName &&
+                    typeof diffAssignment.assignmentName === 'object' &&
+                    diffAssignment.assignmentName.kriit !== undefined &&
+                    diffAssignment.assignmentName.remote !== undefined
+                  ) {
+                    // Already an object from Kriit response, keep as is
+                  } else {
+                    diffAssignment.assignmentName = matchingAssignment.assignmentName
+                  }
 
                   // Process each result
                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
@@ -1221,7 +1379,6 @@ class JournalListSyncFeature extends BaseFeature {
       )
 
       if (response) {
-
         // Check if we have personal codes in the response
         const hasPersonalCodes = response.some(student => student.student?.idcode)
         if (hasPersonalCodes) {
@@ -1350,7 +1507,7 @@ class JournalListSyncFeature extends BaseFeature {
             if (entry.entryType === 'SISSEKANNE_O') {
               // For outcome entries, we need to use the journalOutcome endpoint
               const outcomeDetails = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
-              
+
               if (outcomeDetails && outcomeDetails.outcomeStudents) {
                 const isInOutcome = outcomeDetails.outcomeStudents.some(
                   student => student.journalStudent && String(student.journalStudent) === String(studentId)
@@ -1502,10 +1659,7 @@ class JournalListSyncFeature extends BaseFeature {
       })
 
       // Log mapping statistics
-
-
     } else {
-
     }
 
     return studentMap
@@ -1536,16 +1690,15 @@ class JournalListSyncFeature extends BaseFeature {
 
     // Debug: Log count of different entry types
     const entryCounts = {
-      'SISSEKANNE_H': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
-      'SISSEKANNE_I': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
-      'SISSEKANNE_O': gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
+      SISSEKANNE_H: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
+      SISSEKANNE_I: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
+      SISSEKANNE_O: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
     }
-    
+
     // Debug: Log outcome entries specifically
     if (entryCounts['SISSEKANNE_O'] > 0) {
       const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
-      outcomeEntries.forEach(entry => {
-      })
+      outcomeEntries.forEach(entry => {})
     }
 
     // Create a map of entry IDs to entries with grades from journalEntriesByDate
@@ -1567,7 +1720,7 @@ class JournalListSyncFeature extends BaseFeature {
       // Log when we process an outcome entry
       if (entry.entryType === 'SISSEKANNE_O') {
       }
-      
+
       // Extract results for this assignment
       const results = []
 
@@ -1685,7 +1838,7 @@ class JournalListSyncFeature extends BaseFeature {
       // This ensures all assignments are sent to Kriit, not just those with grades
       // Handle both regular entries (with id) and outcome entries (with curriculumModuleOutcomes)
       const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
-      
+
       if (assignmentId && assignmentName) {
         assignments.push({
           assignmentExternalId: assignmentId,
@@ -1760,10 +1913,13 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Use a type-specific name if nothing else is available
-    return entry.entryType === 'SISSEKANNE_H' ? 'Hindeline töö' : 
-           entry.entryType === 'SISSEKANNE_I' ? 'Iseseisev töö' : 
-           entry.entryType === 'SISSEKANNE_O' ? 'Õppetulemus' : 
-           'Päeviku sissekanne'
+    return entry.entryType === 'SISSEKANNE_H'
+      ? 'Hindeline töö'
+      : entry.entryType === 'SISSEKANNE_I'
+        ? 'Iseseisev töö'
+        : entry.entryType === 'SISSEKANNE_O'
+          ? 'Õppetulemus'
+          : 'Päeviku sissekanne'
   }
 
   /**
@@ -2449,7 +2605,6 @@ class JournalListSyncFeature extends BaseFeature {
           // Try to create a student entry with the journalStudentId
           // This handles cases where the API doesn't return all enrolled students but they exist in the database
           if (info.journalStudentId) {
-
             // Create a new student entry with the correct journalStudentId
             studentEntry = {
               journalStudent: info.journalStudentId,
