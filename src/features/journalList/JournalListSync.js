@@ -64,7 +64,18 @@ class JournalListSyncFeature extends BaseFeature {
           continue
         }
         // Build the PUT payload by copying all fields, updating nameEt, and always setting journalEntryCapacityTypes
-        const payload = { ...currentEntry, nameEt: nameDiff.kriit, journalEntryCapacityTypes: ["MAHT_i"] }
+        // Construct Kriit assignment URL
+        let kriitAssignmentUrl = ''
+        if (assignmentToUpdate && assignmentToUpdate.assignmentExternalId) {
+          // Try to get group name from subject if available
+          const groupCode = subject.groupName || ''
+          kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentToUpdate.assignmentExternalId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+        }
+        // Add homework field with Kriit link, always non-empty
+        const homeworkText = kriitAssignmentUrl
+          ? `Link ülessandele: ${kriitAssignmentUrl}`
+          : 'Link ülessandele: puudub';
+        const payload = { ...currentEntry, nameEt: nameDiff.kriit, journalEntryCapacityTypes: ["MAHT_i"], homework: homeworkText }
         Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
         try {
           await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
