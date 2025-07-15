@@ -31,14 +31,29 @@ class JournalListSyncFeature extends BaseFeature {
     for (const subjectDiff of assignmentNameDiffs) {
       const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
       if (!subject || !Array.isArray(subject.assignments)) continue
+      // For each nameDiff, match by both remote name and assignmentExternalId if possible
       for (const nameDiff of subjectDiff.nameDiffs) {
-        const assignment = subject.assignments.find(a => a.assignmentName && a.assignmentName.remote === nameDiff.remote)
-        if (!assignment) continue
+        // Find all assignments with matching remote name
+        const matchingAssignments = subject.assignments.filter(a => a.assignmentName && a.assignmentName.remote === nameDiff.remote)
+        // If there are multiple, try to match by assignmentExternalId if present in nameDiff
+        let assignmentToUpdate = null
+        if (nameDiff.assignmentExternalId) {
+          assignmentToUpdate = matchingAssignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
+        } else if (matchingAssignments.length === 1) {
+          assignmentToUpdate = matchingAssignments[0]
+        } else {
+          // If multiple and no id, skip to avoid wrong update
+          Logger.warning(`Multiple assignments found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}', but no assignmentExternalId to disambiguate. Skipping.`)
+          continue
+        }
+        if (!assignmentToUpdate) {
+          Logger.warning(`No matching assignment found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}' with assignmentExternalId='${nameDiff.assignmentExternalId || 'N/A'}'. Skipping.`)
+          continue
+        }
         const journalId = subject.subjectExternalId
-        const assignmentId = assignment.assignmentExternalId
+        const assignmentId = assignmentToUpdate.assignmentExternalId
         let currentEntry
         try {
-          // Always fetch the full entry with cache disabled and force refresh
           currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
         } catch (error) {
           Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
@@ -48,12 +63,12 @@ class JournalListSyncFeature extends BaseFeature {
           Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
           continue
         }
-        // Build the PUT payload by copying all fields and updating only the nameEt field
-        const payload = { ...currentEntry, nameEt: nameDiff.kriit }
+        // Build the PUT payload by copying all fields, updating nameEt, and always setting journalEntryCapacityTypes
+        const payload = { ...currentEntry, nameEt: nameDiff.kriit, journalEntryCapacityTypes: ["MAHT_i"] }
         Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
         try {
           await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
-          Logger.info(`✨ Updated assignment name in Tahvel: ${nameDiff.remote} → ${nameDiff.kriit}`)
+          Logger.info(`✨ Updated assignment name in Tahvel: ${nameDiff.remote} → ${nameDiff.kriit} and set journalEntryCapacityTypes to [\"MAHT_i\"]`)
         } catch (error) {
           Logger.error(`Failed to update assignment name for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
         }
