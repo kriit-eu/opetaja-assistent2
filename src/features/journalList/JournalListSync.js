@@ -23,6 +23,44 @@ import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
+   * Update assignment names in Tahvel to match Kriit
+   */
+  async syncAssignmentNameDifferences() {
+    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+    if (!assignmentNameDiffs || assignmentNameDiffs.length === 0) return
+    for (const subjectDiff of assignmentNameDiffs) {
+      const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
+      if (!subject || !Array.isArray(subject.assignments)) continue
+      for (const nameDiff of subjectDiff.nameDiffs) {
+        const assignment = subject.assignments.find(a => a.assignmentName && a.assignmentName.remote === nameDiff.remote)
+        if (!assignment) continue
+        const journalId = subject.subjectExternalId
+        const assignmentId = assignment.assignmentExternalId
+        let currentEntry
+        try {
+          // Always fetch the full entry with cache disabled and force refresh
+          currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
+        } catch (error) {
+          Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
+          continue
+        }
+        if (!currentEntry) {
+          Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
+          continue
+        }
+        // Build the PUT payload by copying all fields and updating only the nameEt field
+        const payload = { ...currentEntry, nameEt: nameDiff.kriit }
+        Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
+        try {
+          await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
+          Logger.info(`✨ Updated assignment name in Tahvel: ${nameDiff.remote} → ${nameDiff.kriit}`)
+        } catch (error) {
+          Logger.error(`Failed to update assignment name for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
+        }
+      }
+    }
+  }
+  /**
    * Extract assignment name differences from Kriit response
    */
   extractAssignmentNameDifferences() {
@@ -745,7 +783,11 @@ class JournalListSyncFeature extends BaseFeature {
     const totalDifferences = this.countTotalDifferences()
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
-      () => this.syncWithKriit(),
+      async () => {
+        await this.syncAssignmentNameDifferences()
+        await this.syncWithKriit()
+        await this.fetchJournalData()
+      },
       () => this.fetchJournalData(),
       container => {
         // Group differences by subject
@@ -1918,6 +1960,32 @@ class JournalListSyncFeature extends BaseFeature {
    * Sync data with Kriit
    */
   async syncWithKriit() {
+    // Debug: Log all journal students and their personal codes before syncing
+    if (Array.isArray(this.differences)) {
+      this.differences.forEach(subject => {
+        if (Array.isArray(subject.assignments)) {
+          subject.assignments.forEach(assignment => {
+            if (Array.isArray(assignment.results)) {
+              assignment.results.forEach(result => {
+                Logger.debug(
+                  `[SYNC] Assignment ${assignment.assignmentExternalId} - Student: ${result.studentName}, PersonalCode: ${result.studentPersonalCode}`
+                )
+              })
+            }
+          })
+        }
+      })
+    }
+    // Debug: Log mapping from journalStudentId to studentId and idToPersonalCode
+    Logger.debug('[SYNC] Mapping journalStudentIdToStudentId:', JSON.stringify(this.journalStudentIdToStudentId))
+    if (this.journalStudentIdToStudentId) {
+      Object.entries(this.journalStudentIdToStudentId).forEach(([journalStudentId, studentId]) => {
+        Logger.debug(`[SYNC] journalStudentId ${journalStudentId} -> studentId ${studentId}`)
+      })
+    }
+    if (this.globalTeacherCache) {
+      Logger.debug('[SYNC] Teacher cache:', JSON.stringify(this.globalTeacherCache))
+    }
     Logger.feature(this.name, 'Syncing with Kriit...')
 
     // Prevent multiple sync operations from running simultaneously
