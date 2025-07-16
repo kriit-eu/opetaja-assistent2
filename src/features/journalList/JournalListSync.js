@@ -221,6 +221,8 @@ class JournalListSyncFeature extends BaseFeature {
     // Log a specific message for this feature's activation
     Logger.feature(this.name, 'Journal List Sync feature initialized')
 
+    console.log('[DEBUG] onActivate: elements', elements)
+
     // First check if Kriit support is enabled
     if (!this.api.kriit.enabled) {
       Logger.debug('Kriit support is disabled - JournalListSync feature will not be activated')
@@ -234,6 +236,7 @@ class JournalListSyncFeature extends BaseFeature {
       // If we have journal links from the observer, store them
       if (elements && elements.length > 0) {
         this.journalLinks = elements
+        console.log('[DEBUG] onActivate: journalLinks set', this.journalLinks)
         this.fetchJournalData()
       } else {
         // This case should not happen anymore with the fixed observer
@@ -309,6 +312,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async fetchJournalData() {
     try {
+      console.log('[DEBUG] fetchJournalData called')
       this.isLoading = true
       this.updateUI()
 
@@ -431,10 +435,30 @@ class JournalListSyncFeature extends BaseFeature {
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
 
-          // Use journalEntriesWithGrades as the primary source since it contains all entry types including outcomes
-          // Fall back to journalEntries if journalEntriesWithGrades is empty
-          const primaryEntries = journalEntriesWithGrades && journalEntriesWithGrades.length > 0 ? journalEntriesWithGrades : journalEntries
-          const assignments = this.extractAssignmentsFromEntries(primaryEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
+          // Merge homeworkDuedate and other missing fields from journalEntries into journalEntriesWithGrades
+          let mergedEntries = []
+          if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0 && journalEntries && journalEntries.length > 0) {
+            // Create a map of /journalEntry entries by id
+            const entryById = {}
+            journalEntries.forEach(e => {
+              if (e && e.id) entryById[e.id] = e
+            })
+            // For each entry in journalEntriesWithGrades, copy homeworkDuedate if present in /journalEntry
+            mergedEntries = journalEntriesWithGrades.map(e => {
+              if (e && e.id && entryById[e.id]) {
+                // Only copy homeworkDuedate if not present or is undefined/null
+                if (!e.homeworkDuedate && entryById[e.id].homeworkDuedate) {
+                  return { ...e, homeworkDuedate: entryById[e.id].homeworkDuedate }
+                }
+              }
+              return e
+            })
+          } else if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0) {
+            mergedEntries = journalEntriesWithGrades
+          } else {
+            mergedEntries = journalEntries
+          }
+          const assignments = this.extractAssignmentsFromEntries(mergedEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
           let teacherName = ''
           let teacherPersonalCode = ''
@@ -1787,6 +1811,8 @@ class JournalListSyncFeature extends BaseFeature {
   extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents = [], studentDetailsMap = {}, journalEntriesWithGrades = []) {
     const assignments = []
 
+    console.log('[DEBUG] extractAssignmentsFromEntries called', { journalEntries })
+
     if (!journalEntries || !Array.isArray(journalEntries)) {
       return assignments
     }
@@ -1826,6 +1852,7 @@ class JournalListSyncFeature extends BaseFeature {
       })
     }
 
+    console.log('[DEBUG] Processing gradedEntries', gradedEntries)
     gradedEntries.forEach(entry => {
       // Log when we process an outcome entry
       if (entry.entryType === 'SISSEKANNE_O') {
@@ -1950,6 +1977,10 @@ class JournalListSyncFeature extends BaseFeature {
       const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
 
       if (assignmentId && assignmentName) {
+        Logger.info(
+          `✨ [DEBUG] Mapping assignment: id=${assignmentId}, name=${assignmentName}, homeworkDuedate=${entry.homeworkDuedate}, entryDate=${entry.entryDate}`
+        )
+        console.log('[DEBUG] Mapping assignment FULL ENTRY', entry)
         assignments.push({
           assignmentExternalId: assignmentId,
           assignmentName: assignmentName,
