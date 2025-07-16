@@ -1,0 +1,767 @@
+(index):22  GET https://loendaja.eenet.ee/matomo.js net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ (index):22
+(anonymous) @ (index):23
+cookieconsent-config.js:1  GET https://cdn.jsdelivr.net/gh/orestbida/cookieconsent@v3.0.0/dist/cookieconsent.umd.js net::ERR_BLOCKED_BY_CLIENT
+scripts-P7UIB2BB.js:205 Uncaught TypeError: Cannot read properties of undefined (reading 'Internal')
+    at scripts-P7UIB2BB.js:205:7202
+(anonymous) @ scripts-P7UIB2BB.js:205
+main-63KUMLOE.js:14 WARNING: Tried to load AngularJS more than once.
+content.js:1 [0s] ✨ Content script loaded - version 6
+content.js:1 [0s] ✨ Initializing Õpetaja Assistent 2...
+content.js:1 [0s] ✨ Loading features...
+content.js:1 [0s] ✨ Added visual indicator (DEV)
+content.js:1 [0s] ✨ Kriit support is enabled
+content.js:1 [0s] ✨ Feature "assignmentDueDateDiff" created
+content.js:1 [0s] ✨ Feature "journalListSync" created
+content.js:1 [0s] ✨ Feature "journalListSync" created
+content.js:1 [0s] ✨ Feature "lessonDiscrepancies" created
+content.js:1 [0s] ✨ Feature "LessonDiscrepanciesFeature" created
+content.js:1 [0s] ✨ Feature "lastLessonNotification" created
+content.js:1 [0s] ✨ Feature "LastLessonNotificationFeature" created
+content.js:1 [0s] ✨ Feature "highlightMissingGrades" created
+content.js:318 [HighlightMissingGradesFeature] constructor called
+content.js:1 [0s] ✨ Feature "HighlightMissingGradesFeature" created
+content.js:1 [0s] ✨ Feature "highlightFinalGrades" created
+content.js:1 [0s] ✨ Feature "HighlightFinalGradesFeature" created
+content.js:1 [0s] ✨ Loaded feature: journalListSync
+content.js:1 [0s] ✨ Loaded feature: LessonDiscrepanciesFeature
+content.js:1 [0s] ✨ Loaded feature: LastLessonNotificationFeature
+content.js:1 [0s] ✨ Loaded feature: highlightMissingGrades
+content.js:1 [0s] ✨ Loaded feature: highlightFinalGrades
+content.js:1 [0s] ✨ Loaded 5 feature(s)
+content.js:1 [0s] ✨ Loaded 5 features dynamically
+content.js:1 [0s] ✨ Navigation detected: https://test.tahvel.eenet.ee/#/journals?_menu
+content.js:1 [0s] ✨ [journalListSync] Activating feature
+content.js:1 [0s] ✨ [journalListSync] Base activation complete - initializing feature
+content.js:1 [0s] ✨ Feature journalListSync waiting for required elements: #main-content md-table-container td:nth-child(2) > a,#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a,#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"],a[href^="/#/journal/"]
+content.js:1 [0s] ✨ No elements found immediately, setting up MutationObserver
+content.js:1 [0s] ✨ Initialization complete
+scripts-P7UIB2BB.js:14 hide-lt-lghas been deprecated. Please use a `hide-gt-<xxx>` variant.
+(anonymous) @ scripts-P7UIB2BB.js:14
+(anonymous) @ scripts-P7UIB2BB.js:112
+wt @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:8
+R @ scripts-P7UIB2BB.js:6
+(anonymous) @ scripts-P7UIB2BB.js:8
+wt @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:6
+wt @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:6
+Ve @ scripts-P7UIB2BB.js:8
+Bc @ scripts-P7UIB2BB.js:9
+vs @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+Fi @ scripts-P7UIB2BB.js:9
+(anonymous) @ scripts-P7UIB2BB.js:9
+sn @ scripts-P7UIB2BB.js:9
+Ku @ scripts-P7UIB2BB.js:9
+(anonymous) @ scripts-P7UIB2BB.js:18
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+(anonymous) @ scripts-P7UIB2BB.js:6
+wt @ scripts-P7UIB2BB.js:8
+B @ scripts-P7UIB2BB.js:6
+Xt @ scripts-P7UIB2BB.js:6
+(anonymous) @ main-63KUMLOE.js:71
+invoke @ polyfills-SCHOHYNV.js:1
+run @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:2
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+J @ polyfills-SCHOHYNV.js:1
+Promise.then
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMicroTask @ polyfills-SCHOHYNV.js:1
+s @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+Promise.then
+(anonymous) @ polyfills-SCHOHYNV.js:2
+M @ polyfills-SCHOHYNV.js:2
+h.then @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:2
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+J @ polyfills-SCHOHYNV.js:1
+Promise.then
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMicroTask @ polyfills-SCHOHYNV.js:1
+s @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+Promise.then
+(anonymous) @ polyfills-SCHOHYNV.js:2
+M @ polyfills-SCHOHYNV.js:2
+h.then @ polyfills-SCHOHYNV.js:2
+(anonymous) @ main-63KUMLOE.js:71
+scripts-P7UIB2BB.js:14 hide-lt-mdhas been deprecated. Please use a `hide-gt-<xxx>` variant.
+(anonymous) @ scripts-P7UIB2BB.js:14
+(anonymous) @ scripts-P7UIB2BB.js:112
+wt @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:8
+R @ scripts-P7UIB2BB.js:6
+(anonymous) @ scripts-P7UIB2BB.js:8
+wt @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:6
+wt @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:6
+Ve @ scripts-P7UIB2BB.js:8
+Bc @ scripts-P7UIB2BB.js:9
+vs @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+sl @ scripts-P7UIB2BB.js:9
+Fi @ scripts-P7UIB2BB.js:9
+(anonymous) @ scripts-P7UIB2BB.js:9
+sn @ scripts-P7UIB2BB.js:9
+Ku @ scripts-P7UIB2BB.js:9
+(anonymous) @ scripts-P7UIB2BB.js:18
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+(anonymous) @ scripts-P7UIB2BB.js:6
+wt @ scripts-P7UIB2BB.js:8
+B @ scripts-P7UIB2BB.js:6
+Xt @ scripts-P7UIB2BB.js:6
+(anonymous) @ main-63KUMLOE.js:71
+invoke @ polyfills-SCHOHYNV.js:1
+run @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:2
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+J @ polyfills-SCHOHYNV.js:1
+Promise.then
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMicroTask @ polyfills-SCHOHYNV.js:1
+s @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+Promise.then
+(anonymous) @ polyfills-SCHOHYNV.js:2
+M @ polyfills-SCHOHYNV.js:2
+h.then @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:2
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+J @ polyfills-SCHOHYNV.js:1
+Promise.then
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMicroTask @ polyfills-SCHOHYNV.js:1
+s @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+Promise.then
+(anonymous) @ polyfills-SCHOHYNV.js:2
+M @ polyfills-SCHOHYNV.js:2
+h.then @ polyfills-SCHOHYNV.js:2
+(anonymous) @ main-63KUMLOE.js:71
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+[Violation] Added non-passive event listener to a scroll-blocking <some> event. Consider marking event handler as 'passive' to make the page more responsive. See <URL>
+content.js:1 [0s] ✨ Observer found 50 elements with selector: #main-content md-table-container td:nth-child(2) > a
+content.js:1 [0s] ✨ Feature journalListSync found required elements with selector: #main-content md-table-container td:nth-child(2) > a
+content.js:1 [0s] ✨ Found 50 journal links with selector: #main-content md-table-container td:nth-child(2) > a
+content.js:1 [0s] ✨ Link 1: href=/#/journal/336151/edit, text=Plastitööd
+content.js:1 [0s] ✨ Link 2: href=/#/journal/336150/edit, text=Mooduli lõputöö
+content.js:1 [0s] ✨ Link 3: href=/#/journal/336149/edit, text=Pindade ettevalmistamine värvimiseks
+content.js:1 [0s] ✨ [journalListSync] Journal List Sync feature initialized
+content.js:116 [DEBUG] onActivate: elements NodeList(50) [a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a]
+content.js:1 [0s] ✨ Using Kriit API token
+content.js:116 [DEBUG] onActivate: journalLinks set NodeList(50) [a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a]
+content.js:116 [DEBUG] fetchJournalData called
+content.js:1 [0s] ✨ Loading banner created and displayed
+content.js:1 [0s] ✨ Collecting journal data from Tahvel
+content.js:1 [0s] ✨ Using Tahvel API base URL: https://test.tahvel.eenet.ee/hois_back
+content.js:1 [0s] ✨ Using 50 journal links for data collection
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258804, name=Iseseisev töö, homeworkDuedate=2025-06-16T00:00:00Z, entryDate=2025-06-16T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-16T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(2)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258865, name=Iseseisev töö, homeworkDuedate=2025-07-17T00:00:00Z, entryDate=2025-06-15T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-15T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(7)}
+content.js:121 [DEBUG] Processing gradedEntries (2) [{…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258802, name=Iseseisev töö (ÕV1, ÕV3, ÕV4, ÕV5), homeworkDuedate=2025-06-28T00:00:00Z, entryDate=2025-06-16T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-16T00:00:00Z', nameEt: 'Iseseisev töö (ÕV1, ÕV3, ÕV4, ÕV5)', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258803, name=Iseseisev töö (ÕV2, ÕV3, ÕV4), homeworkDuedate=2025-06-23T00:00:00Z, entryDate=2025-06-16T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-16T00:00:00Z', nameEt: 'Iseseisev töö (ÕV2, ÕV3, ÕV4)', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(4)}
+content.js:121 [DEBUG] Processing gradedEntries (3) [{…}, {…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258863, name=Iseseisev töö test2 (ÕV7), homeworkDuedate=2025-07-26T00:00:00Z, entryDate=2025-07-03T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-07-03T00:00:00Z', nameEt: 'Iseseisev töö test2 (ÕV7)', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258864, name=Iseseisev töö, homeworkDuedate=2025-07-22T00:00:00Z, entryDate=2025-07-05T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-07-05T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258862, name=Iseseisev töö, homeworkDuedate=2025-07-13T00:00:00Z, entryDate=2025-07-10T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-07-10T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(2)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258798, name=Iseseisev töö, homeworkDuedate=2025-06-15T00:00:00Z, entryDate=2025-06-14T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-14T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258799, name=Iseseisev töö, homeworkDuedate=2025-06-17T00:00:00Z, entryDate=2025-06-16T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-16T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258800, name=Iseseisev töö, homeworkDuedate=2025-06-17T00:00:00Z, entryDate=2025-06-16T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-16T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(3)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258847, name=Iseseisev töö, homeworkDuedate=2025-07-08T00:00:00Z, entryDate=2025-07-01T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-07-01T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258801, name=Iseseisev töö, homeworkDuedate=2025-06-16T00:00:00Z, entryDate=2025-06-16T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-16T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258797, name=Iseseisev töö, homeworkDuedate=2025-06-15T00:00:00Z, entryDate=2025-06-14T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-06-14T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(2)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(6)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(7)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(12)}
+content.js:121 [DEBUG] Processing gradedEntries (2) [{…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3235269, name=Iseseisev töö, homeworkDuedate=undefined, entryDate=2024-10-31T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-31T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3235279, name=Iseseisev töö, homeworkDuedate=2024-11-22T00:00:00Z, entryDate=2024-10-31T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-31T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(5)}
+content.js:121 [DEBUG] Processing gradedEntries (2) [{…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3205387, name=Iseseisev töö, homeworkDuedate=2024-11-25T00:00:00Z, entryDate=2024-10-15T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-15T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3205438, name=Iseseisev töö, homeworkDuedate=2024-11-18T00:00:00Z, entryDate=2024-10-15T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-15T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(16)}
+content.js:121 [DEBUG] Processing gradedEntries [{…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3149055, name=Iseseisev töö, homeworkDuedate=2024-09-17T00:00:00Z, entryDate=2024-09-13T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-09-13T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(9)}
+content.js:121 [DEBUG] Processing gradedEntries (3) [{…}, {…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3216902, name=Iseseisev töö, homeworkDuedate=2024-10-22T00:00:00Z, entryDate=2024-10-08T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-08T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3224314, name=Iseseisev töö, homeworkDuedate=2024-10-29T00:00:00Z, entryDate=2024-10-25T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-25T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3230117, name=Iseseisev töö, homeworkDuedate=2024-11-05T00:00:00Z, entryDate=2024-10-29T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-29T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(6)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(12)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(1)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(2)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(10)}
+content.js:121 [DEBUG] Processing gradedEntries (4) [{…}, {…}, {…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258821, name=Iseseisev töö, homeworkDuedate=2024-09-25T00:00:00Z, entryDate=2024-08-27T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-08-27T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258822, name=Iseseisev töö, homeworkDuedate=2025-05-19T00:00:00Z, entryDate=2024-09-05T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-09-05T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258824, name=Iseseisev töö, homeworkDuedate=2025-08-05T00:00:00Z, entryDate=2025-07-01T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-07-01T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3258823, name=Iseseisev töö, homeworkDuedate=2025-07-31T00:00:00Z, entryDate=2025-07-07T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2025-07-07T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(0)}
+content.js:121 [DEBUG] Processing gradedEntries []
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(18)}
+content.js:121 [DEBUG] Processing gradedEntries (2) [{…}, {…}]
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3148714, name=Iseseisev töö, homeworkDuedate=2024-09-20T00:00:00Z, entryDate=2024-09-13T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-09-13T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [0s] ✨ ✨ [DEBUG] Mapping assignment: id=3236627, name=Iseseisev töö, homeworkDuedate=2024-11-06T00:00:00Z, entryDate=2024-11-01T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-11-01T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(21)}
+content.js:121 [DEBUG] Processing gradedEntries (2) [{…}, {…}]
+content.js:1 [1s] ✨ ✨ [DEBUG] Mapping assignment: id=3244864, name=Iseseisev töö, homeworkDuedate=undefined, entryDate=null
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: null, nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [1s] ✨ ✨ [DEBUG] Mapping assignment: id=3209650, name=Hindamine, homeworkDuedate=undefined, entryDate=2024-10-17T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-17T00:00:00Z', nameEt: 'Hindamine', nameEn: null, entryType: 'SISSEKANNE_H', journalStudent: null, …}
+content.js:121 [DEBUG] extractAssignmentsFromEntries called {journalEntries: Array(18)}
+content.js:121 [DEBUG] Processing gradedEntries (3) [{…}, {…}, {…}]
+content.js:1 [1s] ✨ ✨ [DEBUG] Mapping assignment: id=3160150, name=Iseseisev töö, homeworkDuedate=2024-09-27T00:00:00Z, entryDate=2024-09-20T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-09-20T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [1s] ✨ ✨ [DEBUG] Mapping assignment: id=3175974, name=Iseseisev töö, homeworkDuedate=2024-09-30T00:00:00Z, entryDate=2024-09-23T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-09-23T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [1s] ✨ ✨ [DEBUG] Mapping assignment: id=3193208, name=Iseseisev töö, homeworkDuedate=2024-10-14T00:00:00Z, entryDate=2024-10-09T00:00:00Z
+content.js:121 [DEBUG] Mapping assignment FULL ENTRY {entryDate: '2024-10-09T00:00:00Z', nameEt: 'Iseseisev töö', nameEn: null, entryType: 'SISSEKANNE_I', journalStudent: null, …}
+content.js:1 [1s] ✨ Collected data for 104 journals
+content.js:1 [1s] ✨ Sending request to Kriit API: [{"subjectName":"Plastitööd","subjectExternalId":336151,"groupName":"AM22","teacherPersonalCode":"37702166012","teacherName":"Andrus Küttä","assignments":[{"assignmentExternalId":3258802,"assignmentName":"Iseseisev töö (ÕV1, ÕV3, ÕV4, ÕV5)","assignmentInstructions":"","assignmentDueAt":"2025-06-28","assignmentEntryDate":"2025-06-16","results":[{"grade":"","studentPersonalCode":"94932250366","studentName":"Wesod Fwvxrxi","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250361","studentName":"Xnliav Isaa","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250365","studentName":"Cybthsäz Iucjk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250380","studentName":"Iqfzön Kgnjjärs","studentIsActive":true,"studentIsDeleted":false},{"grade":"4","studentPersonalCode":"94932250502","studentName":"Jfüunf Rgä","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250454","studentName":"Mmbcag Rzsö","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250398","studentName":"Kkdua Tcitymk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250446","studentName":"Fubõr Uäfl","studentIsActive":true,"studentIsDeleted":false}]},{"assignmentExternalId":3258803,"assignmentName":"Iseseisev töö (ÕV2, ÕV3, ÕV4)","assignmentInstructions":"","assignmentDueAt":"2025-06-23","assignmentEntryDate":"2025-06-16","results":[{"grade":"","studentPersonalCode":"94932250366","studentName":"Wesod Fwvxrxi","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250361","studentName":"Xnliav Isaa","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250365","studentName":"Cybthsäz Iucjk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250380","studentName":"Iqfzön Kgnjjärs","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250502","studentName":"Jfüunf Rgä","studentIsActive":true,"studentIsDeleted":false},{"grade":"1","studentPersonalCode":"94932250454","studentName":"Mmbcag Rzsö","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250398","studentName":"Kkdua Tcitymk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250446","studentName":"Fubõr Uäfl","studentIsActive":true,"studentIsDeleted":false}]}]},{"subjectName":"Mooduli lõputöö","subjectExternalId":336150,"groupName":"AM22","teacherPersonalCode":"37411266030","teacherName":"Janek Pettai","assignments":[{"assignmentExternalId":3258804,"assignmentName":"Iseseisev töö","assignmentInstructions":"","assignmentDueAt":"2025-06-16","assignmentEntryDate":"2025-06-16","results":[{"grade":"","studentPersonalCode":"94932250366","studentName":"Wesod Fwvxrxi","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250361","studentName":"Xnliav Isaa","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250365","studentName":"Cybthsäz Iucjk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250380","studentName":"Iqfzön Kgnjjärs","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250502","studentName":"Jfüunf Rgä","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250454","studentName":"Mmbcag Rzsö","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250398","studentName":"Kkdua Tcitymk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250446","studentName":"Fubõr Uäfl","studentIsActive":true,"studentIsDeleted":false}]}]},{"subjectName":"Pindade ettevalmistamine värvimiseks","subjectExternalId":336149,"groupName":"AM22","teacherPersonalCode":"37411266030","teacherName":"Janek Pettai","assignments":[{"assignmentExternalId":3258865,"assignmentName":"Iseseisev töö","assignmentInstructions":"","assignmentDueAt":"2025-07-17","assignmentEntryDate":"2025-06-15","results":[{"grade":"","studentPersonalCode":"94932250366","studentName":"Wesod Fwvxrxi","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250361","studentName":"Xnliav Isaa","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250365","studentName":"Cybthsäz Iucjk","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250380","studentName":"Iqfzön Kgnjjärs","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250502","studentName":"Jfüunf Rgä","studentIsActive":true,"studentIsDeleted":false},{"grade":"","studentPersonalCode":"94932250454","studentName":"Mmbcag Rzsö","studentIsActive":true,"studentIsDeleted"
+content.js:1 [1s] ✨ [kriit] Request credentials mode: not set
+content.js:1 [1s] ✨ [kriit] Using background script for localhost request: POST http://localhost:8000/api/subjects/getDifferences
+content.js:1 [1s] ✨ Raw response from Kriit: {"status":200,"data":[{"subjectExternalId":336151,"groupName":"AM22","assignments":[{"assignmentExternalId":3258802,"assignmentId":2,"assignmentDueAt":"2025-06-26","results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":null},{"studentPersonalCode":94932250454,"studentName":"Mmbcag Rzsö","grade":null},{"studentPersonalCode":94932250398,"studentName":"Kkdua Tcitymk","grade":null},{"studentPersonalCode":94932250446,"studentName":"Fubõr Uäfl","grade":null}]},{"assignmentExternalId":3258803,"assignmentId":3,"assignmentDueAt":"2025-06-16","assignmentName":{"kriit":"Iseseisev töö (ÕV2, ÕV3)","remote":"Iseseisev töö (ÕV2, ÕV3, ÕV4)"},"results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":null},{"studentPersonalCode":94932250502,"studentName":"Jfüunf Rgä","grade":"3"},{"studentPersonalCode":94932250398,"studentName":"Kkdua Tcitymk","grade":null},{"studentPersonalCode":94932250446,"studentName":"Fubõr Uäfl","grade":null}]}]},{"subjectExternalId":336150,"groupName":"AM22","assignments":[{"assignmentExternalId":3258804,"assignmentId":4,"assignmentDueAt":"2025-06-16","results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":null},{"studentPersonalCode":94932250502,"studentName":"Jfüunf Rgä","grade":null},{"studentPersonalCode":94932250454,"studentName":"Mmbcag Rzsö","grade":null},{"studentPersonalCode":94932250398,"studentName":"Kkdua Tcitymk","grade":null},{"studentPersonalCode":94932250446,"studentName":"Fubõr Uäfl","grade":null}]}]},{"subjectExternalId":336149,"groupName":"AM22","assignments":[{"assignmentExternalId":3258865,"assignmentId":34,"assignmentDueAt":"2025-06-15","results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":null},{"studentPersonalCode":94932250502,"studentName":"Jfüunf Rgä","grade":null},{"studentPersonalCode":94932250454,"studentName":"Mmbcag Rzsö","grade":null},{"studentPersonalCode":94932250398,"studentName":"Kkdua Tcitymk","grade":null},{"studentPersonalCode":94932250446,"studentName":"Fubõr Uäfl","grade":null}]}]},{"subjectExternalId":336158,"groupName":"AM22","assignments":[{"assignmentExternalId":3258863,"assignmentId":5,"assignmentDueAt":"2025-07-02","results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":null},{"studentPersonalCode":94932250502,"studentName":"Jfüunf Rgä","grade":null},{"studentPersonalCode":94932250454,"studentName":"Mmbcag Rzsö","grade":null},{"studentPersonalCode":94932250398,"studentName":"Kkdua Tcitymk","grade":null},{"studentPersonalCode":94932250446,"studentName":"Fubõr Uäfl","grade":null}]},{"assignmentExternalId":3258864,"assignmentId":6,"assignmentDueAt":"2025-07-05","results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":"4"},{"studentPersonalCode":94932250502,"studentName":"Jfüunf Rgä","grade":null},{"studentPersonalCode":94932250454,"studentName":"Mmbcag Rzsö","grade":null},{"studentPersonalCode":94932250398,"studentName":"Kkdua Tcitymk","grade":null},{"studentPersonalCode":94932250446,"studentName":"Fubõr Uäfl","grade":null}]},{"assignmentExternalId":3258862,"assignmentId":7,"assignmentDueAt":"2025-07-10","results":[{"studentPersonalCode":94932250366,"studentName":"Wesod Fwvxrxi","grade":null},{"studentPersonalCode":94932250361,"studentName":"Xnliav Isaa","grade":null},{"studentPersonalCode":94932250365,"studentName":"Cybthsäz Iucjk","grade":null},{"studentPersonalCode":94932250380,"studentName":"Iqfzön Kgnjjärs","grade":null},{"studentPersonalCode":94932250502,"studentName":"Jfüunf Rgä","grad
+content.js:1 [1s] ✨ Response has a data property with 52 items
+content.js:121 [GRADE DIFF] Subject: Plastitööd, Assignment: [object Object], Student: Jfüunf Rgä, Tahvel: (puudub), Kriit: 3
+content.js:121 [GRADE DIFF] Subject: Erialane inglise keel (värvimine), Assignment: Iseseisev töö, Student: Iqfzön Kgnjjärs, Tahvel: (puudub), Kriit: 4
+content.js:1 [1s] ✨ ✨ [extractAssignmentNameDifferences] Called
+content.js:1 [1s] ✨ ✨ [extractAssignmentNameDifferences] Total subjects with differences: 1
+content.js:1 [1s] ✨ Differences banner created and displayed
+content.js:1 [1s] ✨ Triggering outcome sync (outcome entries only)
+content.js:1 [1s] ✨ Collecting outcome entries (SISSEKANNE_O) for final grades sync
+content.js:1 [1s] ✨ [assignmentDueDateDiff] Assignment Due Date Diff feature initialized
+scripts-P7UIB2BB.js:6 [DueDateDiff] window.journalListSync is not defined
+renderDueDateDifferences @ content.js:116
+onActivate @ content.js:116
+(anonymous) @ content.js:133
+setTimeout
+QQ.showDifferencesBanner @ content.js:133
+updateUI @ content.js:116
+proceedWithKriitApiCall @ content.js:121
+await in proceedWithKriitApiCall
+fetchJournalData @ content.js:116
+await in fetchJournalData
+onActivate @ content.js:116
+(anonymous) @ content.js:1
+(anonymous) @ content.js:1
+childList
+after @ scripts-P7UIB2BB.js:6
+lr.<computed> @ scripts-P7UIB2BB.js:6
+le @ scripts-P7UIB2BB.js:8
+enter @ scripts-P7UIB2BB.js:8
+(anonymous) @ scripts-P7UIB2BB.js:18
+(anonymous) @ scripts-P7UIB2BB.js:9
+(anonymous) @ scripts-P7UIB2BB.js:9
+sn @ scripts-P7UIB2BB.js:9
+Ku @ scripts-P7UIB2BB.js:9
+(anonymous) @ scripts-P7UIB2BB.js:18
+kr @ scripts-P7UIB2BB.js:17
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+Nn @ scripts-P7UIB2BB.js:10
+rt @ scripts-P7UIB2BB.js:10
+Lt.onload @ scripts-P7UIB2BB.js:10
+Ye @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+I @ polyfills-SCHOHYNV.js:1
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+XMLHttpRequest.send
+k @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMacroTask @ polyfills-SCHOHYNV.js:1
+Ge @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+t.<computed> @ polyfills-SCHOHYNV.js:1
+(anonymous) @ scripts-P7UIB2BB.js:10
+Lt @ scripts-P7UIB2BB.js:10
+un @ scripts-P7UIB2BB.js:10
+be @ scripts-P7UIB2BB.js:17
+(anonymous) @ scripts-P7UIB2BB.js:17
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+Nn @ scripts-P7UIB2BB.js:10
+rt @ scripts-P7UIB2BB.js:10
+Lt.onload @ scripts-P7UIB2BB.js:10
+Ye @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+I @ polyfills-SCHOHYNV.js:1
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+XMLHttpRequest.send
+k @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMacroTask @ polyfills-SCHOHYNV.js:1
+Ge @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+t.<computed> @ polyfills-SCHOHYNV.js:1
+(anonymous) @ scripts-P7UIB2BB.js:10
+Lt @ scripts-P7UIB2BB.js:10
+un @ scripts-P7UIB2BB.js:10
+be @ scripts-P7UIB2BB.js:17
+(anonymous) @ scripts-P7UIB2BB.js:17
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+Nn @ scripts-P7UIB2BB.js:10
+rt @ scripts-P7UIB2BB.js:10
+Lt.onload @ scripts-P7UIB2BB.js:10
+Ye @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+I @ polyfills-SCHOHYNV.js:1
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+XMLHttpRequest.send
+k @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMacroTask @ polyfills-SCHOHYNV.js:1
+Ge @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+t.<computed> @ polyfills-SCHOHYNV.js:1
+(anonymous) @ scripts-P7UIB2BB.js:10
+Lt @ scripts-P7UIB2BB.js:10
+un @ scripts-P7UIB2BB.js:10
+be @ scripts-P7UIB2BB.js:17
+(anonymous) @ scripts-P7UIB2BB.js:17
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+Nn @ scripts-P7UIB2BB.js:10
+rt @ scripts-P7UIB2BB.js:10
+Lt.onload @ scripts-P7UIB2BB.js:10
+Ye @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+invokeTask @ polyfills-SCHOHYNV.js:1
+I @ polyfills-SCHOHYNV.js:1
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+XMLHttpRequest.send
+k @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMacroTask @ polyfills-SCHOHYNV.js:1
+Ge @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+t.<computed> @ polyfills-SCHOHYNV.js:1
+(anonymous) @ scripts-P7UIB2BB.js:10
+Lt @ scripts-P7UIB2BB.js:10
+un @ scripts-P7UIB2BB.js:10
+be @ scripts-P7UIB2BB.js:17
+(anonymous) @ scripts-P7UIB2BB.js:17
+$digest @ scripts-P7UIB2BB.js:17
+$apply @ scripts-P7UIB2BB.js:18
+(anonymous) @ scripts-P7UIB2BB.js:6
+wt @ scripts-P7UIB2BB.js:8
+B @ scripts-P7UIB2BB.js:6
+Xt @ scripts-P7UIB2BB.js:6
+(anonymous) @ main-63KUMLOE.js:71
+invoke @ polyfills-SCHOHYNV.js:1
+run @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:2
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+J @ polyfills-SCHOHYNV.js:1
+Promise.then
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMicroTask @ polyfills-SCHOHYNV.js:1
+s @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+Promise.then
+(anonymous) @ polyfills-SCHOHYNV.js:2
+M @ polyfills-SCHOHYNV.js:2
+h.then @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:2
+invokeTask @ polyfills-SCHOHYNV.js:1
+runTask @ polyfills-SCHOHYNV.js:1
+J @ polyfills-SCHOHYNV.js:1
+Promise.then
+x @ polyfills-SCHOHYNV.js:1
+U @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleTask @ polyfills-SCHOHYNV.js:1
+scheduleMicroTask @ polyfills-SCHOHYNV.js:1
+s @ polyfills-SCHOHYNV.js:2
+Y @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+(anonymous) @ polyfills-SCHOHYNV.js:1
+Promise.then
+(anonymous) @ polyfills-SCHOHYNV.js:2
+M @ polyfills-SCHOHYNV.js:2
+h.then @ polyfills-SCHOHYNV.js:2
+(anonymous) @ main-63KUMLOE.js:71
+content.js:116 Outcomes data being sent to outcomes API: (6) [{…}, {…}, {…}, {…}, {…}, {…}]
+content.js:1 [1s] ✨ Sending outcomes to API: [{"subjectId":336151,"curriculumModuleOutcomes":112063,"outcomeName":"1) töötleb sõidukite ehituses kasutatavaid plaste arvestades plastide omadusi, markeeringuid ja remonditehnoloogiaid","learningOutcomeOrderNr":0},{"subjectId":336151,"curriculumModuleOutcomes":112064,"outcomeName":"2) järgib plastide töötlemisel ning käitlemisel nende töödega seotud keskkonna- ja ohutusnõudeid","learningOutcomeOrderNr":1},{"subjectId":336151,"curriculumModuleOutcomes":112065,"outcomeName":"3) hindab plastdetaili remonditavust, remondib plastdetailid kasutades sobivat tehnoloogiat ja järgides sõidukitootja nõudeid","learningOutcomeOrderNr":2},{"subjectId":336151,"curriculumModuleOutcomes":112066,"outcomeName":"4) kasutab tööks vajalikke infotehnoloogilisi vahendeid, erinevaid andmebaase, tehnilist dokumentatsiooni ning erialast sõnavara eesti ja võõrkeeles","learningOutcomeOrderNr":3},{"subjectId":336151,"curriculumModuleOutcomes":112067,"outcomeName":"5) töötab järgides töökultuuri, energia- ja keskkonnasäästliku, ohutu ning efektiivse töö põhimõtteid, tulles toime tava- ja muutuvates olukordades","learningOutcomeOrderNr":4},{"subjectId":336158,"curriculumModuleOutcomes":112093,"outcomeName":"7) kasutab tööks vajalikke infotehnoloogilisi vahendeid, erinevaid andmebaase, tehnilist dokumentatsiooni ning erialast sõnavara eesti ja võõrkeeles","learningOutcomeOrderNr":6}]
+content.js:1 [1s] ✨ [kriit] Request credentials mode: not set
+content.js:1 [1s] ✨ [kriit] Using background script for localhost request: POST http://localhost:8000/api/outcomes/sync
+content.js:1 [1s] ✨ outcomes API response: {"success":true,"inserted":0}

@@ -327,6 +327,9 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Collect data from Tahvel
       const journalData = await this.collectJournalData()
+      // Store Tahvel assignments for due date diff feature
+      if (!window.journalListSync) window.journalListSync = {}
+      window.journalListSync.tahvelAssignments = JSON.parse(JSON.stringify(journalData))
 
       // Validate data before sending
       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
@@ -1107,6 +1110,15 @@ class JournalListSyncFeature extends BaseFeature {
       try {
         // Make the actual API call
         const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
+        // Store Kriit assignments for due date diff feature
+        if (!window.journalListSync) window.journalListSync = {}
+        if (Array.isArray(response)) {
+          window.journalListSync.kriitAssignments = JSON.parse(JSON.stringify(response))
+        } else if (response && Array.isArray(response.data)) {
+          window.journalListSync.kriitAssignments = JSON.parse(JSON.stringify(response.data))
+        } else {
+          window.journalListSync.kriitAssignments = []
+        }
 
         // Log the full response for debugging
         Logger.debug('Raw response from Kriit:', JSON.stringify(response))
@@ -3694,8 +3706,21 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
 
 // Expose the fetchCachedData function for testing purposes
 getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
-// Export a singleton instance
-// Add a static property to indicate this feature requires Kriit
+
+// Import and activate AssignmentDueDateDiffFeature
+import { assignmentDueDateDiff } from './AssignmentDueDateDiffFeature'
+
 JournalListSyncFeature.requiresKriit = true
+
+// Patch showDifferencesBanner to activate due date diff feature after banner is rendered
+const origShowDifferencesBanner = JournalListSyncFeature.prototype.showDifferencesBanner
+JournalListSyncFeature.prototype.showDifferencesBanner = function (...args) {
+  const result = origShowDifferencesBanner.apply(this, args)
+  // Activate due date diff feature after banner is rendered
+  setTimeout(() => {
+    assignmentDueDateDiff.onActivate()
+  }, 0)
+  return result
+}
 
 export const journalListSync = new JournalListSyncFeature()
