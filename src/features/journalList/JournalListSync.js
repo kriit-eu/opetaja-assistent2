@@ -43,11 +43,15 @@ class JournalListSyncFeature extends BaseFeature {
           assignmentToUpdate = matchingAssignments[0]
         } else {
           // If multiple and no id, skip to avoid wrong update
-          Logger.warning(`Multiple assignments found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}', but no assignmentExternalId to disambiguate. Skipping.`)
+          Logger.warning(
+            `Multiple assignments found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}', but no assignmentExternalId to disambiguate. Skipping.`
+          )
           continue
         }
         if (!assignmentToUpdate) {
-          Logger.warning(`No matching assignment found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}' with assignmentExternalId='${nameDiff.assignmentExternalId || 'N/A'}'. Skipping.`)
+          Logger.warning(
+            `No matching assignment found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}' with assignmentExternalId='${nameDiff.assignmentExternalId || 'N/A'}'. Skipping.`
+          )
           continue
         }
         const journalId = subject.subjectExternalId
@@ -72,14 +76,12 @@ class JournalListSyncFeature extends BaseFeature {
           kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentToUpdate.assignmentExternalId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
         }
         // Add homework field with Kriit link, always non-empty
-        const homeworkText = kriitAssignmentUrl
-          ? `Link ülessandele: ${kriitAssignmentUrl}`
-          : 'Link ülessandele: puudub';
-        const payload = { ...currentEntry, nameEt: nameDiff.kriit, journalEntryCapacityTypes: ["MAHT_i"], homework: homeworkText }
+        const homeworkText = kriitAssignmentUrl ? `Link ülessandele: ${kriitAssignmentUrl}` : 'Link ülessandele: puudub'
+        const payload = { ...currentEntry, nameEt: nameDiff.kriit, journalEntryCapacityTypes: ['MAHT_i'], homework: homeworkText }
         Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
         try {
           await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
-          Logger.info(`✨ Updated assignment name in Tahvel: ${nameDiff.remote} → ${nameDiff.kriit} and set journalEntryCapacityTypes to [\"MAHT_i\"]`)
+          Logger.info(`✨ Updated assignment name in Tahvel: ${nameDiff.remote} → ${nameDiff.kriit} and set journalEntryCapacityTypes to ["MAHT_i"]`)
         } catch (error) {
           Logger.error(`Failed to update assignment name for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
         }
@@ -613,7 +615,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async () => {
+        const fetchStudentDetails = async() => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -640,7 +642,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async () => {
+        const fetchPromise = (async() => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -807,9 +809,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
-    // Log the grade differences to the console for debugging
-    console.log('Grade differences:', this.differences)
-    Logger.info('✨ [showDifferencesBanner] Grade differences:', JSON.stringify(this.differences, null, 2))
 
     // Print each detected grade difference with details
     if (Array.isArray(this.differences)) {
@@ -834,7 +833,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
-      async () => {
+      async() => {
         await this.syncAssignmentNameDifferences()
         await this.syncWithKriit()
         await this.fetchJournalData()
@@ -904,16 +903,12 @@ class JournalListSyncFeature extends BaseFeature {
           if (assignmentsWithDiffs.length === 0) return
           // If this subject was already rendered above, reuse the block, else create a new one
           let subjectBlock = Array.from(container.children).find(
-            el => el.classList.contains('ta-sync-diff-subject') &&
+            el =>
+              el.classList.contains('ta-sync-diff-subject') &&
               el.querySelector('.ta-sync-diff-subject-title')?.textContent === subjectGradeDiff.subjectName
           )
           if (!subjectBlock) {
-            subjectBlock = domService.createAndInsertElement(
-              'div',
-              { classList: ['ta-sync-diff-subject'], style: 'margin-bottom: 1.5em;' },
-              '',
-              container
-            )
+            subjectBlock = domService.createAndInsertElement('div', { classList: ['ta-sync-diff-subject'], style: 'margin-bottom: 1.5em;' }, '', container)
             domService.createAndInsertElement(
               'div',
               { classList: ['ta-sync-diff-subject-title'], style: 'font-weight: 600; margin-bottom: 0.5em; font-size: 1.1em;' },
@@ -3440,7 +3435,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
   // Create the fetch promise
   const fetchPromise = (async() => {
     try {
-
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
       if (teacherSearchResult?.content && Array.isArray(teacherSearchResult.content) && teacherSearchResult.content.length > 0) {
