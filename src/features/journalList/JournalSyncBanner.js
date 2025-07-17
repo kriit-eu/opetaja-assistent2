@@ -11,9 +11,17 @@ class DifferenceRenderer {
       const subjectContainer = this.createSubjectContainer(container, subjectName)
       groupedDiffs[subjectName].forEach(diff => {
         const row = this.createRow(subjectContainer)
-        this.createBadge(row, diff.type, diff.color)
-        this.createBadge(row, diff.assignmentName, '#ffc107') // yellow
-        this.createDifferenceText(row, diff.studentName, diff.oldValue, diff.newValue)
+        const badges = domService.createAndInsertElement('div', { classList: ['badges'] }, '', row)
+        this.createBadge(badges, diff.typeName, `badge-${diff.type}`)
+        this.createBadge(badges, diff.assignmentName, 'badge-assignment')
+
+        const values = domService.createAndInsertElement('div', { classList: ['values'] }, '', row)
+        if (diff.studentName) {
+          domService.createAndInsertElement('span', { classList: ['student-name'] }, `${diff.studentName}:`, values)
+        }
+        const valueBadge = domService.createAndInsertElement('span', { classList: ['value-badge'] }, '', values)
+        domService.createAndInsertElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
+        domService.createAndInsertElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
       })
     }
   }
@@ -42,8 +50,8 @@ class DifferenceRenderer {
     ;(assignmentNameDiffs || []).forEach(subject => {
         ;(subject.nameDiffs || []).forEach(nameDiff => {
             addDiff(subject.subjectName, {
-                type: 'Nimi',
-                color: '#6c757d', // gray
+                type: 'name',
+                typeName: 'Nimetus',
                 assignmentName: nameDiff.remote,
                 studentName: '',
                 oldValue: nameDiff.remote,
@@ -62,8 +70,8 @@ class DifferenceRenderer {
 
           if (tahvelGrade !== kriitGrade) {
             addDiff(subject.subjectName, {
-              type: 'Hinne',
-              color: '#007bff', // blue
+              type: 'grade',
+              typeName: 'Hinne',
               assignmentName: assignmentName,
               studentName: result.studentName,
               oldValue: tahvelGrade || 'puudub',
@@ -78,8 +86,8 @@ class DifferenceRenderer {
     ;(dueDateDiffs || []).forEach(diff => {
       const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
       addDiff(diff.subjectName, {
-        type: 'Tähtaeg',
-        color: '#e83e8c', // magenta
+        type: 'duedate',
+        typeName: 'Tähtaeg',
         assignmentName: assignmentName,
         studentName: '',
         oldValue: diff.dueDateTahvel,
@@ -91,47 +99,30 @@ class DifferenceRenderer {
   }
 
   createSubjectContainer(container, subjectName) {
-    const subjectContainer = domService.createAndInsertElement('div', { style: 'margin-bottom: 1.5em;' }, '', container)
-    domService.createAndInsertElement('h3', { style: 'font-weight: 600; margin-bottom: 0.5em; font-size: 1.1em;' }, subjectName, subjectContainer)
+    const subjectContainer = domService.createAndInsertElement('div', {}, '', container)
+    domService.createAndInsertElement('h3', {}, subjectName, subjectContainer)
     return subjectContainer
   }
 
   createRow(container) {
     return domService.createAndInsertElement(
       'div',
-      { style: 'display: flex; align-items: center; margin-bottom: 0.6em; font-size: 0.95em;' },
+      { classList: ['change-item'] },
       '',
       container
     )
   }
 
-  createBadge(row, text, color) {
-    const badgeText = text && text.length > 25 ? text.substring(0, 22) + '...' : text
+  createBadge(row, text, className) {
     const badge = domService.createAndInsertElement(
       'span',
       {
-        style: `background-color: ${color}; color: white; padding: 4px 8px; border-radius: 12px; margin-right: 8px; white-space: nowrap;`,
+        classList: ['badge', className],
       },
-      badgeText,
+      text,
       row
     )
     return badge
-  }
-
-  createDifferenceText(row, studentName, oldValue, newValue) {
-    const textContainer = domService.createAndInsertElement('span', { style: 'display: flex; align-items: center;' }, '', row)
-
-    if (studentName) {
-      domService.createAndInsertElement('span', { style: 'margin-right: 8px;' }, studentName, textContainer)
-    }
-    domService.createAndInsertElement(
-      'span',
-      { style: 'color: #6c757d; margin-right: 8px;' }, // gray
-      oldValue,
-      textContainer
-    )
-    domService.createAndInsertElement('span', { style: 'margin-right: 8px;' }, '→', textContainer)
-    domService.createAndInsertElement('span', { style: 'font-weight: 600;' }, newValue, textContainer)
   }
 }
 
@@ -192,7 +183,7 @@ export class JournalSyncBannerService {
     const banner = domService.createAndInsertElement(
       'div',
       {
-        classList: ['ta-sync-banner', 'ta-sync-info']
+        classList: ['container']
       },
       '',
       container,
@@ -201,10 +192,8 @@ export class JournalSyncBannerService {
 
     // Add title
     domService.createAndInsertElement(
-      'h3',
-      {
-        classList: ['ta-sync-title']
-      },
+      'h1',
+      {},
       'Kriit API võti puudub',
       banner
     )
@@ -212,18 +201,17 @@ export class JournalSyncBannerService {
     // Add message
     domService.createAndInsertElement(
       'p',
-      {
-        classList: ['ta-sync-message']
-      },
+      {},
       'Kriit API võti on vajalik, et sünkroniseerida hindeid Tahvli ja Kriidi vahel. Palun sisestage API võti laienduse seadetes.',
       banner
     )
 
     // Add button to open extension popup
+    const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
     domService.createAndInsertElement(
       'button',
       {
-        classList: ['ta-sync-button'],
+        classList: ['btn-primary'],
         onclick:
           onOpenSettings ||
           (() => {
@@ -231,7 +219,7 @@ export class JournalSyncBannerService {
           })
       },
       'Ava seaded',
-      banner
+      actions
     )
 
     // Update the banner service's current banner reference
@@ -253,7 +241,7 @@ export class JournalSyncBannerService {
     const banner = domService.createAndInsertElement(
       'div',
       {
-        classList: ['ta-sync-banner', 'ta-sync-success']
+        classList: ['container']
       },
       '',
       container,
@@ -272,11 +260,8 @@ export class JournalSyncBannerService {
 
     // Add title
     domService.createAndInsertElement(
-      'h3',
-      {
-        classList: ['ta-sync-title'],
-        style: 'margin: 0 0 10px 0; font-weight: bold;'
-      },
+      'h1',
+      {},
       'Kõik hinded on sünkroonis!',
       banner
     )
@@ -284,25 +269,22 @@ export class JournalSyncBannerService {
     // Add message
     domService.createAndInsertElement(
       'p',
-      {
-        classList: ['ta-sync-message'],
-        style: 'margin: 0 0 15px 0;'
-      },
+      {},
       'Tahvli ja Kriidi vahel pole erinevusi. Kõik hinded on juba õigesti sünkroniseeritud.',
       banner
     )
 
+    const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
     // Add refresh button
     if (onRefresh) {
       domService.createAndInsertElement(
         'button',
         {
-          classList: ['ta-sync-button'],
-          onclick: onRefresh,
-          style: 'margin-right: 10px; background-color: #28a745; border-color: #28a745; color: white;'
+          classList: ['btn-secondary'],
+          onclick: onRefresh
         },
         'Värskenda andmeid',
-        banner
+        actions
       )
     }
 
@@ -311,12 +293,11 @@ export class JournalSyncBannerService {
       domService.createAndInsertElement(
         'button',
         {
-          classList: ['ta-sync-button'],
-          onclick: onClose,
-          style: 'background-color: transparent; border-color: #28a745; color: #28a745;'
+          classList: ['btn-secondary'],
+          onclick: onClose
         },
         'Sulge',
-        banner
+        actions
       )
     }
 
@@ -341,7 +322,7 @@ export class JournalSyncBannerService {
     const banner = domService.createAndInsertElement(
       'div',
       {
-        classList: ['ta-sync-banner']
+        classList: ['container']
       },
       '',
       container,
@@ -350,54 +331,46 @@ export class JournalSyncBannerService {
 
     // Add title
     domService.createAndInsertElement(
-      'h2',
-      {
-        classList: ['ta-sync-title']
-      },
-      'Sünkroniseerimata hinded',
+      'h1',
+      {},
+      'Sünkroniseerimata muudatused',
       banner
     )
 
-    // Add horizontal rule
-    domService.createAndInsertElement(
-      'hr',
-      {
-        classList: ['ta-sync-divider']
-      },
-      '',
-      banner
-    )
+    const changesContainer = domService.createAndInsertElement('div', { id: 'changes' }, '', banner)
 
     // Add differences content if render function provided
     if (renderDifferences) {
-      renderDifferences(banner)
+      renderDifferences(changesContainer)
     }
+
+    const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
 
     // Add sync button only if there are differences to sync
     if (totalDifferences > 0 && onSync) {
       domService.createAndInsertElement(
         'button',
         {
-          classList: ['ta-sync-button'],
-          onclick: onSync,
-          style: 'margin-right: 10px;'
+          classList: ['btn-primary'],
+          onclick: onSync
         },
-        `Sünkroniseeri ${totalDifferences} hinnet Kriidist Tahvlisse`,
-        banner
-      )
-    } else if (onRefresh) {
-      // If no differences to sync, show a refresh button instead
-      domService.createAndInsertElement(
-        'button',
-        {
-          classList: ['ta-sync-button'],
-          onclick: onRefresh,
-          style: 'margin-right: 10px;'
-        },
-        'Värskenda andmeid',
-        banner
+        'Sünkroniseeri kõik',
+        actions
       )
     }
+
+    if (onRefresh) {
+        domService.createAndInsertElement(
+            'button',
+            {
+                classList: ['btn-secondary'],
+                onclick: onRefresh
+            },
+            'Tühista',
+            actions
+        )
+    }
+
 
     // Update the banner service's current banner reference
     bannerService.currentBanner = banner
@@ -422,7 +395,7 @@ export class JournalSyncBannerService {
     const banner = domService.createAndInsertElement(
       'div',
       {
-        classList: ['ta-sync-banner', 'ta-sync-error']
+        classList: ['container', 'ta-sync-error']
       },
       '',
       container,
@@ -459,10 +432,8 @@ export class JournalSyncBannerService {
     }
 
     domService.createAndInsertElement(
-      'h3',
-      {
-        classList: ['ta-sync-error-title']
-      },
+      'h1',
+      {},
       errorTitle,
       banner
     )
@@ -470,9 +441,7 @@ export class JournalSyncBannerService {
     // Add error message
     domService.createAndInsertElement(
       'p',
-      {
-        classList: ['ta-banner-error-message']
-      },
+      {},
       error,
       banner
     )
@@ -491,23 +460,20 @@ export class JournalSyncBannerService {
    * @private
    */
   _addSyncErrorActions(banner, error, options) {
+    const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
     if (error && error.includes('403')) {
       if (error.includes('Permission denied') || error.includes('rights to modify')) {
         // Permission error for journal modification
         domService.createAndInsertElement(
           'p',
-          {
-            classList: ['ta-sync-error-help']
-          },
+          {},
           'Teil puuduvad õigused selle päeviku muutmiseks. Sünkroniseerimine Tahvlisse on võimalik ainult päeviku õpetajal.',
           banner
         )
 
         domService.createAndInsertElement(
           'p',
-          {
-            classList: ['ta-sync-error-help']
-          },
+          {},
           'Tahvel lubab päeviku hindeid muuta ainult päeviku õpetajal. Kui te pole selle päeviku õpetaja, siis ei saa te hindeid sünkroniseerida.',
           banner
         )
@@ -517,21 +483,18 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
-              classList: ['ta-sync-button', 'ta-sync-error-button'],
-              onclick: options.onRetry,
-              style: 'margin-right: 10px;'
+              classList: ['btn-secondary'],
+              onclick: options.onRetry
             },
             'Värskenda andmeid',
-            banner
+            actions
           )
         }
       } else {
         // Authentication error
         domService.createAndInsertElement(
           'p',
-          {
-            classList: ['ta-sync-error-help']
-          },
+          {},
           'See on autentimise viga. Palun kontrollige oma Kriit API võtit.',
           banner
         )
@@ -541,24 +504,23 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
-              classList: ['ta-sync-button', 'ta-sync-error-button'],
-              onclick: options.onSettings,
-              style: 'margin-right: 10px;'
+              classList: ['btn-primary'],
+              onclick: options.onSettings
             },
             'Lähtesta Kriit API võti',
-            banner
+            actions
           )
 
           domService.createAndInsertElement(
             'button',
             {
-              classList: ['ta-sync-button'],
+              classList: ['btn-secondary'],
               onclick: () => {
                 alert('Klõpsake laienduse ikoonil brauseri tööriistaribal ja sisestage Kriit API võti.')
               }
             },
             'Ava seaded',
-            banner
+            actions
           )
         }
       }
@@ -566,9 +528,7 @@ export class JournalSyncBannerService {
       // Journal link detection error
       domService.createAndInsertElement(
         'p',
-        {
-          classList: ['ta-sync-error-help']
-        },
+        {},
         'See funktsioon vajab päeviku linke lehel. Palun veenduge, et olete päevikute nimekirja lehel.',
         banner
       )
@@ -578,12 +538,11 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button', 'ta-sync-error-button'],
-            onclick: options.onRefresh,
-            style: 'margin-right: 10px;'
+            classList: ['btn-secondary'],
+            onclick: options.onRefresh
           },
           'Värskenda lehte',
-          banner
+          actions
         )
       }
     } else if (error && error.includes('Kõik hinded on juba sünkroonis')) {
@@ -596,12 +555,11 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button'],
-            onclick: options.onRetry,
-            style: 'margin-right: 10px;'
+            classList: ['btn-secondary'],
+            onclick: options.onRetry
           },
           'Värskenda andmeid',
-          banner
+          actions
         )
       }
 
@@ -610,11 +568,11 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button'],
+            classList: ['btn-secondary'],
             onclick: options.onClearCache
           },
           'Puhasta vahemälu',
-          banner
+          actions
         )
       }
     } else if (error && (error.includes('sync') || error.includes('sünkroniseerimine'))) {
@@ -632,9 +590,7 @@ export class JournalSyncBannerService {
 
       domService.createAndInsertElement(
         'p',
-        {
-          classList: ['ta-sync-error-help']
-        },
+        {},
         helpText,
         banner
       )
@@ -644,21 +600,18 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button', 'ta-sync-error-button'],
-            onclick: options.onRetry,
-            style: 'margin-right: 10px;'
+            classList: ['btn-secondary'],
+            onclick: options.onRetry
           },
           'Värskenda andmeid',
-          banner
+          actions
         )
       }
     } else {
       // Generic error
       domService.createAndInsertElement(
         'p',
-        {
-          classList: ['ta-sync-error-help']
-        },
+        {},
         'Proovige lehte värskendada või puhastada vahemälu.',
         banner
       )
@@ -668,12 +621,11 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button', 'ta-sync-error-button'],
-            onclick: options.onRetry,
-            style: 'margin-right: 10px;'
+            classList: ['btn-secondary'],
+            onclick: options.onRetry
           },
           'Proovi uuesti',
-          banner
+          actions
         )
       }
 
@@ -682,12 +634,11 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button'],
-            onclick: () => window.location.reload(),
-            style: 'margin-right: 10px;'
+            classList: ['btn-secondary'],
+            onclick: () => window.location.reload()
           },
           'Värskenda lehte',
-          banner
+          actions
         )
       }
 
@@ -696,11 +647,11 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
-            classList: ['ta-sync-button'],
+            classList: ['btn-secondary'],
             onclick: options.onClearCache
           },
           'Puhasta vahemälu',
-          banner
+          actions
         )
       }
     }
@@ -716,7 +667,7 @@ export class JournalSyncBannerService {
     return domService.createAndInsertElement(
       'div',
       {
-        classList: ['ta-sync-differences-container']
+        classList: ['container']
       },
       '',
       parent
@@ -732,18 +683,14 @@ export class JournalSyncBannerService {
   createCategorySection(parent, categoryName) {
     const categorySection = domService.createAndInsertElement(
       'div',
-      {
-        classList: ['ta-sync-category']
-      },
+      {},
       '',
       parent
     )
 
     domService.createAndInsertElement(
       'h3',
-      {
-        classList: ['ta-sync-subject-title']
-      },
+      {},
       categoryName,
       categorySection
     )
@@ -760,7 +707,7 @@ export class JournalSyncBannerService {
     domService.createAndInsertElement(
       'div',
       {
-        classList: ['ta-sync-no-differences']
+        classList: ['change-item']
       },
       message,
       parent
@@ -780,7 +727,7 @@ export class JournalSyncBannerService {
     const comparisonDisplay = domService.createAndInsertElement(
       'span',
       {
-        classList: ['ta-sync-grade-difference']
+        classList: ['value-badge']
       },
       '',
       parent
@@ -789,7 +736,7 @@ export class JournalSyncBannerService {
     domService.createAndInsertElement(
       'span',
       {
-        classList: ['ta-sync-current-grade'],
+        classList: ['value-old'],
         title: oldLabel
       },
       oldValue,
@@ -799,16 +746,7 @@ export class JournalSyncBannerService {
     domService.createAndInsertElement(
       'span',
       {
-        classList: ['ta-sync-arrow']
-      },
-      ' → ',
-      comparisonDisplay
-    )
-
-    domService.createAndInsertElement(
-      'span',
-      {
-        classList: ['ta-sync-new-grade'],
+        classList: ['value-new'],
         title: newLabel
       },
       newValue,
