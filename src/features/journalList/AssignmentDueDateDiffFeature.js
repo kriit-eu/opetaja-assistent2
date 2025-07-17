@@ -120,10 +120,15 @@ class AssignmentDueDateDiffFeature extends BaseFeature {
         '',
         section
       )
+      // Handle assignmentName as object or string
+      let assignmentName = diff.assignmentName
+      if (assignmentName && typeof assignmentName === 'object') {
+        assignmentName = assignmentName.kriit || assignmentName.remote || JSON.stringify(assignmentName)
+      }
       domService.createAndInsertElement(
         'div',
         { classList: ['ta-sync-due-date-diff-title'], style: 'font-weight: 600; margin-bottom: 0.2em;' },
-        `${diff.subjectName || ''} (${diff.groupName || ''}) — ${diff.assignmentName || diff.assignmentExternalId}`,
+        `${diff.subjectName || ''} (${diff.groupName || ''}) — ${assignmentName || diff.assignmentExternalId}`,
         row
       )
       domService.createAndInsertElement(
