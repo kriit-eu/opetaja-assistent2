@@ -19,6 +19,7 @@ import { setupKriitMessageListener } from '../../services/MessageListenerService
 import { bannerService } from '../../services/BannerService.js'
 import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
 
+import { assignmentDueDateDiff } from './AssignmentDueDateDiffFeature'
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
@@ -329,7 +330,6 @@ class JournalListSyncFeature extends BaseFeature {
       const journalData = await this.collectJournalData()
       // Store Tahvel assignments for due date diff feature
       if (!window.journalListSync) window.journalListSync = {}
-      window.journalListSync.tahvelAssignments = JSON.parse(JSON.stringify(journalData))
 
       // Validate data before sending
       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
@@ -836,6 +836,8 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
+    // Log the full differences array to inspect due date and other diffs
+    console.log('[DEBUG] showDifferencesBanner: this.differences =', JSON.stringify(this.differences, null, 2))
 
     // Print each detected grade difference with details
     if (Array.isArray(this.differences)) {
@@ -1112,24 +1114,18 @@ class JournalListSyncFeature extends BaseFeature {
         const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
         // Store Kriit assignments for due date diff feature
         if (!window.journalListSync) window.journalListSync = {}
-        if (Array.isArray(response)) {
-          window.journalListSync.kriitAssignments = JSON.parse(JSON.stringify(response))
-        } else if (response && Array.isArray(response.data)) {
-          window.journalListSync.kriitAssignments = JSON.parse(JSON.stringify(response.data))
-        } else {
-          window.journalListSync.kriitAssignments = []
-        }
 
         // Log the full response for debugging
         Logger.debug('Raw response from Kriit:', JSON.stringify(response))
+        console.log('[DEBUG] Raw diff response from backend:', JSON.stringify(response, null, 2))
 
         // Process the response directly
-
-        // Process the response
         if (response && Array.isArray(response)) {
+          console.log('[DEBUG] Setting this.differences to:', JSON.stringify(response, null, 2))
           this.differences = response
           Logger.debug('Response is an array with', response.length, 'items')
         } else if (response && response.data && Array.isArray(response.data)) {
+          console.log('[DEBUG] Setting this.differences to:', JSON.stringify(response.data, null, 2))
           this.differences = response.data
           Logger.debug('Response has a data property with', response.data.length, 'items')
         } else if (response && response.status === 200) {
@@ -1140,12 +1136,20 @@ class JournalListSyncFeature extends BaseFeature {
           // Show a success message to the user
           this.isLoading = false
           this.error = 'Kõik hinded on juba sünkroonis. Pole midagi sünkroniseerida.'
+          // Ensure global differences is cleared
+          if (!window.journalListSync) window.journalListSync = {}
+          window.journalListSync.differences = this.differences
           this.updateUI()
           return
         } else {
+          console.log('[DEBUG] Backend response is not an array:', response)
           Logger.warning('Unexpected response format from Kriit:', response)
           this.differences = []
         }
+
+        // Always update global differences after setting this.differences
+        if (!window.journalListSync) window.journalListSync = {}
+        window.journalListSync.differences = this.differences
       } catch (error) {
         Logger.error('Error calling Kriit API:', error)
 
@@ -3707,9 +3711,6 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
 // Expose the fetchCachedData function for testing purposes
 getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
 
-// Import and activate AssignmentDueDateDiffFeature
-import { assignmentDueDateDiff } from './AssignmentDueDateDiffFeature'
-
 JournalListSyncFeature.requiresKriit = true
 
 // Patch showDifferencesBanner to activate due date diff feature after banner is rendered
@@ -3718,7 +3719,7 @@ JournalListSyncFeature.prototype.showDifferencesBanner = function (...args) {
   const result = origShowDifferencesBanner.apply(this, args)
   // Activate due date diff feature after banner is rendered
   setTimeout(() => {
-    assignmentDueDateDiff.onActivate()
+    assignmentDueDateDiff.renderDueDateDifferences()
   }, 0)
   return result
 }
