@@ -17,8 +17,8 @@ import { styleService } from '../../services/StyleService.js'
 import { cacheService } from '../../services/CacheService.js'
 import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
 import { bannerService } from '../../services/BannerService.js'
-import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
-import { differenceRenderer } from './DifferenceRenderer.js'
+import { journalSyncBannerService } from './JournalSyncBanner.js'
+import { differenceRenderer } from './JournalSyncBanner.js'
 
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
@@ -140,7 +140,6 @@ class JournalListSyncFeature extends BaseFeature {
     return dueDateDiffs
   }
 
-  
   /**
    * Send only outcome entries (SISSEKANNE_O) to Kriit API
    */
@@ -1127,8 +1126,6 @@ class JournalListSyncFeature extends BaseFeature {
 
     return count
   }
-
-  
 
   /**
    * Get journal info from API with caching
@@ -3403,15 +3400,6 @@ getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
 
 JournalListSyncFeature.requiresKriit = true
 
-// Patch showDifferencesBanner to activate due date diff feature after banner is rendered
-const origShowDifferencesBanner = JournalListSyncFeature.prototype.showDifferencesBanner
-JournalListSyncFeature.prototype.showDifferencesBanner = function (...args) {
-  const result = origShowDifferencesBanner.apply(this, args)
-  // Activate due date diff feature after banner is rendered
-  setTimeout(() => {
-    assignmentDueDateDiff.renderDueDateDifferences()
-  }, 0)
-  return result
-}
+
 
 export const journalListSync = new JournalListSyncFeature()
