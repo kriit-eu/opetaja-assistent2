@@ -1,7 +1,12 @@
 import { domService } from '../../services/DomService.js'
 
 class DifferenceRenderer {
-  render(container, assignmentNameDiffs, gradeDiffs) {
+  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs) {
+    // Render due date differences
+    if (dueDateDiffs.length > 0) {
+      this.insertDueDateDiffSection(dueDateDiffs, container)
+    }
+
     // Render assignment name differences first (if any)
     assignmentNameDiffs.forEach(subjectDiff => {
       const subjectBlock = domService.createAndInsertElement(
@@ -111,6 +116,100 @@ class DifferenceRenderer {
         })
       })
     })
+  }
+
+  insertDueDateDiffSection(diffs, banner) {
+    // Find the sync banner container
+    if (!banner) {
+      // eslint-disable-next-line no-console
+      console.warn('[DueDateDiff] .ta-sync-banner not found, cannot insert due date diff section')
+      return
+    }
+    // Remove old section if present
+    this.removeDueDateDiffSection()
+    // eslint-disable-next-line no-console
+    console.log('[DueDateDiff] Inserting due date diff section with', diffs.length, 'diffs')
+    const section = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-due-date-diff-section'],
+        style: 'margin-bottom: 1.5em; background: #fffbe6; border: 1px solid #ffe58f; padding: 1em; border-radius: 6px;'
+      },
+      '',
+      banner,
+      'afterbegin'
+    )
+    domService.createAndInsertElement(
+      'h3',
+      { style: 'margin-bottom: 0.75em; font-size: 1.1em; font-weight: bold; color: #ad8b00;' },
+      'Assignment Due Date Differences',
+      section
+    )
+    // Add Sync Due Dates button
+    const syncBtn = domService.createAndInsertElement(
+      'button',
+      {
+        classList: ['ta-sync-due-date-btn'],
+        style:
+          'margin-bottom: 1em; background: #ffd666; color: #ad8b00; border: none; border-radius: 4px; padding: 0.5em 1em; font-weight: bold; cursor: pointer;'
+      },
+      'Sünkroniseeri tähtajad Tahvlisse',
+      section
+    )
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.disabled = true
+      syncBtn.textContent = 'Sünkroniseerin...'
+      try {
+        await this.syncDueDatesToTahvel(diffs)
+        syncBtn.textContent = 'Tähtajad sünkroniseeritud!'
+        setTimeout(() => {
+          syncBtn.textContent = 'Sünkroniseeri tähtajad Tahvlisse'
+          syncBtn.disabled = false
+        }, 2000)
+      } catch (e) {
+        syncBtn.textContent = 'Sünkroniseerimine ebaõnnestus!'
+        setTimeout(() => {
+          syncBtn.textContent = 'Sünkroniseeri tähtajad Tahvlisse'
+          syncBtn.disabled = false
+        }, 3000)
+      }
+    })
+    diffs.forEach(diff => {
+      const row = domService.createAndInsertElement(
+        'div',
+        { classList: ['ta-sync-due-date-diff-row'], style: 'margin-bottom: 0.5em; padding: 0.5em; border-bottom: 1px solid #ffe58f;' },
+        '',
+        section
+      )
+      // Handle assignmentName as object or string
+      let assignmentName = diff.assignmentName
+      if (assignmentName && typeof assignmentName === 'object') {
+        assignmentName = assignmentName.kriit || assignmentName.remote || JSON.stringify(assignmentName)
+      }
+      domService.createAndInsertElement(
+        'div',
+        { classList: ['ta-sync-due-date-diff-title'], style: 'font-weight: 600; margin-bottom: 0.2em;' },
+        `${diff.subjectName || ''} (${diff.groupName || ''}) — ${assignmentName || diff.assignmentExternalId}`,
+        row
+      )
+      domService.createAndInsertElement(
+        'div',
+        { classList: ['ta-sync-due-date-kriit'], style: 'color: #d48806;' },
+        `Kriit: ${diff.dueDateKriit || '—'}`,
+        row
+      )
+      domService.createAndInsertElement(
+        'div',
+        { classList: ['ta-sync-due-date-tahvel'], style: 'color: #cf1322;' },
+        `Tahvel: ${diff.dueDateTahvel || '—'}`,
+        row
+      )
+    })
+  }
+
+  removeDueDateDiffSection() {
+    const section = document.querySelector('.ta-sync-due-date-diff-section')
+    if (section && section.parentNode) section.parentNode.removeChild(section)
   }
 }
 

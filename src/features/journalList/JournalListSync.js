@@ -20,7 +20,6 @@ import { bannerService } from '../../services/BannerService.js'
 import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
 import { differenceRenderer } from './DifferenceRenderer.js'
 
-import { assignmentDueDateDiff } from './AssignmentDueDateDiffFeature'
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
@@ -112,6 +111,33 @@ class JournalListSyncFeature extends BaseFeature {
     })
     Logger.info(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
     return groupedDiffs
+  }
+
+  extractDueDateDifferences() {
+    const dueDateDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) {
+      return dueDateDiffs
+    }
+    this.differences.forEach(subjectDiff => {
+      if (!Array.isArray(subjectDiff.assignments)) return
+      subjectDiff.assignments.forEach(assignment => {
+        if (
+          assignment.assignmentDueAt &&
+          typeof assignment.assignmentDueAt === 'object' &&
+          assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.remote
+        ) {
+          dueDateDiffs.push({
+            subjectName: subjectDiff.subjectName,
+            groupName: subjectDiff.groupName,
+            assignmentExternalId: assignment.assignmentExternalId,
+            assignmentName: assignment.assignmentName || '',
+            dueDateKriit: assignment.assignmentDueAt.kriit,
+            dueDateTahvel: assignment.assignmentDueAt.remote
+          })
+        }
+      })
+    })
+    return dueDateDiffs
   }
 
   
@@ -827,7 +853,8 @@ class JournalListSyncFeature extends BaseFeature {
       container => {
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
-        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs)
+        const dueDateDiffs = this.extractDueDateDifferences()
+        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs)
       }
     )
   }
