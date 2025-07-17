@@ -19,6 +19,14 @@ class DifferenceRenderer {
     const grouped = {}
     const normalize = grade => (grade === null || grade === undefined || grade === '') ? null : String(grade)
 
+    // Create a map of new assignment names
+    const newNames = {}
+    ;(assignmentNameDiffs || []).forEach(subject => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
+        newNames[nameDiff.assignmentExternalId] = nameDiff.kriit
+      })
+    })
+
     // Helper to add a difference to the grouped object
     const addDiff = (subjectName, diff) => {
       if (!grouped[subjectName]) {
@@ -27,9 +35,24 @@ class DifferenceRenderer {
       grouped[subjectName].push(diff)
     }
 
+    // Name Diffs first
+    ;(assignmentNameDiffs || []).forEach(subject => {
+        ;(subject.nameDiffs || []).forEach(nameDiff => {
+            addDiff(subject.subjectName, {
+                type: 'Nimi',
+                color: '#6c757d', // gray
+                assignmentName: nameDiff.remote,
+                studentName: '',
+                oldValue: nameDiff.remote,
+                newValue: nameDiff.kriit
+            })
+        })
+    })
+
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
       ;(subject.assignments || []).forEach(assignment => {
+        const assignmentName = newNames[assignment.assignmentExternalId] || assignment.assignmentName
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
           const kriitGrade = normalize(result.grade)
@@ -38,7 +61,7 @@ class DifferenceRenderer {
             addDiff(subject.subjectName, {
               type: 'Hinne',
               color: '#007bff', // blue
-              assignmentName: assignment.assignmentName,
+              assignmentName: assignmentName,
               studentName: result.studentName,
               oldValue: tahvelGrade || 'puudub',
               newValue: kriitGrade || 'puudub'
@@ -50,27 +73,14 @@ class DifferenceRenderer {
 
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
+      const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
       addDiff(diff.subjectName, {
         type: 'Tähtaeg',
         color: '#e83e8c', // magenta
-        assignmentName: diff.assignmentName,
+        assignmentName: assignmentName,
         studentName: '',
         oldValue: diff.dueDateTahvel,
         newValue: diff.dueDateKriit
-      })
-    })
-
-    // Name Diffs
-    ;(assignmentNameDiffs || []).forEach(subject => {
-      ;(subject.nameDiffs || []).forEach(nameDiff => {
-        addDiff(subject.subjectName, {
-          type: 'Nimi',
-          color: '#6c757d', // gray
-          assignmentName: nameDiff.remote,
-          studentName: '',
-          oldValue: nameDiff.remote,
-          newValue: nameDiff.kriit
-        })
       })
     })
 

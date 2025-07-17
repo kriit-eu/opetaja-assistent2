@@ -103,7 +103,7 @@ class JournalListSyncFeature extends BaseFeature {
       if (subject && Array.isArray(subject.assignments)) {
         const nameDiffs = subject.assignments
           .filter(a => a.assignmentName && a.assignmentName.kriit !== a.assignmentName.remote)
-          .map(a => ({ kriit: a.assignmentName.kriit, remote: a.assignmentName.remote }))
+          .map(a => ({ kriit: a.assignmentName.kriit, remote: a.assignmentName.remote, assignmentExternalId: a.assignmentExternalId }))
         if (nameDiffs.length > 0) {
           groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
         }
