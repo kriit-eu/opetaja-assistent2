@@ -34,6 +34,8 @@ class JournalListSyncFeature extends BaseFeature {
           if (
             assignment.assignmentEntryDate &&
             typeof assignment.assignmentEntryDate === 'object' &&
+            assignment.assignmentEntryDate.kriit &&
+            assignment.assignmentEntryDate.Tahvel &&
             assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
           ) {
             let assignmentName = assignment.assignmentName
@@ -169,8 +171,18 @@ class JournalListSyncFeature extends BaseFeature {
     this.differences.forEach(subject => {
       if (subject && Array.isArray(subject.assignments)) {
         const nameDiffs = subject.assignments
-          .filter(a => a.assignmentName && a.assignmentName.kriit !== a.assignmentName.Tahvel)
-          .map(a => ({ kriit: a.assignmentName.kriit, Tahvel: a.assignmentName.Tahvel, assignmentExternalId: a.assignmentExternalId }))
+          .filter(a => {
+            if (a.assignmentName && typeof a.assignmentName === 'object') {
+              // Only show difference if both are present and different
+              return a.assignmentName.kriit && a.assignmentName.Tahvel && a.assignmentName.kriit !== a.assignmentName.Tahvel
+            }
+            return false
+          })
+          .map(a => ({
+            kriit: a.assignmentName.kriit,
+            Tahvel: a.assignmentName.Tahvel,
+            assignmentExternalId: a.assignmentExternalId
+          }))
         if (nameDiffs.length > 0) {
           groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
         }
@@ -188,23 +200,22 @@ class JournalListSyncFeature extends BaseFeature {
     this.differences.forEach(subjectDiff => {
       if (!Array.isArray(subjectDiff.assignments)) return
       subjectDiff.assignments.forEach(assignment => {
-        if (
-          assignment.assignmentDueAt &&
-          typeof assignment.assignmentDueAt === 'object' &&
-          assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
-        ) {
-          let assignmentName = assignment.assignmentName
-          if (assignmentName && typeof assignmentName === 'object') {
-            assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
+        if (assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object') {
+          // Only show difference if both are present and different
+          if (assignment.assignmentDueAt.kriit && assignment.assignmentDueAt.Tahvel && assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel) {
+            let assignmentName = assignment.assignmentName
+            if (assignmentName && typeof assignmentName === 'object') {
+              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
+            }
+            dueDateDiffs.push({
+              assignmentExternalId: assignment.assignmentExternalId,
+              assignmentName,
+              kriit: assignment.assignmentDueAt.kriit,
+              Tahvel: assignment.assignmentDueAt.Tahvel,
+              subjectName: subjectDiff.subjectName || '',
+              subjectExternalId: subjectDiff.subjectExternalId || ''
+            })
           }
-          dueDateDiffs.push({
-            assignmentExternalId: assignment.assignmentExternalId,
-            assignmentName,
-            kriit: assignment.assignmentDueAt.kriit,
-            Tahvel: assignment.assignmentDueAt.Tahvel,
-            subjectName: subjectDiff.subjectName || '',
-            subjectExternalId: subjectDiff.subjectExternalId || ''
-          })
         }
       })
     })
@@ -1165,16 +1176,15 @@ class JournalListSyncFeature extends BaseFeature {
 
     if (!this.differences || !Array.isArray(this.differences)) return 0
 
+    // Count grade differences
     this.differences.forEach(subject => {
       if (subject && Array.isArray(subject.assignments)) {
         subject.assignments.forEach(assignment => {
           if (assignment && Array.isArray(assignment.results)) {
-            // Only count results that have different grades
             assignment.results.forEach(result => {
               const tahvelGrade = result.currentGrade || '(puudub)'
               const kriitGrade = result.grade || '(puudub)'
-
-              // Direct comparison since both should now be numeric
+              // Count as difference if either grade is missing or different
               if (tahvelGrade !== kriitGrade) {
                 count++
               }
@@ -1183,6 +1193,22 @@ class JournalListSyncFeature extends BaseFeature {
         })
       }
     })
+
+    // Count assignment name differences
+    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+    assignmentNameDiffs.forEach(subject => {
+      if (subject.nameDiffs && subject.nameDiffs.length > 0) {
+        count += subject.nameDiffs.length
+      }
+    })
+
+    // Count due date differences
+    const dueDateDiffs = this.extractDueDateDifferences()
+    count += dueDateDiffs.length
+
+    // Count entry date differences
+    const entryDateDiffs = this.extractEntryDateDifferences()
+    count += entryDateDiffs.length
 
     return count
   }
