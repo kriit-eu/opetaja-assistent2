@@ -202,7 +202,11 @@ class JournalListSyncFeature extends BaseFeature {
       subjectDiff.assignments.forEach(assignment => {
         if (assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object') {
           // Only show difference if both are present and different
-          if (assignment.assignmentDueAt.kriit && assignment.assignmentDueAt.Tahvel && assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel) {
+          if (
+            assignment.assignmentDueAt.kriit &&
+            assignment.assignmentDueAt.Tahvel &&
+            assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
+          ) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
               assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
@@ -698,7 +702,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async() => {
+        const fetchStudentDetails = async () => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -725,7 +729,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async() => {
+        const fetchPromise = (async () => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -913,7 +917,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
-      async() => {
+      async () => {
         await this.syncAssignmentNameDifferences()
         await this.syncWithKriit()
         await this.fetchJournalData()
@@ -1948,22 +1952,22 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Original differences count: ${this.differences ? this.differences.length : 0}`)
 
         // Count total assignments and results for debugging
-        let totalAssignments = 0
-        let totalResults = 0
-        let skippedResults = 0
+        let _totalAssignments = 0
+        let _totalResults = 0
+        let _skippedResults = 0
 
         if (this.differences && Array.isArray(this.differences)) {
           this.differences.forEach(subject => {
             if (subject.assignments && Array.isArray(subject.assignments)) {
-              totalAssignments += subject.assignments.length
+              _totalAssignments += subject.assignments.length
               subject.assignments.forEach(assignment => {
                 if (assignment.results && Array.isArray(assignment.results)) {
-                  totalResults += assignment.results.length
+                  _totalResults += assignment.results.length
                   assignment.results.forEach(result => {
                     const tahvelGrade = result.currentGrade || '(empty)'
                     const kriitGrade = result.grade || '(empty)'
                     if (tahvelGrade === kriitGrade) {
-                      skippedResults++
+                      _skippedResults++
                     }
                   })
                 }
@@ -3149,7 +3153,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   try {
     return await cacheService.getOrFetch(
       cacheKey,
-      async() => {
+      async () => {
         try {
           return await api.tahvel.get(endpoint)
         } catch (error) {
@@ -3195,7 +3199,7 @@ async function getTeacherPersonalCodeCached(api, teacher) {
   }
 
   // Create the fetch promise
-  const fetchPromise = (async() => {
+  const fetchPromise = (async () => {
     try {
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
