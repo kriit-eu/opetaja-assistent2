@@ -1125,9 +1125,6 @@ class JournalListSyncFeature extends BaseFeature {
                   const kriitAssignment = diffAssignment
                   const tahvelAssignment = matchingAssignment
 
-                  // Use Tahvel's assignment name for display, as Kriit response may not have it.
-                  diffAssignment.assignmentName = tahvelAssignment.assignmentName
-
                   const compareAndCreateDiff = fieldName => {
                     const kriitValue = kriitAssignment[fieldName]
                     const tahvelValue = tahvelAssignment[fieldName]
@@ -1138,13 +1135,15 @@ class JournalListSyncFeature extends BaseFeature {
 
                     if (normKriit !== normTahvel) {
                       diffAssignment[fieldName] = { kriit: kriitValue, Tahvel: tahvelValue }
+                    } else {
+                      // If they are the same, just make sure the value is set.
+                      diffAssignment[fieldName] = tahvelValue
                     }
                   }
 
+                  compareAndCreateDiff('assignmentName')
                   compareAndCreateDiff('assignmentDueAt')
                   compareAndCreateDiff('assignmentEntryDate')
-                  // The sample response doesn't include assignmentName, so we won't diff it.
-                  // If it were included, we would call: compareAndCreateDiff('assignmentName');
 
                   // Process each result
                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
