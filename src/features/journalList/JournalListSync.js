@@ -16,8 +16,7 @@ import { styleService } from '../../services/StyleService.js'
 import { cacheService } from '../../services/CacheService.js'
 import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
 import { bannerService } from '../../services/BannerService.js'
-import { journalSyncBannerService } from './JournalSyncBanner.js'
-import { differenceRenderer } from './JournalSyncBanner.js'
+import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanner.js'
 
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
@@ -486,13 +485,14 @@ class JournalListSyncFeature extends BaseFeature {
           }
 
           if (journalInfo.studentGroups) {
+            Logger.debug(`Journal ${id} student groups:`, JSON.stringify(journalInfo.studentGroups))
           }
 
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
 
           // Merge homeworkDuedate and other missing fields from journalEntries into journalEntriesWithGrades
-          let mergedEntries = []
+          let mergedEntries
           if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0 && journalEntries && journalEntries.length > 0) {
             // Create a map of /journalEntry entries by id
             const entryById = {}
@@ -568,6 +568,7 @@ class JournalListSyncFeature extends BaseFeature {
           // Debug logging for multigroup journals
           if (studentGroups.length > 1) {
             if (assignments.length > 0) {
+              Logger.debug(`First assignment "${assignments[0].assignmentName}" has ${assignments[0].results.length} students`)
             }
           }
 
@@ -580,22 +581,13 @@ class JournalListSyncFeature extends BaseFeature {
                   const student = journalStudents.find(js => {
                     const studentId = studentMap.journalStudentIdToId[js.id.toString()]
                     const personalCode = studentMap.idToPersonalCode[studentId]
-                    const matches = personalCode === result.studentPersonalCode
-
-                    if (matches) {
-                    }
-
-                    return matches
+                    // No-op block removed (was empty)
+                    return personalCode === result.studentPersonalCode
                   })
-
                   // Include student if they belong to this group
-                  const belongsToGroup = student && student.studentGroup === groupName
-                  if (student && !belongsToGroup) {
-                  }
-
-                  return belongsToGroup
+                  // No-op block removed (was empty)
+                  return student && student.studentGroup === groupName
                 })
-
                 return {
                   ...assignment,
                   results: filteredResults
@@ -821,6 +813,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   updateProgressUI(current, total) {
     if (!this.isActive) return
+    // Show progress banner during sync
     bannerService.updateProgressUI(current, total, 'Sünkroniseerin hindeid Kriidist Tahvlisse...')
   }
 
@@ -830,17 +823,11 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showSuccessBanner(message) {
     if (!this.isActive) return
+    // Show success banner with refresh and close actions
     bannerService.showSuccessBanner(message, {
       onRefresh: () => this.fetchJournalData(),
       onClose: () => bannerService.removeBanner()
     })
-
-    // Force a refresh of the data after 3 seconds
-    Logger.debug('Setting up forced refresh in 3 seconds')
-    setTimeout(() => {
-      Logger.info('Forced refresh triggered')
-      this.fetchJournalData()
-    }, 3000)
   }
 
   /**
@@ -1481,40 +1468,6 @@ class JournalListSyncFeature extends BaseFeature {
       return { error: error.message }
     }
   }
-
-  /**
-   * Get student group data from API with caching
-   * @param {number} groupId - Student group ID
-   * @returns {Promise<Array>} Student group data
-   */
-  async getStudentGroupData(groupId) {
-    if (!groupId) {
-      Logger.error('Cannot fetch student group data: groupId is undefined or null')
-      return null
-    }
-
-    try {
-      const response = await this.api.tahvel.get(
-        `/studentGroups/${groupId}/students`,
-        {},
-        {
-          cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
-        }
-      )
-
-      if (response && Array.isArray(response)) {
-        Logger.debug(`Retrieved ${response.length} students for group ${groupId}`)
-      } else {
-        Logger.warning(`Unexpected response format for student group ${groupId}:`, response)
-      }
-
-      return response
-    } catch (error) {
-      Logger.error(`Error fetching student group data for ${groupId}:`, error)
-      return null
-    }
-  }
-
   /**
    * Get detailed student information including personal code
    * @param {number} studentId - Student ID
@@ -1627,13 +1580,14 @@ class JournalListSyncFeature extends BaseFeature {
     gradedEntries.forEach(entry => {
       // Log when we process an outcome entry
       if (entry.entryType === 'SISSEKANNE_O') {
+        // No-op block removed (was empty)
       }
 
       // Extract results for this assignment
       const results = []
 
       // Handle different entry types for finding grades
-      let entryWithGrades = null
+      let entryWithGrades
       if (entry.entryType === 'SISSEKANNE_O') {
         // For outcome entries, look up by curriculumModuleOutcomes
         entryWithGrades = entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`]
@@ -1652,7 +1606,6 @@ class JournalListSyncFeature extends BaseFeature {
           })
         } else if (entryWithGrades.journalStudentResults) {
           // Handle regular entries with journalStudentResults
-          const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
           Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
             studentResultsMap[journalStudentId] = studentResults
           })
