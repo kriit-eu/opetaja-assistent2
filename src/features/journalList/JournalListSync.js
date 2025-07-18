@@ -771,14 +771,10 @@ class JournalListSyncFeature extends BaseFeature {
       // Process all students in parallel
       const results = await Promise.all(studentPromises)
 
-      // Count successes for logging
-      let successCount = 0
-
       // Process results and add to studentDetailsMap
       for (const result of results) {
         if (result && result.data) {
           studentDetailsMap[result.studentId] = result.data
-          successCount++
         }
       }
     }
@@ -1589,7 +1585,7 @@ class JournalListSyncFeature extends BaseFeature {
     // Debug: Log outcome entries specifically
     if (entryCounts['SISSEKANNE_O'] > 0) {
       const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
-      outcomeEntries.forEach(entry => {})
+      outcomeEntries.forEach(() => {})
     }
 
     // Create a map of entry IDs to entries with grades from journalEntriesByDate
