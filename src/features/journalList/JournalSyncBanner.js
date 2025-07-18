@@ -123,7 +123,7 @@ class DifferenceRenderer {
   }
 
   createBadge(row, text, className) {
-    const badge = domService.createAndInsertElement(
+    return domService.createAndInsertElement(
       'span',
       {
         classList: ['badge', className]
@@ -131,7 +131,6 @@ class DifferenceRenderer {
       text,
       row
     )
-    return badge
   }
 }
 
@@ -614,96 +613,6 @@ export class JournalSyncBannerService {
       }
     }
   }
-
-  /**
-   * Utility method to create a differences container
-   * This can be used by features to create a standardized differences container
-   * @param {Element} parent - Parent element to append the container to
-   * @returns {Element} The created differences container
-   */
-  createDifferencesContainer(parent) {
-    return domService.createAndInsertElement(
-      'div',
-      {
-        classList: ['container']
-      },
-      '',
-      parent
-    )
-  }
-
-  /**
-   * Utility method to create a category section for grouping differences
-   * @param {Element} parent - Parent element to append the section to
-   * @param {string} categoryName - Name of the category
-   * @returns {Element} The created category section
-   */
-  createCategorySection(parent, categoryName) {
-    const categorySection = domService.createAndInsertElement('div', {}, '', parent)
-
-    domService.createAndInsertElement('h3', {}, categoryName, categorySection)
-
-    return categorySection
-  }
-
-  /**
-   * Utility method to create a "no differences" message
-   * @param {Element} parent - Parent element to append the message to
-   * @param {string} message - Custom message to display
-   */
-  createNoDifferencesMessage(parent, message = 'No differences found') {
-    domService.createAndInsertElement(
-      'div',
-      {
-        classList: ['change-item']
-      },
-      message,
-      parent
-    )
-  }
-
-  /**
-   * Utility method to create a comparison display (e.g., "old value → new value")
-   * @param {Element} parent - Parent element to append the comparison to
-   * @param {string} oldValue - The old/current value
-   * @param {string} newValue - The new/target value
-   * @param {string} oldLabel - Label for the old value (optional)
-   * @param {string} newLabel - Label for the new value (optional)
-   * @returns {Element} The created comparison display element
-   */
-  createComparisonDisplay(parent, oldValue, newValue, oldLabel = '', newLabel = '') {
-    const comparisonDisplay = domService.createAndInsertElement(
-      'span',
-      {
-        classList: ['value-badge']
-      },
-      '',
-      parent
-    )
-
-    domService.createAndInsertElement(
-      'span',
-      {
-        classList: ['value-old'],
-        title: oldLabel
-      },
-      oldValue,
-      comparisonDisplay
-    )
-
-    domService.createAndInsertElement(
-      'span',
-      {
-        classList: ['value-new'],
-        title: newLabel
-      },
-      newValue,
-      comparisonDisplay
-    )
-
-    return comparisonDisplay
-  }
-
   /**
    * Clean up sync-specific resources
    */

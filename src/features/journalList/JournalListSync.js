@@ -702,7 +702,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async () => {
+        const fetchStudentDetails = async() => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -729,7 +729,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async () => {
+        const fetchPromise = (async() => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -917,7 +917,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
-      async () => {
+      async() => {
         await this.syncAssignmentNameDifferences()
         await this.syncWithKriit()
         await this.fetchJournalData()
@@ -1823,7 +1823,7 @@ class JournalListSyncFeature extends BaseFeature {
         if (Array.isArray(subject.assignments)) {
           subject.assignments.forEach(assignment => {
             if (Array.isArray(assignment.results)) {
-              assignment.results.forEach(result => {})
+              assignment.results.forEach(() => {})
             }
           })
         }
@@ -3153,7 +3153,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   try {
     return await cacheService.getOrFetch(
       cacheKey,
-      async () => {
+      async() => {
         try {
           return await api.tahvel.get(endpoint)
         } catch (error) {
@@ -3199,7 +3199,7 @@ async function getTeacherPersonalCodeCached(api, teacher) {
   }
 
   // Create the fetch promise
-  const fetchPromise = (async () => {
+  const fetchPromise = (async() => {
     try {
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
