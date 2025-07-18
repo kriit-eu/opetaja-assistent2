@@ -255,6 +255,7 @@ class ApiService {
 
     // Log caching decision for debugging
     if (endpoint.includes('journalEntriesByDate')) {
+      // empty
     }
 
     return this.request({
