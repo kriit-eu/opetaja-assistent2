@@ -86,26 +86,26 @@ class DifferenceRenderer {
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
       const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
-      addDiff(diff.subjectName, {
+      addDiff(diff.subjectName || '', {
         type: 'duedate',
         typeName: 'Tähtaeg',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: diff.dueDateTahvel,
-        newValue: diff.dueDateKriit
+        oldValue: diff.remote,
+        newValue: diff.kriit
       })
     })
 
     // Entry Date Diffs
     ;(entryDateDiffs || []).forEach(diff => {
       const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
-      addDiff(diff.subjectName, {
+      addDiff(diff.subjectName || '', {
         type: 'entrydate',
         typeName: 'Sissekande kuupäev',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: diff.oldValue,
-        newValue: diff.newValue
+        oldValue: diff.remote,
+        newValue: diff.kriit
       })
     })
 

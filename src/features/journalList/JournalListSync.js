@@ -31,16 +31,24 @@ class JournalListSyncFeature extends BaseFeature {
     const entryDateDiffs = []
     if (!this.differences || !Array.isArray(this.differences)) return entryDateDiffs
     this.differences.forEach(subjectDiff => {
-      const subjectName = subjectDiff.subjectName || 'Tund'
       if (Array.isArray(subjectDiff.assignments)) {
         subjectDiff.assignments.forEach(assignment => {
-          if (assignment.assignmentEntryDate && assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.remote) {
+          if (
+            assignment.assignmentEntryDate &&
+            typeof assignment.assignmentEntryDate === 'object' &&
+            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.remote
+          ) {
+            let assignmentName = assignment.assignmentName
+            if (assignmentName && typeof assignmentName === 'object') {
+              assignmentName = assignmentName.kriit || assignmentName.remote || ''
+            }
             entryDateDiffs.push({
-              subjectName,
-              assignmentName: assignment.assignmentName || '',
               assignmentExternalId: assignment.assignmentExternalId,
-              oldValue: assignment.assignmentEntryDate.remote,
-              newValue: assignment.assignmentEntryDate.kriit
+              assignmentName,
+              kriit: assignment.assignmentEntryDate.kriit,
+              remote: assignment.assignmentEntryDate.remote,
+              subjectName: subjectDiff.subjectName || '',
+              subjectExternalId: subjectDiff.subjectExternalId || ''
             })
           }
         })
@@ -54,65 +62,100 @@ class JournalListSyncFeature extends BaseFeature {
    * Update assignment names in Tahvel to match Kriit
    */
   async syncAssignmentNameDifferences() {
+    // Gather all diffs: name, due date, entry date
     const assignmentNameDiffs = this.extractAssignmentNameDifferences()
-    if (!assignmentNameDiffs || assignmentNameDiffs.length === 0) return
-    for (const subjectDiff of assignmentNameDiffs) {
+    const dueDateDiffs = this.extractDueDateDifferences()
+    const entryDateDiffs = this.extractEntryDateDifferences()
+
+    // Build a map: { journalId, assignmentId } => { name, dueDate, entryDate }
+    const updateMap = new Map()
+
+    // Helper to get key
+    const getKey = (journalId, assignmentId) => `${journalId}::${assignmentId}`
+
+    // Add name diffs
+    assignmentNameDiffs.forEach(subjectDiff => {
       const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
-      if (!subject || !Array.isArray(subject.assignments)) continue
-      // For each nameDiff, match by both remote name and assignmentExternalId if possible
-      for (const nameDiff of subjectDiff.nameDiffs) {
-        // Find all assignments with matching remote name
-        const matchingAssignments = subject.assignments.filter(a => a.assignmentName && a.assignmentName.remote === nameDiff.remote)
-        // If there are multiple, try to match by assignmentExternalId if present in nameDiff
-        let assignmentToUpdate = null
-        if (nameDiff.assignmentExternalId) {
-          assignmentToUpdate = matchingAssignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
-        } else if (matchingAssignments.length === 1) {
-          assignmentToUpdate = matchingAssignments[0]
+      if (!subject || !Array.isArray(subject.assignments)) return
+      subjectDiff.nameDiffs.forEach(nameDiff => {
+        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
+        if (!assignment) return
+        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
+        if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
+        updateMap.get(key).nameEt = nameDiff.kriit
+      })
+    })
+
+    // Add due date diffs
+    dueDateDiffs.forEach(diff => {
+      // Find subject and assignment
+      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
+      if (!subject) return
+      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
+      if (!assignment) return
+      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
+      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
+      updateMap.get(key).homeworkDuedate = diff.kriit
+    })
+
+    // Add entry date diffs
+    entryDateDiffs.forEach(diff => {
+      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
+      if (!subject) return
+      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
+      if (!assignment) return
+      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
+      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
+      updateMap.get(key).entryDate = diff.kriit
+    })
+
+    // For each assignment, send a single PUT to Tahvel
+    for (const update of updateMap.values()) {
+      const { journalId, assignmentId, nameEt, homeworkDuedate, entryDate } = update
+      let currentEntry
+      try {
+        currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
+      } catch (error) {
+        Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
+        continue
+      }
+      if (!currentEntry) {
+        Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
+        continue
+      }
+      // Build the PUT payload by copying all fields, updating changed ones
+      const payload = { ...currentEntry }
+      if (nameEt && typeof nameEt === 'string' && nameEt.trim() !== '' && nameEt !== currentEntry.nameEt) {
+        payload.nameEt = nameEt
+      }
+      if (homeworkDuedate) {
+        // Format as 'YYYY-MM-DDT00:00:00Z' if not already
+        if (/^\d{4}-\d{2}-\d{2}$/.test(homeworkDuedate)) {
+          payload.homeworkDuedate = `${homeworkDuedate}T00:00:00Z`
         } else {
-          // If multiple and no id, skip to avoid wrong update
-          Logger.warning(
-            `Multiple assignments found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}', but no assignmentExternalId to disambiguate. Skipping.`
-          )
-          continue
+          payload.homeworkDuedate = homeworkDuedate
         }
-        if (!assignmentToUpdate) {
-          Logger.warning(
-            `No matching assignment found for remote name '${nameDiff.remote}' in subject '${subjectDiff.subjectName}' with assignmentExternalId='${nameDiff.assignmentExternalId || 'N/A'}'. Skipping.`
-          )
-          continue
+      }
+      if (entryDate) {
+        // Format as 'YYYY-MM-DDT00:00:00Z' if not already
+        if (/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
+          payload.entryDate = `${entryDate}T00:00:00Z`
+        } else {
+          payload.entryDate = entryDate
         }
-        const journalId = subject.subjectExternalId
-        const assignmentId = assignmentToUpdate.assignmentExternalId
-        let currentEntry
-        try {
-          currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
-        } catch (error) {
-          Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
-          continue
-        }
-        if (!currentEntry) {
-          Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
-          continue
-        }
-        // Build the PUT payload by copying all fields, updating nameEt, and always setting journalEntryCapacityTypes
-        // Construct Kriit assignment URL
-        let kriitAssignmentUrl = ''
-        if (assignmentToUpdate && assignmentToUpdate.assignmentExternalId) {
-          // Try to get group name from subject if available
-          const groupCode = subject.groupName || ''
-          kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentToUpdate.assignmentExternalId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
-        }
-        // Add homework field with Kriit link, always non-empty
-        const homeworkText = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
-        const payload = { ...currentEntry, nameEt: nameDiff.kriit, journalEntryCapacityTypes: ['MAHT_i'], homework: homeworkText }
-        Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
-        try {
-          await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
-          Logger.info(`✨ Updated assignment name in Tahvel: ${nameDiff.remote} → ${nameDiff.kriit} and set journalEntryCapacityTypes to ["MAHT_i"]`)
-        } catch (error) {
-          Logger.error(`Failed to update assignment name for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
-        }
+      }
+      payload.journalEntryCapacityTypes = ['MAHT_i']
+      // Optionally add homework field with Kriit link
+      let kriitAssignmentUrl = ''
+      const groupCode = (currentEntry.groupName || '')
+      kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+      payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+      Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
+      try {
+        await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
+        Logger.info(`✨ Updated assignment in Tahvel: ${assignmentId} with changes: ${JSON.stringify(update)}`)
+      } catch (error) {
+        Logger.error(`Failed to update assignment for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
       }
     }
   }
@@ -153,13 +196,17 @@ class JournalListSyncFeature extends BaseFeature {
           typeof assignment.assignmentDueAt === 'object' &&
           assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.remote
         ) {
+          let assignmentName = assignment.assignmentName
+          if (assignmentName && typeof assignmentName === 'object') {
+            assignmentName = assignmentName.kriit || assignmentName.remote || ''
+          }
           dueDateDiffs.push({
-            subjectName: subjectDiff.subjectName,
-            groupName: subjectDiff.groupName,
             assignmentExternalId: assignment.assignmentExternalId,
-            assignmentName: assignment.assignmentName || '',
-            dueDateKriit: assignment.assignmentDueAt.kriit,
-            dueDateTahvel: assignment.assignmentDueAt.remote
+            assignmentName,
+            kriit: assignment.assignmentDueAt.kriit,
+            remote: assignment.assignmentDueAt.remote,
+            subjectName: subjectDiff.subjectName || '',
+            subjectExternalId: subjectDiff.subjectExternalId || ''
           })
         }
       })
@@ -1542,8 +1589,6 @@ class JournalListSyncFeature extends BaseFeature {
   extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents = [], studentDetailsMap = {}, journalEntriesWithGrades = []) {
     const assignments = []
 
-    console.log('[DEBUG] extractAssignmentsFromEntries called', { journalEntries })
-
     if (!journalEntries || !Array.isArray(journalEntries)) {
       return assignments
     }
@@ -1583,7 +1628,6 @@ class JournalListSyncFeature extends BaseFeature {
       })
     }
 
-    console.log('[DEBUG] Processing gradedEntries', gradedEntries)
     gradedEntries.forEach(entry => {
       // Log when we process an outcome entry
       if (entry.entryType === 'SISSEKANNE_O') {
@@ -1708,10 +1752,6 @@ class JournalListSyncFeature extends BaseFeature {
       const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
 
       if (assignmentId && assignmentName) {
-        Logger.info(
-          `✨ [DEBUG] Mapping assignment: id=${assignmentId}, name=${assignmentName}, homeworkDuedate=${entry.homeworkDuedate}, entryDate=${entry.entryDate}`
-        )
-        console.log('[DEBUG] Mapping assignment FULL ENTRY', entry)
         assignments.push({
           assignmentExternalId: assignmentId,
           assignmentName: assignmentName,
@@ -1804,11 +1844,7 @@ class JournalListSyncFeature extends BaseFeature {
         if (Array.isArray(subject.assignments)) {
           subject.assignments.forEach(assignment => {
             if (Array.isArray(assignment.results)) {
-              assignment.results.forEach(result => {
-                Logger.debug(
-                  `[SYNC] Assignment ${assignment.assignmentExternalId} - Student: ${result.studentName}, PersonalCode: ${result.studentPersonalCode}`
-                )
-              })
+              assignment.results.forEach(result => {})
             }
           })
         }
@@ -1874,14 +1910,6 @@ class JournalListSyncFeature extends BaseFeature {
               throw new Error(errorMsg)
             }
 
-            // Enhanced debug logging for every grade being processed
-            Logger.debug('=== PROCESSING GRADE ===')
-            Logger.debug(`Subject: ${subject.subjectName} (${subject.subjectExternalId})`)
-            Logger.debug(`Assignment: ${assignment.assignmentName} (${assignment.assignmentExternalId})`)
-            Logger.debug(`Student: ${result.studentName} (${result.studentPersonalCode})`)
-            Logger.debug(`Raw Tahvel grade: "${result.currentGrade}"`)
-            Logger.debug(`Raw Kriit grade: "${result.grade}"`)
-
             // Only include results where the grade is different
             // Normalize grades for comparison - handle type mismatches and empty values
             const normalizeGrade = grade => {
@@ -1901,9 +1929,6 @@ class JournalListSyncFeature extends BaseFeature {
 
             const tahvelGrade = normalizeGrade(result.currentGrade)
             const kriitGrade = normalizeGrade(result.grade)
-
-            Logger.debug(`Processed Tahvel grade: "${tahvelGrade}"`)
-            Logger.debug(`Kriit grade: "${kriitGrade}"`)
 
             // Skip null grades from Kriit entirely - don't sync them
             if (kriitGrade === null) {
