@@ -1,0 +1,3427 @@
+diff --git a/src/features/journalList/JournalListSync.js b/src/features/journalList/JournalListSync.js
+index 91d4b7f..2b81ada 100644
+--- a/src/features/journalList/JournalListSync.js
++++ b/src/features/journalList/JournalListSync.js
+@@ -2,7 +2,8 @@
+  * Journal List Sync Feature
+  *
+  * Syncs data between Tahvel and Kriit:
+- * - Assignments and their grades
++ * - Assignments and their grades (SISSEKANNE_H, SISSEKANNE_I)
++ * - Curriculum outcomes and their grades (SISSEKANNE_O)
+  * - Students and their personal codes
+  * - Student statuses (active/inactive)
+  *
+@@ -10,15 +11,236 @@
+  */
+ 
+ import { BaseFeature } from '../../core/BaseFeature.js'
+-import { domService } from '../../services/DomService.js'
+ import Logger from '../../services/Logger.js'
+ import { styleService } from '../../services/StyleService.js'
+ import { cacheService } from '../../services/CacheService.js'
+ import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
+ import { bannerService } from '../../services/BannerService.js'
+-import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
++import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanner.js'
++
++import { sendOutcomeEntriesToKriit } from './OutComes.js'
+ 
+ class JournalListSyncFeature extends BaseFeature {
++  /**
++   * Extract assignment entry date differences from Kriit response
++   */
++  extractEntryDateDifferences() {
++    Logger.info('✨ [extractEntryDateDifferences] Called')
++    const entryDateDiffs = []
++    if (!this.differences || !Array.isArray(this.differences)) return entryDateDiffs
++    this.differences.forEach(subjectDiff => {
++      if (Array.isArray(subjectDiff.assignments)) {
++        subjectDiff.assignments.forEach(assignment => {
++          if (
++            assignment.assignmentEntryDate &&
++            typeof assignment.assignmentEntryDate === 'object' &&
++            assignment.assignmentEntryDate.kriit &&
++            assignment.assignmentEntryDate.Tahvel &&
++            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
++          ) {
++            let assignmentName = assignment.assignmentName
++            if (assignmentName && typeof assignmentName === 'object') {
++              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
++            }
++            entryDateDiffs.push({
++              assignmentExternalId: assignment.assignmentExternalId,
++              assignmentName,
++              kriit: assignment.assignmentEntryDate.kriit,
++              Tahvel: assignment.assignmentEntryDate.Tahvel,
++              subjectName: subjectDiff.subjectName || '',
++              subjectExternalId: subjectDiff.subjectExternalId || ''
++            })
++          }
++        })
++      }
++    })
++    Logger.info(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
++    return entryDateDiffs
++  }
++  /**
++   * Update assignment names in Tahvel to match Kriit
++   */
++  async syncAssignmentNameDifferences() {
++    // Gather all diffs: name, due date, entry date
++    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
++    const dueDateDiffs = this.extractDueDateDifferences()
++    const entryDateDiffs = this.extractEntryDateDifferences()
++
++    // Build a map: { journalId, assignmentId } => { name, dueDate, entryDate }
++    const updateMap = new Map()
++
++    // Helper to get key
++    const getKey = (journalId, assignmentId) => `${journalId}::${assignmentId}`
++
++    // Add name diffs
++    assignmentNameDiffs.forEach(subjectDiff => {
++      const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
++      if (!subject || !Array.isArray(subject.assignments)) return
++      subjectDiff.nameDiffs.forEach(nameDiff => {
++        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
++        if (!assignment) return
++        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
++        if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
++        updateMap.get(key).nameEt = nameDiff.kriit
++      })
++    })
++
++    // Add due date diffs
++    dueDateDiffs.forEach(diff => {
++      // Find subject and assignment
++      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
++      if (!subject) return
++      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
++      if (!assignment) return
++      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
++      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
++      updateMap.get(key).homeworkDuedate = diff.kriit
++    })
++
++    // Add entry date diffs
++    entryDateDiffs.forEach(diff => {
++      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
++      if (!subject) return
++      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
++      if (!assignment) return
++      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
++      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
++      updateMap.get(key).entryDate = diff.kriit
++    })
++
++    // For each assignment, send a single PUT to Tahvel
++    for (const update of updateMap.values()) {
++      const { journalId, assignmentId, nameEt, homeworkDuedate, entryDate } = update
++      let currentEntry
++      try {
++        currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
++      } catch (error) {
++        Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
++        continue
++      }
++      if (!currentEntry) {
++        Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
++        continue
++      }
++      // Build the PUT payload by copying all fields, updating changed ones
++      const payload = { ...currentEntry }
++      if (nameEt && typeof nameEt === 'string' && nameEt.trim() !== '' && nameEt !== currentEntry.nameEt) {
++        payload.nameEt = nameEt
++      }
++      if (homeworkDuedate) {
++        // Format as 'YYYY-MM-DDT00:00:00Z' if not already
++        if (/^\d{4}-\d{2}-\d{2}$/.test(homeworkDuedate)) {
++          payload.homeworkDuedate = `${homeworkDuedate}T00:00:00Z`
++        } else {
++          payload.homeworkDuedate = homeworkDuedate
++        }
++      }
++      if (entryDate) {
++        // Format as 'YYYY-MM-DDT00:00:00Z' if not already
++        if (/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
++          payload.entryDate = `${entryDate}T00:00:00Z`
++        } else {
++          payload.entryDate = entryDate
++        }
++      }
++      payload.journalEntryCapacityTypes = ['MAHT_i']
++      // Optionally add homework field with Kriit link
++      let kriitAssignmentUrl = ''
++      const groupCode = currentEntry.groupName || ''
++      kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
++      payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
++      Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
++      try {
++        await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
++        Logger.info(`✨ Updated assignment in Tahvel: ${assignmentId} with changes: ${JSON.stringify(update)}`)
++      } catch (error) {
++        Logger.error(`Failed to update assignment for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
++      }
++    }
++  }
++  /**
++   * Extract assignment name differences from Kriit response
++   */
++  extractAssignmentNameDifferences() {
++    Logger.info('✨ [extractAssignmentNameDifferences] Called')
++    const groupedDiffs = []
++    if (!this.differences || !Array.isArray(this.differences)) {
++      Logger.info('✨ [extractAssignmentNameDifferences] No differences array found.')
++      return groupedDiffs
++    }
++    this.differences.forEach(subject => {
++      if (subject && Array.isArray(subject.assignments)) {
++        const nameDiffs = subject.assignments
++          .filter(a => {
++            if (a.assignmentName && typeof a.assignmentName === 'object') {
++              // Only show difference if both are present and different
++              return a.assignmentName.kriit && a.assignmentName.Tahvel && a.assignmentName.kriit !== a.assignmentName.Tahvel
++            }
++            return false
++          })
++          .map(a => ({
++            kriit: a.assignmentName.kriit,
++            Tahvel: a.assignmentName.Tahvel,
++            assignmentExternalId: a.assignmentExternalId
++          }))
++        if (nameDiffs.length > 0) {
++          groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
++        }
++      }
++    })
++    Logger.info(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
++    return groupedDiffs
++  }
++
++  extractDueDateDifferences() {
++    const dueDateDiffs = []
++    if (!this.differences || !Array.isArray(this.differences)) {
++      return dueDateDiffs
++    }
++    this.differences.forEach(subjectDiff => {
++      if (!Array.isArray(subjectDiff.assignments)) return
++      subjectDiff.assignments.forEach(assignment => {
++        if (assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object') {
++          // Only show difference if both are present and different
++          if (
++            assignment.assignmentDueAt.kriit &&
++            assignment.assignmentDueAt.Tahvel &&
++            assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
++          ) {
++            let assignmentName = assignment.assignmentName
++            if (assignmentName && typeof assignmentName === 'object') {
++              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
++            }
++            dueDateDiffs.push({
++              assignmentExternalId: assignment.assignmentExternalId,
++              assignmentName,
++              kriit: assignment.assignmentDueAt.kriit,
++              Tahvel: assignment.assignmentDueAt.Tahvel,
++              subjectName: subjectDiff.subjectName || '',
++              subjectExternalId: subjectDiff.subjectExternalId || ''
++            })
++          }
++        }
++      })
++    })
++    return dueDateDiffs
++  }
++
++  /**
++   * Send only outcome entries (SISSEKANNE_O) to Kriit API
++   */
++  async sendOutcomeEntriesToKriit() {
++    if (!this.api || !this.api.kriit || !this.api.kriit.authToken) {
++      Logger.error('No Kriit API token set')
++      return
++    }
++    if (!this.journalLinks || this.journalLinks.length === 0) {
++      Logger.warning('No journal links available for outcome sync')
++      return
++    }
++    Logger.debug('Triggering outcome sync (outcome entries only)')
++    await sendOutcomeEntriesToKriit(this.api, this.journalLinks)
++  }
+   constructor() {
+     // Define selectors for journal links - using the most reliable selector first
+     const journalLinkSelectors = [
+@@ -28,7 +250,7 @@ class JournalListSyncFeature extends BaseFeature {
+       // Fallback selectors in case the primary one doesn't work
+       '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
+       '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
+-      'a[href^="/#/journal/"]',
++      'a[href^="/#/journal/"]'
+     ]
+ 
+     // Match the journal list page URL pattern and pass required selectors
+@@ -39,13 +261,14 @@ class JournalListSyncFeature extends BaseFeature {
+     this.isLoading = false
+     this.error = null
+     this.journalLinks = null
+-
+-    // Global student cache to avoid redundant API calls across journals
+-    this.globalStudentCache = {}
++    this.isActive = false
+ 
+     // Global teacher cache to avoid redundant API calls across journals
+     this.globalTeacherCache = {}
+ 
++    // Mapping from journalStudentId to studentId for API cache lookups
++    this.journalStudentIdToStudentId = {}
++
+     // Set up message listener for settings changes using global service
+     setupKriitMessageListener(this)
+   }
+@@ -55,9 +278,19 @@ class JournalListSyncFeature extends BaseFeature {
+    * @param {NodeList} elements - The found elements (journal links)
+    */
+   onActivate(elements) {
++    this.isActive = true
++    // Only activate if the URL is exactly 'journals?_menu'
++    const url = window.location.hash.replace(/^#\/?/, '').split('&')[0]
++    if (url !== 'journals?_menu') {
++      Logger.debug('JournalListSync not activated: URL does not match journals?_menu')
++      return
++    }
++
+     // Log a specific message for this feature's activation
+     Logger.feature(this.name, 'Journal List Sync feature initialized')
+ 
++    console.log('[DEBUG] onActivate: elements', elements)
++
+     // First check if Kriit support is enabled
+     if (!this.api.kriit.enabled) {
+       Logger.debug('Kriit support is disabled - JournalListSync feature will not be activated')
+@@ -71,6 +304,7 @@ class JournalListSyncFeature extends BaseFeature {
+       // If we have journal links from the observer, store them
+       if (elements && elements.length > 0) {
+         this.journalLinks = elements
++        console.log('[DEBUG] onActivate: journalLinks set', this.journalLinks)
+         this.fetchJournalData()
+       } else {
+         // This case should not happen anymore with the fixed observer
+@@ -90,6 +324,7 @@ class JournalListSyncFeature extends BaseFeature {
+    * Called when the feature is deactivated
+    */
+   onDeactivate() {
++    this.isActive = false
+     // Call parent method to clean up observers
+     super.onDeactivate()
+ 
+@@ -120,11 +355,13 @@ class JournalListSyncFeature extends BaseFeature {
+     this.journalLinks = elements
+ 
+     // Log the first 3 links for debugging
+-    Array.from(elements).slice(0, 3).forEach((el, i) => {
+-      const href = el.getAttribute('href') || el.getAttribute('ng-href') || ''
+-      const text = el.textContent.trim()
+-      Logger.debug(`Link ${i + 1}: href=${href}, text=${text}`)
+-    })
++    Array.from(elements)
++      .slice(0, 3)
++      .forEach((el, i) => {
++        const href = el.getAttribute('href') || el.getAttribute('ng-href') || ''
++        const text = el.textContent.trim()
++        Logger.debug(`Link ${i + 1}: href=${href}, text=${text}`)
++      })
+   }
+ 
+   /**
+@@ -143,6 +380,7 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   async fetchJournalData() {
+     try {
++      console.log('[DEBUG] fetchJournalData called')
+       this.isLoading = true
+       this.updateUI()
+ 
+@@ -157,6 +395,8 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+       // Collect data from Tahvel
+       const journalData = await this.collectJournalData()
++      // Store Tahvel assignments for due date diff feature
++      if (!window.journalListSync) window.journalListSync = {}
+ 
+       // Validate data before sending
+       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
+@@ -174,6 +414,9 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+       // Make the API call directly
+       await this.proceedWithKriitApiCall(journalData)
++
++      // Automatically sync outcome entries (SISSEKANNE_O) to Kriit
++      await this.sendOutcomeEntriesToKriit()
+     } catch (error) {
+       Logger.error('Error fetching journal data:', error)
+       this.isLoading = false
+@@ -235,14 +478,13 @@ class JournalListSyncFeature extends BaseFeature {
+         }
+ 
+         const name = link.textContent.trim()
+-        Logger.debug(`Found journal: ${name} (ID: ${id})`)
+ 
+         try {
+           const [journalInfo, journalEntries, journalEntriesWithGrades, journalStudents] = await Promise.all([
+             this.getJournalInfo(id),
+             this.getJournalEntries(id),
+             this.getJournalEntriesWithGrades(id),
+-            this.getJournalStudents(id),
++            this.getJournalStudents(id)
+           ])
+ 
+           if (!journalInfo) {
+@@ -254,34 +496,45 @@ class JournalListSyncFeature extends BaseFeature {
+             return null
+           }
+           if (!Array.isArray(journalStudents)) {
+-            Logger.warning(`Could not get students for journal ${id}`)
+             return null
+           }
+ 
+           if (journalInfo.studentGroups) {
+-            Logger.debug(
+-              `Journal ${id} student groups:`,
+-              JSON.stringify(journalInfo.studentGroups),
+-            )
++            Logger.debug(`Journal ${id} student groups:`, JSON.stringify(journalInfo.studentGroups))
+           }
+ 
+           const studentDetailsMap = await this.processStudentData(id, journalStudents)
+           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
+-          const assignments = this.extractAssignmentsFromEntries(
+-            journalEntries,
+-            studentMap,
+-            journalStudents,
+-            studentDetailsMap,
+-            journalEntriesWithGrades,
+-          )
++
++          // Merge homeworkDuedate and other missing fields from journalEntries into journalEntriesWithGrades
++          let mergedEntries
++          if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0 && journalEntries && journalEntries.length > 0) {
++            // Create a map of /journalEntry entries by id
++            const entryById = {}
++            journalEntries.forEach(e => {
++              if (e && e.id) entryById[e.id] = e
++            })
++            // For each entry in journalEntriesWithGrades, copy homeworkDuedate if present in /journalEntry
++            mergedEntries = journalEntriesWithGrades.map(e => {
++              if (e && e.id && entryById[e.id]) {
++                // Only copy homeworkDuedate if not present or is undefined/null
++                if (!e.homeworkDuedate && entryById[e.id].homeworkDuedate) {
++                  return { ...e, homeworkDuedate: entryById[e.id].homeworkDuedate }
++                }
++              }
++              return e
++            })
++          } else if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0) {
++            mergedEntries = journalEntriesWithGrades
++          } else {
++            mergedEntries = journalEntries
++          }
++          const assignments = this.extractAssignmentsFromEntries(mergedEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
+ 
+           let teacherName = ''
+           let teacherPersonalCode = ''
+ 
+-          if (
+-            journalInfo.journalTeachers &&
+-            journalInfo.journalTeachers.length > 0
+-          ) {
++          if (journalInfo.journalTeachers && journalInfo.journalTeachers.length > 0) {
+             const teacher = journalInfo.journalTeachers[0]
+             teacherName = teacher.nameEt || teacher.fullname || ''
+ 
+@@ -297,8 +550,6 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+                   // Also store in instance cache for backward compatibility
+                   this.globalTeacherCache[teacherId] = teacherData
+-
+-                  Logger.debug(`Got teacher personal code for ${teacherName} (ID: ${teacherId}): ${teacherPersonalCode}`)
+                 }
+               } catch (error) {
+                 Logger.warning(`Failed to get teacher personal code: ${error.message}`)
+@@ -308,16 +559,9 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+           // Handle multigroup journals by creating separate entries for each group
+           const studentGroups = []
+-          if (
+-            Array.isArray(journalInfo.studentGroups) &&
+-            journalInfo.studentGroups.length > 0
+-          ) {
++          if (Array.isArray(journalInfo.studentGroups) && journalInfo.studentGroups.length > 0) {
+             studentGroups.push(...journalInfo.studentGroups)
+-          } else if (
+-            Array.isArray(journalStudents) &&
+-            journalStudents.length > 0 &&
+-            journalStudents[0].studentGroup
+-          ) {
++          } else if (Array.isArray(journalStudents) && journalStudents.length > 0 && journalStudents[0].studentGroup) {
+             studentGroups.push(journalStudents[0].studentGroup)
+           }
+ 
+@@ -329,7 +573,7 @@ class JournalListSyncFeature extends BaseFeature {
+               groupName: '',
+               teacherPersonalCode,
+               teacherName,
+-              assignments,
++              assignments
+             }
+           }
+ 
+@@ -338,52 +582,33 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+           // Debug logging for multigroup journals
+           if (studentGroups.length > 1) {
+-            Logger.debug(`Processing multigroup journal ${journalInfo.nameEt} with groups: ${studentGroups.join(', ')}`)
+-            Logger.debug(`Total assignments: ${assignments.length}`)
+             if (assignments.length > 0) {
+               Logger.debug(`First assignment "${assignments[0].assignmentName}" has ${assignments[0].results.length} students`)
+             }
+           }
+ 
+           for (const groupName of studentGroups) {
+-            Logger.debug(`\n=== Processing group: ${groupName} ===`)
+-
+             // Filter assignments to include only students from this group
+-            const filteredAssignments = assignments.map(assignment => {
+-              Logger.debug(`Processing assignment "${assignment.assignmentName}" with ${assignment.results.length} total students`)
+-
+-              const filteredResults = assignment.results.filter(result => {
+-                // Find the student in journalStudents to get their group
+-                const student = journalStudents.find(js => {
+-                  const studentId = studentMap.journalStudentIdToId[js.id.toString()]
+-                  const personalCode = studentMap.idToPersonalCode[studentId]
+-                  const matches = personalCode === result.studentPersonalCode
+-
+-                  if (matches) {
+-                    Logger.debug(`  Student ${result.studentPersonalCode} (${result.studentName}) belongs to group: ${js.studentGroup}`)
+-                  }
+-
+-                  return matches
++            const filteredAssignments = assignments
++              .map(assignment => {
++                const filteredResults = assignment.results.filter(result => {
++                  // Find the student in journalStudents to get their group
++                  const student = journalStudents.find(js => {
++                    const studentId = studentMap.journalStudentIdToId[js.id.toString()]
++                    const personalCode = studentMap.idToPersonalCode[studentId]
++                    // No-op block removed (was empty)
++                    return personalCode === result.studentPersonalCode
++                  })
++                  // Include student if they belong to this group
++                  // No-op block removed (was empty)
++                  return student && student.studentGroup === groupName
+                 })
+-
+-                // Include student if they belong to this group
+-                const belongsToGroup = student && student.studentGroup === groupName
+-                if (student && !belongsToGroup) {
+-                  Logger.debug(`  Excluding student ${result.studentPersonalCode} (group: ${student.studentGroup}, expected: ${groupName})`)
++                return {
++                  ...assignment,
++                  results: filteredResults
+                 }
+-
+-                return belongsToGroup
+               })
+-
+-              Logger.debug(`  Filtered results for group ${groupName}: ${filteredResults.length} students`)
+-
+-              return {
+-                ...assignment,
+-                results: filteredResults
+-              }
+-            }).filter(assignment => assignment.results.length > 0) // Only include assignments with students
+-
+-            Logger.debug(`Group ${groupName} will have ${filteredAssignments.length} assignments`)
++              .filter(assignment => assignment.results.length > 0) // Only include assignments with students
+ 
+             groupJournalEntries.push({
+               subjectName: journalInfo.nameEt || name,
+@@ -391,7 +616,7 @@ class JournalListSyncFeature extends BaseFeature {
+               groupName,
+               teacherPersonalCode,
+               teacherName,
+-              assignments: filteredAssignments,
++              assignments: filteredAssignments
+             })
+           }
+ 
+@@ -404,9 +629,7 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+       const results = await Promise.all(journalPromises)
+       // Flatten the results as some journals may return arrays of group entries
+-      const journalData = results
+-        .filter(r => r !== null)
+-        .flatMap(result => Array.isArray(result) ? result : [result])
++      const journalData = results.filter(r => r !== null).flatMap(result => (Array.isArray(result) ? result : [result]))
+ 
+       Logger.debug(`Collected data for ${journalData.length} journals`)
+       return journalData
+@@ -427,24 +650,40 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+     // Process each journal student to get their personal code
+     if (journalStudents && Array.isArray(journalStudents)) {
+-      Logger.debug(`Journal ${journalId}: Processing ${journalStudents.length} students`)
+-
+       // Initialize pending requests tracker if not exists
+       if (!this.pendingStudentRequests) {
+         this.pendingStudentRequests = new Map()
+       }
+ 
+       // Create an array to hold all promises
+-      const studentPromises = journalStudents.map(async (journalStudent) => {
+-        if (!journalStudent || !journalStudent.studentId) return null;
+-
+-        // Check global runtime cache first (fastest)
+-        if (this.globalStudentCache[journalStudent.studentId]) {
+-          Logger.debug(`Student ${journalStudent.studentId} found in global cache - reusing`)
+-          return {
+-            studentId: journalStudent.studentId,
+-            data: this.globalStudentCache[journalStudent.studentId]
++      const studentPromises = journalStudents.map(async journalStudent => {
++        if (!journalStudent || !journalStudent.studentId) return null
++
++        // Check if we already have this student in the API cache
++        try {
++          const studentDetails = await this.getStudentDetails(journalStudent.studentId)
++          if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
++            const isActive = studentDetails.status === 'OPPURSTAATUS_O'
++            const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
++
++            const cachedStudent = {
++              personalCode: studentDetails.person.idcode,
++              name: journalStudent.fullname || `${journalStudent.firstname} ${journalStudent.lastname}`,
++              isActive: isActive,
++              isDeleted: isDeleted
++            }
++
++            // Store the mapping for later lookups
++            this.journalStudentIdToStudentId[journalStudent.id] = journalStudent.studentId
++
++            return {
++              studentId: journalStudent.studentId,
++              data: cachedStudent
++            }
+           }
++        } catch (error) {
++          // If not in cache or error, continue to fetch it below
++          Logger.debug(`Student ${journalStudent.studentId} not in API cache, will fetch`)
+         }
+ 
+         // Check if there's already a pending request for this student
+@@ -463,7 +702,7 @@ class JournalListSyncFeature extends BaseFeature {
+         const cacheKey = `student_${journalStudent.studentId}_details`
+ 
+         // Define the fetch function to get student details if not in cache
+-        const fetchStudentDetails = async () => {
++        const fetchStudentDetails = async() => {
+           try {
+             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
+             const details = await this.getStudentDetails(journalStudent.studentId)
+@@ -490,7 +729,7 @@ class JournalListSyncFeature extends BaseFeature {
+         }
+ 
+         // Create the fetch promise and store it in pending requests
+-        const fetchPromise = (async () => {
++        const fetchPromise = (async() => {
+           try {
+             const studentData = await cacheService.getOrFetch(
+               cacheKey,
+@@ -499,12 +738,11 @@ class JournalListSyncFeature extends BaseFeature {
+             )
+ 
+             if (studentData) {
+-              // Store in global runtime cache for faster access
+-              // Store by both studentId and journalStudent.id for different lookup scenarios
+-              this.globalStudentCache[journalStudent.studentId] = studentData
+-              this.globalStudentCache[journalStudent.id] = studentData
+-
+-              Logger.debug(`Added student to global cache with keys [${journalStudent.studentId}, ${journalStudent.id}]: ${studentData.personalCode} (${studentData.name})`)
++              // Store the mapping from journalStudentId to studentId for API cache lookups
++              this.journalStudentIdToStudentId[journalStudent.id] = journalStudent.studentId
++              Logger.debug(
++                `✓ Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${studentData.personalCode} - ${studentData.name})`
++              )
+             }
+ 
+             return studentData
+@@ -533,18 +771,12 @@ class JournalListSyncFeature extends BaseFeature {
+       // Process all students in parallel
+       const results = await Promise.all(studentPromises)
+ 
+-      // Count successes for logging
+-      let successCount = 0
+-
+       // Process results and add to studentDetailsMap
+       for (const result of results) {
+         if (result && result.data) {
+           studentDetailsMap[result.studentId] = result.data
+-          successCount++
+         }
+       }
+-
+-      Logger.debug(`Journal ${journalId}: Successfully processed ${successCount} out of ${journalStudents.length} student records`)
+     }
+ 
+     return studentDetailsMap
+@@ -554,6 +786,7 @@ class JournalListSyncFeature extends BaseFeature {
+    * Update the UI based on current state
+    */
+   updateUI() {
++    if (!this.isActive) return
+     // Don't remove banner if we're currently syncing (loading state)
+     if (!this.isLoading) {
+       bannerService.removeBanner()
+@@ -590,6 +823,8 @@ class JournalListSyncFeature extends BaseFeature {
+    * @param {number} total - Total items
+    */
+   updateProgressUI(current, total) {
++    if (!this.isActive) return
++    // Show progress banner during sync
+     bannerService.updateProgressUI(current, total, 'Sünkroniseerin hindeid Kriidist Tahvlisse...')
+   }
+ 
+@@ -598,17 +833,12 @@ class JournalListSyncFeature extends BaseFeature {
+    * @param {string} message - Success message
+    */
+   showSuccessBanner(message) {
++    if (!this.isActive) return
++    // Show success banner with refresh and close actions
+     bannerService.showSuccessBanner(message, {
+       onRefresh: () => this.fetchJournalData(),
+       onClose: () => bannerService.removeBanner()
+     })
+-
+-    // Force a refresh of the data after 3 seconds
+-    Logger.debug('Setting up forced refresh in 3 seconds')
+-    setTimeout(() => {
+-      Logger.info('Forced refresh triggered')
+-      this.fetchJournalData()
+-    }, 3000)
+   }
+ 
+   /**
+@@ -619,15 +849,17 @@ class JournalListSyncFeature extends BaseFeature {
+       onRetry: () => this.fetchJournalData(),
+       onClearCache: () => {
+         this.clearCache().then(result => {
+-          alert(`Puhastatud ${result.total} vahemälu kirjet:\n` +
+-            `- API vahemälu: ${result.api} kirjet\n` +
+-            `- Funktsiooni vahemälu: ${result.feature} kirjet\n` +
+-            `- Mälu vahemälu: ${result.runtime} kirjet\n\n` +
+-            'Klõpsake "Proovi uuesti" värske andmete saamiseks.')
++          alert(
++            `Puhastatud ${result.total} vahemälu kirjet:\n` +
++              `- API vahemälu: ${result.api} kirjet\n` +
++              `- Funktsiooni vahemälu: ${result.feature} kirjet\n` +
++              `- Mälu vahemälu: ${result.runtime} kirjet\n\n` +
++              'Klõpsake "Proovi uuesti" värske andmete saamiseks.'
++          )
+         })
+       },
+       onSettings: () => this.resetKriitApiToken(),
+-      onRefresh: () => window.location.reload(),
++      onRefresh: () => window.location.reload()
+     }
+ 
+     journalSyncBannerService.showSyncErrorBanner(this.error, options)
+@@ -655,11 +887,45 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   showDifferencesBanner() {
+     const totalDifferences = this.countTotalDifferences()
++    // Log the full differences array to inspect due date and other diffs
++    console.log('[DEBUG] showDifferencesBanner: this.differences =', JSON.stringify(this.differences, null, 2))
++
++    // Print each detected grade difference with details
++    if (Array.isArray(this.differences)) {
++      this.differences.forEach(subject => {
++        if (subject && Array.isArray(subject.assignments)) {
++          subject.assignments.forEach(assignment => {
++            if (assignment && Array.isArray(assignment.results)) {
++              assignment.results.forEach(result => {
++                const tahvelGrade = result.currentGrade || '(puudub)'
++                const kriitGrade = result.grade || '(puudub)'
++                // Only log if there is a difference and kriitGrade is not null/empty
++                if (kriitGrade !== '(puudub)' && tahvelGrade !== kriitGrade) {
++                  console.log(
++                    `[GRADE DIFF] Subject: ${subject.subjectName}, Assignment: ${assignment.assignmentName}, Student: ${result.studentName || '(nimi puudub)'}, Tahvel: ${tahvelGrade}, Kriit: ${kriitGrade}`
++                  )
++                }
++              })
++            }
++          })
++        }
++      })
++    }
+     journalSyncBannerService.showDifferencesBanner(
+       totalDifferences,
+-      () => this.syncWithKriit(),
++      async() => {
++        await this.syncAssignmentNameDifferences()
++        await this.syncWithKriit()
++        await this.fetchJournalData()
++      },
+       () => this.fetchJournalData(),
+-      (container) => this.renderDifferences(container)
++      container => {
++        const assignmentNameDiffs = this.extractAssignmentNameDifferences()
++        const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
++        const dueDateDiffs = this.extractDueDateDifferences()
++        const entryDateDiffs = this.extractEntryDateDifferences()
++        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
++      }
+     )
+   }
+ 
+@@ -682,7 +948,7 @@ class JournalListSyncFeature extends BaseFeature {
+     }
+ 
+     // Save token to chrome.storage.sync
+-    chrome.storage.sync.set({ 'OA_kriitApiToken': token }, () => {
++    chrome.storage.sync.set({ OA_kriitApiToken: token }, () => {
+       // Update API service
+       this.api.kriit.setAuthToken(token)
+ 
+@@ -693,8 +959,6 @@ class JournalListSyncFeature extends BaseFeature {
+     })
+   }
+ 
+-
+-
+   /**
+    * Reset Kriit API token and prompt for a new one
+    */
+@@ -721,11 +985,9 @@ class JournalListSyncFeature extends BaseFeature {
+    * @returns {Promise<Object>} Number of cache entries cleared
+    */
+   async clearCache() {
+-    // Clear the global runtime caches first
+-    const studentRuntimeCacheSize = Object.keys(this.globalStudentCache).length
++    // Clear the teacher runtime cache
+     const teacherRuntimeCacheSize = Object.keys(this.globalTeacherCache).length
+ 
+-    this.globalStudentCache = {}
+     this.globalTeacherCache = {}
+ 
+     // Clear the module-level teacher cache too
+@@ -740,11 +1002,10 @@ class JournalListSyncFeature extends BaseFeature {
+     // Clear all caches using the CacheService
+     const cacheCount = await cacheService.clearCache()
+ 
+-    const totalCleared = studentRuntimeCacheSize + teacherRuntimeCacheSize + moduleTeacherCacheSize + cacheCount
++    const totalCleared = teacherRuntimeCacheSize + moduleTeacherCacheSize + cacheCount
+ 
+     Logger.debug(`Cleared ${totalCleared} total cache entries:`)
+     Logger.debug(`- Cache service: ${cacheCount} entries`)
+-    Logger.debug(`- Student runtime cache: ${studentRuntimeCacheSize} entries`)
+     Logger.debug(`- Teacher runtime cache: ${teacherRuntimeCacheSize} entries`)
+     Logger.debug(`- Module teacher cache: ${moduleTeacherCacheSize} entries`)
+ 
+@@ -752,13 +1013,12 @@ class JournalListSyncFeature extends BaseFeature {
+       total: totalCleared,
+       api: cacheCount,
+       feature: 0, // No longer separately tracked as we use CacheService for everything
+-      runtime: studentRuntimeCacheSize + teacherRuntimeCacheSize + moduleTeacherCacheSize,
+-      students: studentRuntimeCacheSize,
+-      teachers: teacherRuntimeCacheSize + moduleTeacherCacheSize,
++      runtime: teacherRuntimeCacheSize + moduleTeacherCacheSize,
++      students: 0, // Students now handled by CacheService
++      teachers: teacherRuntimeCacheSize + moduleTeacherCacheSize
+     }
+   }
+ 
+-
+   /**
+    * Proceed with the actual Kriit API call
+    * @param {Array} [providedJournalData] - Optional journal data to use instead of collecting fresh data
+@@ -769,7 +1029,7 @@ class JournalListSyncFeature extends BaseFeature {
+       this.updateUI()
+ 
+       // Use provided data or collect fresh data
+-      const journalData = providedJournalData || await this.collectJournalData()
++      const journalData = providedJournalData || (await this.collectJournalData())
+ 
+       // Check if we have valid data
+       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
+@@ -795,17 +1055,20 @@ class JournalListSyncFeature extends BaseFeature {
+       try {
+         // Make the actual API call
+         const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
++        // Store Kriit assignments for due date diff feature
++        if (!window.journalListSync) window.journalListSync = {}
+ 
+         // Log the full response for debugging
+         Logger.debug('Raw response from Kriit:', JSON.stringify(response))
++        console.log('[DEBUG] Raw diff response from backend:', JSON.stringify(response, null, 2))
+ 
+         // Process the response directly
+-
+-        // Process the response
+         if (response && Array.isArray(response)) {
++          console.log('[DEBUG] Setting this.differences to:', JSON.stringify(response, null, 2))
+           this.differences = response
+           Logger.debug('Response is an array with', response.length, 'items')
+         } else if (response && response.data && Array.isArray(response.data)) {
++          console.log('[DEBUG] Setting this.differences to:', JSON.stringify(response.data, null, 2))
+           this.differences = response.data
+           Logger.debug('Response has a data property with', response.data.length, 'items')
+         } else if (response && response.status === 200) {
+@@ -816,12 +1079,20 @@ class JournalListSyncFeature extends BaseFeature {
+           // Show a success message to the user
+           this.isLoading = false
+           this.error = 'Kõik hinded on juba sünkroonis. Pole midagi sünkroniseerida.'
++          // Ensure global differences is cleared
++          if (!window.journalListSync) window.journalListSync = {}
++          window.journalListSync.differences = this.differences
+           this.updateUI()
+           return
+         } else {
++          console.log('[DEBUG] Backend response is not an array:', response)
+           Logger.warning('Unexpected response format from Kriit:', response)
+           this.differences = []
+         }
++
++        // Always update global differences after setting this.differences
++        if (!window.journalListSync) window.journalListSync = {}
++        window.journalListSync.differences = this.differences
+       } catch (error) {
+         Logger.error('Error calling Kriit API:', error)
+ 
+@@ -851,8 +1122,28 @@ class JournalListSyncFeature extends BaseFeature {
+                 const matchingAssignment = matchingSubject.assignments.find(a => a.assignmentExternalId === diffAssignment.assignmentExternalId)
+ 
+                 if (matchingAssignment) {
+-                  // Add assignment name from our data
+-                  diffAssignment.assignmentName = matchingAssignment.assignmentName
++                  const kriitAssignment = diffAssignment
++                  const tahvelAssignment = matchingAssignment
++
++                  const compareAndCreateDiff = fieldName => {
++                    const kriitValue = kriitAssignment[fieldName]
++                    const tahvelValue = tahvelAssignment[fieldName]
++
++                    // Normalize undefined to null for comparison
++                    const normKriit = kriitValue === undefined ? null : kriitValue
++                    const normTahvel = tahvelValue === undefined ? null : tahvelValue
++
++                    if (normKriit !== normTahvel) {
++                      diffAssignment[fieldName] = { kriit: kriitValue, Tahvel: tahvelValue }
++                    } else {
++                      // If they are the same, just make sure the value is set.
++                      diffAssignment[fieldName] = tahvelValue
++                    }
++                  }
++
++                  compareAndCreateDiff('assignmentName')
++                  compareAndCreateDiff('assignmentDueAt')
++                  compareAndCreateDiff('assignmentEntryDate')
+ 
+                   // Process each result
+                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
+@@ -862,6 +1153,7 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+                       if (matchingResult) {
+                         // Add student name and active status from our data
++                        // Kriit response for result has studentName, but we'll trust Tahvel's for consistency.
+                         diffResult.studentName = matchingResult.studentName
+                         diffResult.studentIsActive = matchingResult.studentIsActive
+ 
+@@ -896,16 +1188,15 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+     if (!this.differences || !Array.isArray(this.differences)) return 0
+ 
++    // Count grade differences
+     this.differences.forEach(subject => {
+       if (subject && Array.isArray(subject.assignments)) {
+         subject.assignments.forEach(assignment => {
+           if (assignment && Array.isArray(assignment.results)) {
+-            // Only count results that have different grades
+             assignment.results.forEach(result => {
+               const tahvelGrade = result.currentGrade || '(puudub)'
+               const kriitGrade = result.grade || '(puudub)'
+-
+-              // Direct comparison since both should now be numeric
++              // Count as difference if either grade is missing or different
+               if (tahvelGrade !== kriitGrade) {
+                 count++
+               }
+@@ -915,173 +1206,23 @@ class JournalListSyncFeature extends BaseFeature {
+       }
+     })
+ 
+-    return count
+-  }
+-
+-  /**
+-   * Render differences in the banner
+-   * @param {Element} container - Container element to render differences in
+-   */
+-  renderDifferences(container) {
+-    if (!this.differences || !container) return
+-
+-    const differencesContainer = journalSyncBannerService.createDifferencesContainer(container)
+-
+-    // Group subjects by category
+-    const categories = {}
+-
+-    // Organize subjects by their names
+-    if (Array.isArray(this.differences)) {
+-      this.differences.forEach(subject => {
+-        if (!subject.subjectName) return
+-
+-        // Create category if it doesn't exist
+-        if (!categories[subject.subjectName]) {
+-          categories[subject.subjectName] = []
+-        }
+-
+-        // Add subject to its category
+-        categories[subject.subjectName].push(subject)
+-      })
+-    }
+-
+-    // If we have no categories, show a message
+-    if (Object.keys(categories).length === 0) {
+-      journalSyncBannerService.createNoDifferencesMessage(differencesContainer, 'Kõik hinded on juba sünkroonis! Tahvli ja Kriidi vahel pole erinevusi.')
+-      return // Exit early if no differences
+-    }
+-
+-    // Process each category to check if it has any differences
+-    const categoriesWithDifferences = []
+-
+-    Object.entries(categories).forEach(([categoryName, subjects]) => {
+-      if (subjects.length === 0) return
+-
+-      // Check if any subject in this category has assignments with differences
+-      let categoryHasDifferences = false
+-
+-      // Create a temporary container to check if any assignments render content
+-      const tempContainer = document.createElement('div')
+-
+-      // Try to render each subject's assignments
+-      subjects.forEach(subject => {
+-        if (Array.isArray(subject.assignments)) {
+-          subject.assignments.forEach(assignment => {
+-            // Check if this assignment has any differences by trying to render it
+-            const beforeCount = tempContainer.childElementCount
+-            this.renderAssignment(assignment, tempContainer)
+-            const afterCount = tempContainer.childElementCount
+-
+-            // If new elements were added, this assignment has differences
+-            if (afterCount > beforeCount) {
+-              categoryHasDifferences = true
+-            }
+-          })
+-        }
+-      })
+-
+-      // If this category has differences, add it to our list
+-      if (categoryHasDifferences) {
+-        categoriesWithDifferences.push([categoryName, subjects])
++    // Count assignment name differences
++    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
++    assignmentNameDiffs.forEach(subject => {
++      if (subject.nameDiffs && subject.nameDiffs.length > 0) {
++        count += subject.nameDiffs.length
+       }
+     })
+ 
+-    // If no categories have differences, show a message
+-    if (categoriesWithDifferences.length === 0) {
+-      journalSyncBannerService.createNoDifferencesMessage(differencesContainer, 'Kõik hinded on juba sünkroonis! Tahvli ja Kriidi vahel pole erinevusi.')
+-      return
+-    }
+-
+-    // Render each category that has differences
+-    categoriesWithDifferences.forEach(([categoryName, subjects]) => {
+-      // Create category section
+-      const categorySection = journalSyncBannerService.createCategorySection(differencesContainer, categoryName)
+-
+-      // Render subjects in this category
+-      subjects.forEach(subject => {
+-        // Render assignments for this subject
+-        if (Array.isArray(subject.assignments)) {
+-          subject.assignments.forEach(assignment => {
+-            this.renderAssignment(assignment, categorySection)
+-          })
+-        } else {
+-          Logger.debug('No assignments found for subject', subject)
+-        }
+-      })
+-    })
+-  }
+-
+-  /**
+-   * Render a single assignment with its differences
+-   * @param {Object} assignment Assignment data
+-   * @param {Element} container Container element
+-   */
+-  renderAssignment(assignment, container) {
+-    // Filter results to only show students with differences
+-    const resultsWithDifferences = Array.isArray(assignment.results) ?
+-      assignment.results.filter(result => {
+-        const tahvelGrade = result.currentGrade || '(puudub)'
+-        const kriitGrade = result.grade || '(puudub)'
+-
+-        // Skip null/empty grades from Kriit entirely
+-        if (result.grade === null || result.grade === undefined || result.grade === '') {
+-          return false // Don't show in differences
+-        }
+-
+-        // Direct comparison since both should now be numeric
+-        return tahvelGrade !== kriitGrade
+-      }) :
+-      []
++    // Count due date differences
++    const dueDateDiffs = this.extractDueDateDifferences()
++    count += dueDateDiffs.length
+ 
+-    // Skip this assignment if there are no differences
+-    if (resultsWithDifferences.length === 0) {
+-      return
+-    }
++    // Count entry date differences
++    const entryDateDiffs = this.extractEntryDateDifferences()
++    count += entryDateDiffs.length
+ 
+-    // Create assignment section
+-    const assignmentSection = domService.createAndInsertElement('div', {
+-      classList: ['ta-sync-assignment-section'],
+-    }, '', container)
+-
+-    // Add assignment title
+-    // Truncate long titles
+-    let formattedTitle = assignment.assignmentName || `Assignment ID: ${assignment.assignmentExternalId}`
+-    if (formattedTitle.length > 50) {
+-      formattedTitle = formattedTitle.substring(0, 47) + '...'
+-    }
+-
+-    domService.createAndInsertElement('h4', {
+-      classList: ['ta-sync-assignment-title'],
+-    }, formattedTitle, assignmentSection)
+-
+-    // Create results container
+-    const resultsContainer = domService.createAndInsertElement('div', {
+-      classList: ['ta-sync-results-container'],
+-    }, '', assignmentSection)
+-
+-    // Render each result with differences
+-    resultsWithDifferences.forEach(result => {
+-      const resultRow = domService.createAndInsertElement('div', {
+-        classList: ['ta-sync-result-row'],
+-      }, '', resultsContainer)
+-
+-      // Student name
+-      domService.createAndInsertElement('span', {
+-        classList: ['ta-sync-student-name'],
+-      }, result.studentName, resultRow)
+-
+-      // Grade difference
+-      const tahvelGrade = result.currentGrade || '(puudub)'
+-      const kriitGrade = result.grade || '(puudub)'
+-
+-      journalSyncBannerService.createComparisonDisplay(
+-        resultRow,
+-        tahvelGrade,
+-        kriitGrade,
+-        'Grade in Tahvel',
+-        'Grade in Kriit'
+-      )
+-    })
++    return count
+   }
+ 
+   /**
+@@ -1091,9 +1232,13 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   async getJournalInfo(journalId) {
+     // Use the built-in API service caching with a long expiration
+-    return this.api.tahvel.get(`/journals/${journalId}`, {}, {
+-      cacheExpiration: 30 * 24 * 60 * 60 * 1000, // 30 days
+-    })
++    return this.api.tahvel.get(
++      `/journals/${journalId}`,
++      {},
++      {
++        cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
++      }
++    )
+   }
+ 
+   /**
+@@ -1103,27 +1248,23 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   async getJournalEntries(journalId) {
+     try {
+-      Logger.debug(`Fetching journal entries for ${journalId} from API (NO CACHE)`)
+       const response = await this.api.tahvel.get(
+         `/journals/${journalId}/journalEntry`,
+         {},
+         {
+           cache: false, // Explicitly disable caching
+-          forceRefresh: true, // Force a refresh
+-        },
++          forceRefresh: true // Force a refresh
++        }
+       )
+ 
+       // The response is paginated with a different structure than journalEntriesByDate
+       // Extract the content array which contains the actual entries
+       if (response && response.content && Array.isArray(response.content)) {
+-        Logger.debug(`Successfully fetched journal entries for ${journalId} (${response.content.length} entries)`)
+         return response.content
+       }
+       Logger.warning(`Unexpected response format from journalEntry endpoint: ${JSON.stringify(response)}`)
+       return []
+-
+     } catch (error) {
+-      Logger.error(`Error fetching journal entries for ${journalId}:`, error)
+       return null
+     }
+   }
+@@ -1136,25 +1277,21 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   async getJournalEntriesWithGrades(journalId) {
+     try {
+-      Logger.debug(`Fetching journal entries with grades for ${journalId} from API (NO CACHE)`)
+       const response = await this.api.tahvel.get(
+         `/journals/${journalId}/journalEntriesByDate`,
+         { allStudents: true },
+         {
+           cache: false, // Explicitly disable caching
+-          forceRefresh: true, // Force a refresh
+-        },
++          forceRefresh: true // Force a refresh
++        }
+       )
+ 
+       if (Array.isArray(response)) {
+-        Logger.debug(`Successfully fetched journal entries with grades for ${journalId} (${response.length} entries)`)
+         return response
+       }
+       Logger.warning(`Unexpected response format from journalEntriesByDate endpoint: ${JSON.stringify(response)}`)
+       return []
+-
+     } catch (error) {
+-      Logger.error(`Error fetching journal entries with grades for ${journalId}:`, error)
+       return null
+     }
+   }
+@@ -1166,46 +1303,35 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   async getJournalStudents(journalId) {
+     try {
+-      Logger.debug(`Fetching journal students for ${journalId}`)
+       // Use a shorter cache time (1 hour) to ensure data is relatively fresh
+       // Use allStudents=true to get all students including their personal codes
+-      const response = await this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, {
+-        cacheExpiration: 60 * 60 * 1000, // 1 hour
+-      })
++      const response = await this.api.tahvel.get(
++        `/journals/${journalId}/journalStudents`,
++        { allStudents: true },
++        {
++          cacheExpiration: 60 * 60 * 1000 // 1 hour
++        }
++      )
+ 
+       if (response) {
+-        Logger.debug(`Retrieved ${response.length} students for journal ${journalId}`)
+-
+         // Check if we have personal codes in the response
+         const hasPersonalCodes = response.some(student => student.student?.idcode)
+         if (hasPersonalCodes) {
+-          Logger.debug('Journal students response includes personal codes, updating global cache')
++          Logger.debug('Journal students response includes personal codes, updating mapping')
+ 
+-          // Update our global student cache with the personal codes
+-          response.forEach(journalStudent => {
++          // Update our mapping with the personal codes
++          for (const journalStudent of response) {
+             if (journalStudent.student && journalStudent.student.idcode && journalStudent.studentId) {
+-              const studentData = {
+-                personalCode: journalStudent.student.idcode,
+-                name: journalStudent.student.fullname || journalStudent.studentName,
+-                isActive: journalStudent.student.status === 'OPPURSTAATUS_O', // O = active, A = academic leave
+-                journalId: journalId, // Store which journal this student belongs to
+-              }
+-
+-              // Add to global cache using both studentId and journalStudent.id as keys
+-              this.globalStudentCache[journalStudent.studentId] = studentData
+-              this.globalStudentCache[journalStudent.id] = studentData
+-
+-              Logger.debug(`Added student to global cache with keys [${journalStudent.studentId}, ${journalStudent.id}]: ${journalStudent.student.idcode} (${journalStudent.student.fullname || journalStudent.studentName})`)
++              // Store the mapping from journalStudentId to studentId
++              this.journalStudentIdToStudentId[journalStudent.id] = journalStudent.studentId
++              Logger.debug(`Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${journalStudent.student.idcode})`)
+             }
+-          })
+-        } else {
+-          Logger.warning(`Journal students response does not include personal codes for journal ${journalId}`)
++          }
+         }
+       }
+ 
+       return response
+     } catch (error) {
+-      Logger.error(`Error fetching journal students for ${journalId}:`, error)
+       return null
+     }
+   }
+@@ -1225,12 +1351,19 @@ class JournalListSyncFeature extends BaseFeature {
+       let studentInfo = null
+       let journalStudentId = null // This is the ID we need for the journalStudent field
+ 
+-      // Search through our global cache for a matching personal code
+-      for (const id in this.globalStudentCache) {
+-        const student = this.globalStudentCache[id]
+-        if (student && student.personalCode === personalCode) {
+-          studentId = id
+-          studentInfo = student
++      // Get journal students to find the student by personal code
++      const journalStudentsForLookup = await this.getJournalStudents(journalId)
++
++      // Search through journal students for matching personal code
++      for (const journalStudent of journalStudentsForLookup || []) {
++        if (journalStudent.student && journalStudent.student.idcode === personalCode) {
++          studentId = journalStudent.studentId
++          journalStudentId = journalStudent.id
++          studentInfo = {
++            personalCode: journalStudent.student.idcode,
++            name: journalStudent.student.fullname || journalStudent.studentName,
++            isActive: journalStudent.student.status === 'OPPURSTAATUS_O'
++          }
+           break
+         }
+       }
+@@ -1250,26 +1383,30 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+       // Check if the student is enrolled in this journal and get their journalStudentId
+       let matchingJournalStudent = null
+-      const isEnrolled = journalStudents && journalStudents.some(js => {
+-        const matches = String(js.studentId) === String(studentId)
+-        if (matches) {
+-          matchingJournalStudent = js
+-          journalStudentId = js.id // This is the ID we need for the journalStudent field
+-        }
+-        return matches
+-      })
++      const isEnrolled =
++        journalStudents &&
++        journalStudents.some(js => {
++          const matches = String(js.studentId) === String(studentId)
++          if (matches) {
++            matchingJournalStudent = js
++            journalStudentId = js.id // This is the ID we need for the journalStudent field
++          }
++          return matches
++        })
+ 
+       if (matchingJournalStudent) {
+-        Logger.debug(`Found matching journal student: ID=${matchingJournalStudent.id}, studentId=${matchingJournalStudent.studentId}, name=${matchingJournalStudent.studentName}`)
++        Logger.debug(
++          `Found matching journal student: ID=${matchingJournalStudent.id}, studentId=${matchingJournalStudent.studentId}, name=${matchingJournalStudent.studentName}`
++        )
+       } else {
+         // If we couldn't find the student in the journal students, try to find them by name
+         Logger.debug(`Could not find student with ID ${studentId} in journal students. Trying to find by name...`)
+ 
+         // Try to find the student by name
+-        const studentName = studentInfo.name
++        const studentName = studentInfo?.name
+         if (studentName) {
+-          const matchByName = journalStudents && journalStudents.find(js =>
+-            js.studentName && js.studentName.toLowerCase().includes(studentName.toLowerCase()))
++          const matchByName =
++            journalStudents && journalStudents.find(js => js.studentName && js.studentName.toLowerCase().includes(studentName.toLowerCase()))
+ 
+           if (matchByName) {
+             matchingJournalStudent = matchByName
+@@ -1298,30 +1435,55 @@ class JournalListSyncFeature extends BaseFeature {
+         Logger.debug(`Found ${journalEntries.length} entries in journal ${journalId}`)
+ 
+         for (const entry of journalEntries) {
+-          // Only process entries that are homework or graded entries
+-          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H') {
+-            // Get the entry details with allStudents=true to get data for all students
+-            const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
+-
+-            if (entryDetails && entryDetails.journalEntryStudents) {
+-              const isInAssignment = entryDetails.journalEntryStudents.some(student =>
+-                student.journalStudent && String(student.journalStudent) === String(studentId))
+-
+-              if (isInAssignment) {
+-                // Get the assignment name
+-                const assignmentName = entry.nameEt || entry.name
+-
+-                enrolledAssignments.push({
+-                  id: entry.id,
+-                  name: assignmentName,
+-                  date: entry.homeworkDuedate || entry.entryDate,
+-                })
++          // Only process entries that are homework, graded entries, or outcomes
++          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_O') {
++            // Handle outcome entries differently since they don't have regular entry IDs
++            if (entry.entryType === 'SISSEKANNE_O') {
++              // For outcome entries, we need to use the journalOutcome endpoint
++              const outcomeDetails = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
++
++              if (outcomeDetails && outcomeDetails.outcomeStudents) {
++                const isInOutcome = outcomeDetails.outcomeStudents.some(
++                  student => student.journalStudent && String(student.journalStudent) === String(studentId)
++                )
++
++                if (isInOutcome) {
++                  // Get the outcome name
++                  const assignmentName = entry.nameEt || outcomeDetails.nameEt || 'Õppetulemus'
++                  Logger.debug(`Student ${studentId} is enrolled in outcome: ${assignmentName}`)
++
++                  enrolledAssignments.push({
++                    id: entry.curriculumModuleOutcomes,
++                    name: assignmentName,
++                    entryType: entry.entryType
++                  })
++                }
++              }
++            } else {
++              // Get the entry details with allStudents=true to get data for all students
++              const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
++
++              if (entryDetails && entryDetails.journalEntryStudents) {
++                const isInAssignment = entryDetails.journalEntryStudents.some(
++                  student => student.journalStudent && String(student.journalStudent) === String(studentId)
++                )
++
++                if (isInAssignment) {
++                  // Get the assignment name
++                  const assignmentName = entry.nameEt || entry.name
++
++                  enrolledAssignments.push({
++                    id: entry.id,
++                    name: assignmentName,
++                    entryType: entry.entryType
++                  })
++                }
+               }
+             }
+           }
+         }
+ 
+-        Logger.debug(`Student ${studentInfo.name} is enrolled in ${enrolledAssignments.length} assignments in journal ${journalId}`)
++        Logger.debug(`Student ${studentInfo?.name} is enrolled in ${enrolledAssignments.length} assignments in journal ${journalId}`)
+       } else {
+         Logger.warning(`No entries found in journal ${journalId} or unexpected response format`)
+         Logger.debug(`Journal entries response: ${JSON.stringify(journalEntries)}`)
+@@ -1332,48 +1494,18 @@ class JournalListSyncFeature extends BaseFeature {
+         personalCode,
+         studentId,
+         journalStudentId, // This is the ID we need for the journalStudent field
+-        name: studentInfo.name,
+-        isActive: studentInfo.isActive,
++        name: studentInfo?.name,
++        isActive: studentInfo?.isActive,
+         isEnrolledInJournal: isEnrolled,
+         enrolledAssignments,
+         journalId,
+-        cacheInfo: studentInfo,
++        cacheInfo: studentInfo
+       }
+     } catch (error) {
+       Logger.error(`Error getting detailed student info: ${error.message}`)
+       return { error: error.message }
+     }
+   }
+-
+-  /**
+-   * Get student group data from API with caching
+-   * @param {number} groupId - Student group ID
+-   * @returns {Promise<Array>} Student group data
+-   */
+-  async getStudentGroupData(groupId) {
+-    if (!groupId) {
+-      Logger.error('Cannot fetch student group data: groupId is undefined or null')
+-      return null
+-    }
+-
+-    try {
+-      const response = await this.api.tahvel.get(`/studentGroups/${groupId}/students`, {}, {
+-        cacheExpiration: 30 * 24 * 60 * 60 * 1000, // 30 days
+-      })
+-
+-      if (response && Array.isArray(response)) {
+-        Logger.debug(`Retrieved ${response.length} students for group ${groupId}`)
+-      } else {
+-        Logger.warning(`Unexpected response format for student group ${groupId}:`, response)
+-      }
+-
+-      return response
+-    } catch (error) {
+-      Logger.error(`Error fetching student group data for ${groupId}:`, error)
+-      return null
+-    }
+-  }
+-
+   /**
+    * Get detailed student information including personal code
+    * @param {number} studentId - Student ID
+@@ -1381,9 +1513,13 @@ class JournalListSyncFeature extends BaseFeature {
+    */
+   async getStudentDetails(studentId) {
+     // Use the built-in API service caching with a very long expiration
+-    return this.api.tahvel.get(`/students/${studentId}`, {}, {
+-      cacheExpiration: 24 * 60 * 60 * 1000
+-    })
++    return this.api.tahvel.get(
++      `/students/${studentId}`,
++      {},
++      {
++        cacheExpiration: 24 * 60 * 60 * 1000
++      }
++    )
+   }
+ 
+   /**
+@@ -1396,7 +1532,7 @@ class JournalListSyncFeature extends BaseFeature {
+     const studentMap = {
+       idToPersonalCode: {},
+       personalCodeToName: {},
+-      journalStudentIdToId: {},
++      journalStudentIdToId: {}
+     }
+ 
+     // First, map journal student IDs to student IDs
+@@ -1423,11 +1559,6 @@ class JournalListSyncFeature extends BaseFeature {
+       })
+ 
+       // Log mapping statistics
+-      Logger.debug(`Student mapping created: ${Object.keys(studentMap.journalStudentIdToId).length} journal student IDs, ` +
+-        `${Object.keys(studentMap.idToPersonalCode).length} personal codes, ` +
+-        `${Object.keys(studentMap.personalCodeToName).length} names`)
+-    } else {
+-      Logger.warning('No journal students provided for mapping')
+     }
+ 
+     return studentMap
+@@ -1449,44 +1580,83 @@ class JournalListSyncFeature extends BaseFeature {
+       return assignments
+     }
+ 
+-    // Filter for graded entries only
+-    const gradedEntries = journalEntries.filter(entry =>
+-      entry.entryType === 'SISSEKANNE_H' || // Graded entry
+-      entry.entryType === 'SISSEKANNE_I',     // Independent work
++    // Filter for graded entries only (exclude outcome entries)
++    const gradedEntries = journalEntries.filter(
++      entry =>
++        entry.entryType === 'SISSEKANNE_H' || // Graded entry
++        entry.entryType === 'SISSEKANNE_I' // Independent work
+     )
+ 
++    // Debug: Log count of different entry types
++    const entryCounts = {
++      SISSEKANNE_H: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
++      SISSEKANNE_I: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
++      SISSEKANNE_O: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
++    }
++
++    // Debug: Log outcome entries specifically
++    if (entryCounts['SISSEKANNE_O'] > 0) {
++      const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
++      outcomeEntries.forEach(() => {})
++    }
++
+     // Create a map of entry IDs to entries with grades from journalEntriesByDate
+     const entriesWithGradesMap = {}
+     if (journalEntriesWithGrades && Array.isArray(journalEntriesWithGrades)) {
+       journalEntriesWithGrades.forEach(entry => {
++        // Handle regular entries with IDs
+         if (entry.id && (entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_I')) {
+           entriesWithGradesMap[entry.id] = entry
+         }
++        // Handle outcome entries with curriculumModuleOutcomes
++        if (entry.curriculumModuleOutcomes && entry.entryType === 'SISSEKANNE_O') {
++          entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`] = entry
++        }
+       })
+-      Logger.debug(`Created map of ${Object.keys(entriesWithGradesMap).length} entries with grades`)
+     }
+ 
+     gradedEntries.forEach(entry => {
++      // Log when we process an outcome entry
++      if (entry.entryType === 'SISSEKANNE_O') {
++        // No-op block removed (was empty)
++      }
++
+       // Extract results for this assignment
+       const results = []
+ 
+-      // First check if we have this entry in the entriesWithGradesMap
+-      const entryWithGrades = entriesWithGradesMap[entry.id]
++      // Handle different entry types for finding grades
++      let entryWithGrades
++      if (entry.entryType === 'SISSEKANNE_O') {
++        // For outcome entries, look up by curriculumModuleOutcomes
++        entryWithGrades = entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`]
++      } else {
++        // For regular entries, look up by ID
++        entryWithGrades = entriesWithGradesMap[entry.id]
++      }
+ 
+       // Create a map of students who have results for this assignment
+       const studentResultsMap = {}
+-      if (entryWithGrades && entryWithGrades.journalStudentResults) {
+-        Logger.debug(`Using entry with grades for assignment ${entry.id} (${entry.nameEt || 'Unnamed'})`)
+-        Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
+-          studentResultsMap[journalStudentId] = studentResults
+-        })
++      if (entryWithGrades) {
++        if (entry.entryType === 'SISSEKANNE_O' && entryWithGrades.studentOutcomeResults) {
++          // Handle outcome entries with studentOutcomeResults
++          Object.entries(entryWithGrades.studentOutcomeResults).forEach(([journalStudentId, studentResults]) => {
++            studentResultsMap[journalStudentId] = studentResults
++          })
++        } else if (entryWithGrades.journalStudentResults) {
++          // Handle regular entries with journalStudentResults
++          Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
++            studentResultsMap[journalStudentId] = studentResults
++          })
++        }
+       } else if (entry.journalStudentResults) {
+-        Logger.debug(`Using fallback entry for assignment ${entry.id} (${entry.nameEt || 'Unnamed'})`)
++        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
++        Logger.debug(`Using fallback entry for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'})`)
+         Object.entries(entry.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
+           studentResultsMap[journalStudentId] = studentResults
+         })
+       } else {
+-        Logger.debug(`No grades found for assignment ${entry.id} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
++        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
++        Logger.debug(`No grades found for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
+       }
+ 
+       // Include ALL journal students for this assignment, not just those with results
+@@ -1552,11 +1722,12 @@ class JournalListSyncFeature extends BaseFeature {
+             studentPersonalCode: personalCode,
+             studentName,
+             studentIsActive: studentIsActive,
+-            studentIsDeleted: studentIsDeleted,
++            studentIsDeleted: studentIsDeleted
+           })
+         })
+       } else {
+-        Logger.warning(`No journal students provided for assignment ${entry.id}, cannot include all students`)
++        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
++        Logger.warning(`No journal students provided for assignment ${entryIdForLog}, cannot include all students`)
+       }
+ 
+       // Get the assignment name
+@@ -1564,18 +1735,20 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+       // Always include assignments with valid ID and name, even if they don't have results yet
+       // This ensures all assignments are sent to Kriit, not just those with grades
+-      if (entry.id && assignmentName) {
++      // Handle both regular entries (with id) and outcome entries (with curriculumModuleOutcomes)
++      const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
++
++      if (assignmentId && assignmentName) {
+         assignments.push({
+-          assignmentExternalId: entry.id,
++          assignmentExternalId: assignmentId,
+           assignmentName: assignmentName,
+           assignmentInstructions: entry.content || '',
+-          assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : (entry.entryDate ? entry.entryDate.split('T')[0] : null), // Use homeworkDuedate if available, fall back to entryDate
++          assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
+           assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
+-          results,
++          results
+         })
+ 
+         // Log whether this assignment has results or not
+-        Logger.debug('Added assignment ' + entry.id + ' (' + assignmentName + ') with ' + results.length + ' results')
+       }
+     })
+ 
+@@ -1639,15 +1812,41 @@ class JournalListSyncFeature extends BaseFeature {
+     }
+ 
+     // Use a type-specific name if nothing else is available
+-    return entry.entryType === 'SISSEKANNE_H' ? 'Hindeline töö' :
+-      entry.entryType === 'SISSEKANNE_I' ? 'Iseseisev töö' :
+-        'Päeviku sissekanne'
++    return entry.entryType === 'SISSEKANNE_H'
++      ? 'Hindeline töö'
++      : entry.entryType === 'SISSEKANNE_I'
++        ? 'Iseseisev töö'
++        : entry.entryType === 'SISSEKANNE_O'
++          ? 'Õppetulemus'
++          : 'Päeviku sissekanne'
+   }
+ 
+   /**
+    * Sync data with Kriit
+    */
+   async syncWithKriit() {
++    // Debug: Log all journal students and their personal codes before syncing
++    if (Array.isArray(this.differences)) {
++      this.differences.forEach(subject => {
++        if (Array.isArray(subject.assignments)) {
++          subject.assignments.forEach(assignment => {
++            if (Array.isArray(assignment.results)) {
++              assignment.results.forEach(() => {})
++            }
++          })
++        }
++      })
++    }
++    // Debug: Log mapping from journalStudentId to studentId and idToPersonalCode
++    Logger.debug('[SYNC] Mapping journalStudentIdToStudentId:', JSON.stringify(this.journalStudentIdToStudentId))
++    if (this.journalStudentIdToStudentId) {
++      Object.entries(this.journalStudentIdToStudentId).forEach(([journalStudentId, studentId]) => {
++        Logger.debug(`[SYNC] journalStudentId ${journalStudentId} -> studentId ${studentId}`)
++      })
++    }
++    if (this.globalTeacherCache) {
++      Logger.debug('[SYNC] Teacher cache:', JSON.stringify(this.globalTeacherCache))
++    }
+     Logger.feature(this.name, 'Syncing with Kriit...')
+ 
+     // Prevent multiple sync operations from running simultaneously
+@@ -1698,17 +1897,9 @@ class JournalListSyncFeature extends BaseFeature {
+               throw new Error(errorMsg)
+             }
+ 
+-            // Enhanced debug logging for every grade being processed
+-            Logger.debug('=== PROCESSING GRADE ===')
+-            Logger.debug(`Subject: ${subject.subjectName} (${subject.subjectExternalId})`)
+-            Logger.debug(`Assignment: ${assignment.assignmentName} (${assignment.assignmentExternalId})`)
+-            Logger.debug(`Student: ${result.studentName} (${result.studentPersonalCode})`)
+-            Logger.debug(`Raw Tahvel grade: "${result.currentGrade}"`)
+-            Logger.debug(`Raw Kriit grade: "${result.grade}"`)
+-
+             // Only include results where the grade is different
+             // Normalize grades for comparison - handle type mismatches and empty values
+-            const normalizeGrade = (grade) => {
++            const normalizeGrade = grade => {
+               if (grade === null || grade === undefined || grade === '' || grade === '(puudub)') {
+                 return null
+               }
+@@ -1726,21 +1917,12 @@ class JournalListSyncFeature extends BaseFeature {
+             const tahvelGrade = normalizeGrade(result.currentGrade)
+             const kriitGrade = normalizeGrade(result.grade)
+ 
+-            Logger.debug(`Processed Tahvel grade: "${tahvelGrade}"`)
+-            Logger.debug(`Kriit grade: "${kriitGrade}"`)
+-
+             // Skip null grades from Kriit entirely - don't sync them
+             if (kriitGrade === null) {
+               Logger.debug('Skipping null/empty grade from Kriit - not syncing')
+               return // Skip this result entirely
+             }
+ 
+-            // Skip if both grades are null/empty
+-            if (tahvelGrade === null && kriitGrade === null) {
+-              Logger.debug('Both grades are null/empty - skipping')
+-              return
+-            }
+-
+             // Only sync if grades are actually different
+             if (tahvelGrade !== kriitGrade) {
+               // Log the types we're getting for debugging
+@@ -1762,7 +1944,7 @@ class JournalListSyncFeature extends BaseFeature {
+                 journalId: subject.subjectExternalId,
+                 assignmentId: assignment.assignmentExternalId,
+                 studentPersonalCode: personalCode,
+-                grade: gradeStr,
++                grade: gradeStr
+               })
+             } else {
+               Logger.debug(`Grades are the same, skipping: Tahvel="${tahvelGrade}", Kriit="${kriitGrade}"`)
+@@ -1778,22 +1960,22 @@ class JournalListSyncFeature extends BaseFeature {
+         Logger.debug(`Original differences count: ${this.differences ? this.differences.length : 0}`)
+ 
+         // Count total assignments and results for debugging
+-        let totalAssignments = 0
+-        let totalResults = 0
+-        let skippedResults = 0
++        let _totalAssignments = 0
++        let _totalResults = 0
++        let _skippedResults = 0
+ 
+         if (this.differences && Array.isArray(this.differences)) {
+           this.differences.forEach(subject => {
+             if (subject.assignments && Array.isArray(subject.assignments)) {
+-              totalAssignments += subject.assignments.length
++              _totalAssignments += subject.assignments.length
+               subject.assignments.forEach(assignment => {
+                 if (assignment.results && Array.isArray(assignment.results)) {
+-                  totalResults += assignment.results.length
++                  _totalResults += assignment.results.length
+                   assignment.results.forEach(result => {
+                     const tahvelGrade = result.currentGrade || '(empty)'
+                     const kriitGrade = result.grade || '(empty)'
+                     if (tahvelGrade === kriitGrade) {
+-                      skippedResults++
++                      _skippedResults++
+                     }
+                   })
+                 }
+@@ -1802,11 +1984,6 @@ class JournalListSyncFeature extends BaseFeature {
+           })
+         }
+ 
+-        Logger.debug(`Total assignments: ${totalAssignments}`)
+-        Logger.debug(`Total results: ${totalResults}`)
+-        Logger.debug(`Skipped results (same grade): ${skippedResults}`)
+-        Logger.debug(`Expected differences: ${totalResults - skippedResults}`)
+-
+         // Show a more informative message to the user
+         this.isLoading = false
+         this.error = 'Kõik hinded on juba sünkroonis. Pole midagi sünkroniseerida.'
+@@ -1865,12 +2042,14 @@ class JournalListSyncFeature extends BaseFeature {
+             }
+ 
+             // Log the item we're about to process
+-            Logger.debug(`Processing sync item: ${JSON.stringify({
+-              journalId: item.journalId,
+-              assignmentId: item.assignmentId,
+-              studentPersonalCode: item.studentPersonalCode,
+-              grade: item.grade,
+-            })}`)
++            Logger.debug(
++              `Processing sync item: ${JSON.stringify({
++                journalId: item.journalId,
++                assignmentId: item.assignmentId,
++                studentPersonalCode: item.studentPersonalCode,
++                grade: item.grade
++              })}`
++            )
+ 
+             // Additional validation: check if this grade actually needs updating
+             // by fetching the current state from Tahvel
+@@ -1879,18 +2058,24 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+               if (entryData && entryData.journalEntryStudents) {
+                 // Find the student in the assignment
+-                const studentEntry = entryData.journalEntryStudents.find(student => {
+-                  if (!student.journalStudent) return false
+-                  const cachedStudent = this.globalStudentCache[student.journalStudent]
+-                  return cachedStudent && String(cachedStudent.personalCode) === String(item.studentPersonalCode)
+-                })
++                let studentEntry = null
++                for (const student of entryData.journalEntryStudents) {
++                  if (!student.journalStudent) continue
++                  const cachedStudent = await this.getCachedStudent(student.journalStudent)
++                  if (cachedStudent && String(cachedStudent.personalCode) === String(item.studentPersonalCode)) {
++                    studentEntry = student
++                    break
++                  }
++                }
+ 
+                 if (studentEntry && studentEntry.grade && studentEntry.grade.code) {
+                   const currentTahvelGrade = studentEntry.grade.code.replace('KUTSEHINDAMINE_', '')
+                   const targetGrade = String(item.grade)
+ 
+                   if (currentTahvelGrade === targetGrade) {
+-                    Logger.info(`Grade already up to date for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}" - skipping`)
++                    Logger.info(
++                      `Grade already up to date for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}" - skipping`
++                    )
+                     successfulSyncs.push({ ...item, skipped: true }) // Count as successful since no action was needed
+                     continue
+                   }
+@@ -1905,12 +2090,7 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+             // Call the sync method with validated data
+             Logger.info(`Calling syncGradeToTahvel for student ${item.studentPersonalCode}...`)
+-            await this.syncGradeToTahvel(
+-              item.journalId,
+-              item.assignmentId,
+-              item.studentPersonalCode,
+-              item.grade,
+-            )
++            await this.syncGradeToTahvel(item.journalId, item.assignmentId, item.studentPersonalCode, item.grade)
+ 
+             Logger.info(`Successfully synced grade for student ${item.studentPersonalCode}`)
+             // Add to successful syncs
+@@ -1918,34 +2098,38 @@ class JournalListSyncFeature extends BaseFeature {
+           } catch (error) {
+             // Check if this is an inactive student error
+             const errorMessage = error.message || 'Unknown error'
+-            const isInactiveStudentError = errorMessage.includes('not actively studying') ||
++            const isInactiveStudentError =
++              errorMessage.includes('not actively studying') ||
+               errorMessage.includes('changeIsNotAllowedStudentIsNotStudying') ||
+               errorMessage.includes('academic leave') ||
+               errorMessage.includes('status is inactive')
+ 
+             if (isInactiveStudentError) {
+               // Log as warning instead of error for inactive students
+-              Logger.warning(`Skipping inactive student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}: ${errorMessage}`)
++              Logger.warning(
++                `Skipping inactive student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}: ${errorMessage}`
++              )
+ 
+               // Add to failed syncs but mark as inactive (not a real error)
+               failedSyncs.push({
+                 ...item,
+                 error: errorMessage,
+                 errorType: 'inactive_student',
+-                timestamp: new Date().toISOString(),
++                timestamp: new Date().toISOString()
+               })
+             } else {
+               // Log the error with full context for real errors
+-              Logger.error(`Failed to sync grade for student ${item.studentPersonalCode || 'unknown'
+-                } in assignment ${item.assignmentId || 'unknown'
+-                }:`, error)
++              Logger.error(
++                `Failed to sync grade for student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}:`,
++                error
++              )
+ 
+               // Add to failed syncs with detailed error info
+               failedSyncs.push({
+                 ...item,
+                 error: errorMessage,
+                 errorType: 'sync_error',
+-                timestamp: new Date().toISOString(),
++                timestamp: new Date().toISOString()
+               })
+             }
+           }
+@@ -1953,7 +2137,8 @@ class JournalListSyncFeature extends BaseFeature {
+           Logger.debug(`Completed processing student ${i + 1}/${syncData.length}. Moving to next student...`)
+ 
+           // Add delay between sync operations to prevent race conditions
+-          if (i < syncData.length - 1) { // Don't delay after the last item
++          if (i < syncData.length - 1) {
++            // Don't delay after the last item
+             Logger.debug(`Adding 500ms delay before next sync operation...`)
+             await new Promise(resolve => setTimeout(resolve, 500))
+           }
+@@ -2022,19 +2207,27 @@ class JournalListSyncFeature extends BaseFeature {
+           this.showSuccessBanner(successMessage)
+ 
+           // Log the successful syncs for debugging
+-          Logger.debug(`Successful syncs: ${JSON.stringify(successfulSyncs.map(item => ({
+-            student: item.studentPersonalCode,
+-            assignment: item.assignmentId,
+-            grade: item.grade,
+-          })))}`)
++          Logger.debug(
++            `Successful syncs: ${JSON.stringify(
++              successfulSyncs.map(item => ({
++                student: item.studentPersonalCode,
++                assignment: item.assignmentId,
++                grade: item.grade
++              }))
++            )}`
++          )
+ 
+           // Log inactive students for information
+           if (inactiveStudentErrors.length > 0) {
+-            Logger.info(`Inactive students skipped: ${JSON.stringify(inactiveStudentErrors.map(item => ({
+-              student: item.studentPersonalCode,
+-              assignment: item.assignmentId,
+-              reason: 'Not actively studying',
+-            })))}`)
++            Logger.info(
++              `Inactive students skipped: ${JSON.stringify(
++                inactiveStudentErrors.map(item => ({
++                  student: item.studentPersonalCode,
++                  assignment: item.assignmentId,
++                  reason: 'Not actively studying'
++                }))
++              )}`
++            )
+           }
+ 
+           // After 3 seconds, refresh data to show updated state
+@@ -2042,14 +2235,16 @@ class JournalListSyncFeature extends BaseFeature {
+           setTimeout(() => {
+             Logger.debug('Timeout triggered, refreshing journal data')
+             // Clear all cache before fetching new data to ensure we get fresh results
+-            this.clearCache().then(() => {
+-              Logger.debug('Cache cleared, now fetching fresh journal data')
+-              this.fetchJournalData()
+-            }).catch(error => {
+-              Logger.error('Error clearing cache:', error)
+-              // Still try to fetch data even if cache clearing fails
+-              this.fetchJournalData()
+-            })
++            this.clearCache()
++              .then(() => {
++                Logger.debug('Cache cleared, now fetching fresh journal data')
++                this.fetchJournalData()
++              })
++              .catch(error => {
++                Logger.error('Error clearing cache:', error)
++                // Still try to fetch data even if cache clearing fails
++                this.fetchJournalData()
++              })
+           }, 3000)
+         } else if (successfulSyncs.length === 0 && inactiveStudentErrors.length === 0) {
+           // All syncs failed with real errors
+@@ -2058,11 +2253,14 @@ class JournalListSyncFeature extends BaseFeature {
+           this.updateUI()
+ 
+           // Log detailed errors for debugging
+-          Logger.error('All syncs failed. Details:', realErrors.map(item => ({
+-            student: item.studentPersonalCode,
+-            assignment: item.assignmentId,
+-            error: item.error,
+-          })))
++          Logger.error(
++            'All syncs failed. Details:',
++            realErrors.map(item => ({
++              student: item.studentPersonalCode,
++              assignment: item.assignmentId,
++              error: item.error
++            }))
++          )
+         } else {
+           // Mixed results
+           this.isLoading = false
+@@ -2081,32 +2279,40 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+           // Log detailed errors for debugging
+           if (realErrors.length > 0) {
+-            Logger.error('Some syncs failed with real errors. Details:', realErrors.map(item => ({
+-              student: item.studentPersonalCode,
+-              assignment: item.assignmentId,
+-              error: item.error,
+-            })))
++            Logger.error(
++              'Some syncs failed with real errors. Details:',
++              realErrors.map(item => ({
++                student: item.studentPersonalCode,
++                assignment: item.assignmentId,
++                error: item.error
++              }))
++            )
+           }
+ 
+           if (inactiveStudentErrors.length > 0) {
+-            Logger.info('Some students skipped due to inactive status. Details:', inactiveStudentErrors.map(item => ({
+-              student: item.studentPersonalCode,
+-              assignment: item.assignmentId,
+-              reason: 'Not actively studying',
+-            })))
++            Logger.info(
++              'Some students skipped due to inactive status. Details:',
++              inactiveStudentErrors.map(item => ({
++                student: item.studentPersonalCode,
++                assignment: item.assignmentId,
++                reason: 'Not actively studying'
++              }))
++            )
+           }
+ 
+           // After 3 seconds, refresh data to show updated state
+           setTimeout(() => {
+             // Clear all cache before fetching new data to ensure we get fresh results
+-            this.clearCache().then(() => {
+-              Logger.debug('Cache cleared, now fetching fresh journal data')
+-              this.fetchJournalData()
+-            }).catch(error => {
+-              Logger.error('Error clearing cache:', error)
+-              // Still try to fetch data even if cache clearing fails
+-              this.fetchJournalData()
+-            })
++            this.clearCache()
++              .then(() => {
++                Logger.debug('Cache cleared, now fetching fresh journal data')
++                this.fetchJournalData()
++              })
++              .catch(error => {
++                Logger.error('Error clearing cache:', error)
++                // Still try to fetch data even if cache clearing fails
++                this.fetchJournalData()
++              })
+           }, 3000)
+         }
+       } catch (error) {
+@@ -2150,7 +2356,9 @@ class JournalListSyncFeature extends BaseFeature {
+     try {
+       Logger.info('=== STARTING GRADE SYNC ===')
+       Logger.info(`Syncing grade for student ${studentPersonalCode} in assignment ${assignmentId}`)
+-      Logger.debug(`Full sync parameters: journalId=${journalId}, assignmentId=${assignmentId}, studentPersonalCode=${studentPersonalCode}, grade=${grade}`)
++      Logger.debug(
++        `Full sync parameters: journalId=${journalId}, assignmentId=${assignmentId}, studentPersonalCode=${studentPersonalCode}, grade=${grade}`
++      )
+ 
+       // Validate input parameters
+       if (!journalId) {
+@@ -2174,14 +2382,19 @@ class JournalListSyncFeature extends BaseFeature {
+       // Proactive check: verify student is active before attempting sync
+       Logger.debug(`Checking if student ${studentPersonalCode} is active before sync...`)
+ 
+-      // First, try to find the student in our global cache
++      // First, try to find the student by getting journal students
+       let studentCacheEntry = null
+-      for (const studentId in this.globalStudentCache) {
+-        const cachedStudent = this.globalStudentCache[studentId]
+-        if (cachedStudent && cachedStudent.personalCode) {
+-          const cachedPersonalCode = String(cachedStudent.personalCode)
+-          if (cachedPersonalCode === studentPersonalCode) {
+-            studentCacheEntry = cachedStudent
++      const journalStudentsForValidation = await this.getJournalStudents(journalId)
++
++      if (journalStudentsForValidation) {
++        for (const journalStudent of journalStudentsForValidation) {
++          if (journalStudent.student && journalStudent.student.idcode === studentPersonalCode) {
++            studentCacheEntry = {
++              personalCode: journalStudent.student.idcode,
++              name: journalStudent.student.fullname || journalStudent.studentName,
++              isActive: journalStudent.student.status === 'OPPURSTAATUS_O',
++              isDeleted: false // Assume false if student is in journal
++            }
+             break
+           }
+         }
+@@ -2189,14 +2402,20 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+       // If we found the student in cache, check their status
+       if (studentCacheEntry) {
+-        Logger.debug(`Found student ${studentCacheEntry.name} (${studentPersonalCode}) in cache. Active: ${studentCacheEntry.isActive}, Deleted: ${studentCacheEntry.isDeleted}`)
++        Logger.debug(
++          `Found student ${studentCacheEntry.name} (${studentPersonalCode}) in cache. Active: ${studentCacheEntry.isActive}, Deleted: ${studentCacheEntry.isDeleted}`
++        )
+ 
+         if (!studentCacheEntry.isActive || studentCacheEntry.isDeleted) {
+           const statusReason = studentCacheEntry.isDeleted ? 'deleted' : 'inactive'
+-          throw new Error(`Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`)
++          throw new Error(
++            `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
++          )
+         }
+       } else {
+-        Logger.warning(`Student ${studentPersonalCode} not found in cache during proactive check. Will proceed with sync attempt but may fail if student is inactive.`)
++        Logger.warning(
++          `Student ${studentPersonalCode} not found in cache during proactive check. Will proceed with sync attempt but may fail if student is inactive.`
++        )
+       }
+ 
+       if (!grade) {
+@@ -2242,48 +2461,29 @@ class JournalListSyncFeature extends BaseFeature {
+       // Log the number of students in the entry for debugging
+       Logger.info(`Assignment ${assignmentId} has ${entryData.journalEntryStudents.length} students`)
+ 
+-      // Check if we have student cache data
+-      if (!this.globalStudentCache || Object.keys(this.globalStudentCache).length === 0) {
+-        throw new Error('Student cache is empty. Cannot match students by personal code. Try refreshing the page.')
+-      }
+-
+       // Log the target personal code we're looking for
+       Logger.info(`Looking for student with personal code: ${studentPersonalCode}`)
+ 
+-      // First, fetch all student details if they're not already in the cache
+-      const missingStudentIds = entryData.journalEntryStudents
+-        .filter(student => student.journalStudent && !this.globalStudentCache[student.journalStudent])
+-        .map(student => student.journalStudent)
++      // Ensure we have journal students data (this will use caching)
++      await this.getJournalStudents(journalId)
+ 
+-      // If we have missing students, try to fetch their details
+-      if (missingStudentIds.length > 0) {
+-        Logger.debug(`Fetching details for ${missingStudentIds.length} students not in cache...`)
+-
+-        // Try to fetch journal students to fill the cache
+-        this.getJournalStudents(journalId).then(() => {
+-          Logger.debug('Updated student cache after fetching journal students')
+-        }).catch(error => {
+-          Logger.error(`Failed to fetch journal students: ${error.message}`)
+-        })
+-      }
+-
+-      // First, try to find the student by personal code in our global cache
++      // First, try to find the student by personal code using journal students
+       // This is more reliable than searching through the entry data
+       let matchingStudentId = null
+ 
+       // Convert target personal code to string for comparison
+       const targetPersonalCode = String(studentPersonalCode)
+ 
+-      // Search through our global cache for a matching personal code
+-      for (const studentId in this.globalStudentCache) {
+-        const cachedStudent = this.globalStudentCache[studentId]
+-        if (cachedStudent && cachedStudent.personalCode) {
+-          const cachedPersonalCode = String(cachedStudent.personalCode)
++      // Get journal students to find the matching student
++      const journalStudentsForMatching = await this.getJournalStudents(journalId)
+ 
+-          // Check for exact match
+-          if (cachedPersonalCode === targetPersonalCode) {
+-            matchingStudentId = studentId
+-            Logger.debug(`Found exact matching student in global cache: ${cachedStudent.name} (${cachedPersonalCode})`)
++      if (journalStudentsForMatching) {
++        for (const journalStudent of journalStudentsForMatching) {
++          if (journalStudent.student && journalStudent.student.idcode === targetPersonalCode) {
++            matchingStudentId = journalStudent.studentId
++            Logger.debug(
++              `Found exact matching student in journal students: ${journalStudent.student.fullname || journalStudent.studentName} (${journalStudent.student.idcode})`
++            )
+             break
+           }
+         }
+@@ -2292,17 +2492,20 @@ class JournalListSyncFeature extends BaseFeature {
+       // If we found the student in our global cache, find that student in the entry data
+       let studentEntry = null
+       if (matchingStudentId) {
+-        studentEntry = entryData.journalEntryStudents.find(student =>
+-          student.journalStudent && String(student.journalStudent) === String(matchingStudentId))
++        studentEntry = entryData.journalEntryStudents.find(
++          student => student.journalStudent && String(student.journalStudent) === String(matchingStudentId)
++        )
+ 
+         if (studentEntry) {
+           Logger.debug(`Found matching student entry in assignment data: ${studentEntry.journalStudent}`)
+         } else {
+-          // This is a special case: we found the student in the global cache but they're not in this assignment API response
+-          const cachedStudent = this.globalStudentCache[matchingStudentId]
++          // This is a special case: we found the student in journal students but they're not in this assignment API response
++          const cachedStudent = await this.getCachedStudent(matchingStudentId)
+           const studentName = cachedStudent ? cachedStudent.name : 'Unknown'
+ 
+-          Logger.warning(`Student ${studentName} (${targetPersonalCode}) with ID ${matchingStudentId} found in global cache but not in assignment API response`)
++          Logger.warning(
++            `Student ${studentName} (${targetPersonalCode}) with ID ${matchingStudentId} found in global cache but not in assignment API response`
++          )
+           Logger.warning(`This may indicate an API discrepancy - student exists in database but not returned by /journalEntry/${assignmentId}`)
+ 
+           // Get detailed student info to find the correct journalStudentId
+@@ -2312,8 +2515,6 @@ class JournalListSyncFeature extends BaseFeature {
+           // Try to create a student entry with the journalStudentId
+           // This handles cases where the API doesn't return all enrolled students but they exist in the database
+           if (info.journalStudentId) {
+-            Logger.info(`Found journalStudentId ${info.journalStudentId} for student ${studentName} (${targetPersonalCode}) - creating entry`)
+-
+             // Create a new student entry with the correct journalStudentId
+             studentEntry = {
+               journalStudent: info.journalStudentId,
+@@ -2329,7 +2530,7 @@ class JournalListSyncFeature extends BaseFeature {
+               isRemark: false,
+               journalEntryStudentHistories: [],
+               lessonAbsences: [],
+-              verbalGrade: null,
++              verbalGrade: null
+             }
+ 
+             Logger.info(`Created student entry with journalStudentId ${info.journalStudentId} to handle API discrepancy`)
+@@ -2338,11 +2539,15 @@ class JournalListSyncFeature extends BaseFeature {
+             // If we couldn't find a journalStudentId, check if the student is active
+             if (cachedStudent && !cachedStudent.isActive) {
+               Logger.warning(`Student ${studentName} (${targetPersonalCode}) is not active. Status: ${cachedStudent.isActive ? 'Active' : 'Inactive'}`)
+-              throw new Error(`Cannot add student ${studentName} (${targetPersonalCode}) to the assignment because they are not actively studying. The student may be on academic leave or their status is inactive.`)
++              throw new Error(
++                `Cannot add student ${studentName} (${targetPersonalCode}) to the assignment because they are not actively studying. The student may be on academic leave or their status is inactive.`
++              )
+             }
+ 
+             // If we couldn't find a journalStudentId, throw an error
+-            throw new Error(`❌ Student ${studentName} (${targetPersonalCode}) exists in the journal but has no valid journal student ID. This may indicate a data integrity issue. Please contact support.`)
++            throw new Error(
++              `❌ Student ${studentName} (${targetPersonalCode}) exists in the journal but has no valid journal student ID. This may indicate a data integrity issue. Please contact support.`
++            )
+           }
+         }
+       }
+@@ -2353,30 +2558,30 @@ class JournalListSyncFeature extends BaseFeature {
+ 
+         // First, log all students in the entry data for debugging
+         Logger.debug('All students in entry data:')
+-        entryData.journalEntryStudents.forEach(student => {
++        for (const student of entryData.journalEntryStudents) {
+           const studentId = student.journalStudent
+-          const cachedStudent = this.globalStudentCache[studentId]
++          const cachedStudent = await this.getCachedStudent(studentId)
+           const personalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
+           const name = cachedStudent ? cachedStudent.name : 'Unknown'
+           Logger.debug(`- ID: ${student.id}, journalStudent: ${studentId}, personalCode: ${personalCode}, name: ${name}, addInfo: ${student.addInfo}`)
+-        })
++        }
+ 
+-        studentEntry = entryData.journalEntryStudents.find(student => {
++        // Find student by iterating through entry data and checking cache
++        for (const student of entryData.journalEntryStudents) {
+           // We need to find the student by personal code, but the entry data doesn't have it directly
+           if (!student.journalStudent) {
+-            return false
++            continue
+           }
+ 
+-          // Try to find the student in our global cache
++          // Try to find the student in our cache
+           const studentId = student.journalStudent
+ 
+-          // Check if we have this student in our global runtime cache
+-          if (this.globalStudentCache[studentId]) {
+-            const cachedStudent = this.globalStudentCache[studentId]
+-
++          // Check if we have this student in our cache
++          const cachedStudent = await this.getCachedStudent(studentId)
++          if (cachedStudent) {
+             // Ensure the cached student has a personalCode property
+             if (!cachedStudent.personalCode) {
+-              return false
++              continue
+             }
+ 
+             // Convert both to strings for comparison to handle number vs string issues
+@@ -2388,512 +2593,473 @@ class JournalListSyncFeature extends BaseFeature {
+             if (matches) {
+               Logger.debug(`Found matching student in entry data: ${cachedStudent.name} (${cachedPersonalCode})`)
+               Logger.debug(`Student entry details: ID=${student.id}, journalStudent=${student.journalStudent}, addInfo=${student.addInfo}`)
++              studentEntry = student
++              break
+             }
+-
+-            return matches
+           }
++        }
+ 
+-          return false
+-        })
+-      }
++        // If we couldn't find the student by personal code, try to find by similar personal code
++        // but DO NOT substitute with a completely different student
++        if (!studentEntry) {
++          Logger.debug(`Could not find student with personal code ${studentPersonalCode}, trying to find similar personal codes...`)
+ 
+-      // If we couldn't find the student by personal code, try to find by similar personal code
+-      // but DO NOT substitute with a completely different student
+-      if (!studentEntry) {
+-        Logger.debug(`Could not find student with personal code ${studentPersonalCode}, trying to find similar personal codes...`)
++          // Try to find a student with a similar personal code
++          // This is useful if the personal code formats are different (e.g., with/without leading zeros)
++          const targetPersonalCode = String(studentPersonalCode)
+ 
+-        // Try to find a student with a similar personal code
+-        // This is useful if the personal code formats are different (e.g., with/without leading zeros)
+-        const targetPersonalCode = String(studentPersonalCode)
++          // First, try to find a student with a similar personal code
++          for (const student of entryData.journalEntryStudents) {
++            if (!student.journalStudent) continue
+ 
+-        // First, try to find a student with a similar personal code
+-        for (const student of entryData.journalEntryStudents) {
+-          if (!student.journalStudent) continue
++            const cachedStudent = await this.getCachedStudent(student.journalStudent)
++            if (!cachedStudent || !cachedStudent.personalCode) continue
+ 
+-          const cachedStudent = this.globalStudentCache[student.journalStudent]
+-          if (!cachedStudent || !cachedStudent.personalCode) continue
++            const cachedPersonalCode = String(cachedStudent.personalCode)
+ 
+-          const cachedPersonalCode = String(cachedStudent.personalCode)
++            // Check if the personal codes are similar (one contains the other)
++            if (cachedPersonalCode.includes(targetPersonalCode) || targetPersonalCode.includes(cachedPersonalCode)) {
++              Logger.debug(`Found student with similar personal code: ${cachedStudent.name} (${cachedPersonalCode})`)
++              studentEntry = student
++              break
++            }
+ 
+-          // Check if the personal codes are similar (one contains the other)
+-          if (cachedPersonalCode.includes(targetPersonalCode) ||
+-            targetPersonalCode.includes(cachedPersonalCode)) {
+-            Logger.debug(`Found student with similar personal code: ${cachedStudent.name} (${cachedPersonalCode})`)
+-            studentEntry = student
+-            break
++            // Check if the last 8 digits match (sometimes personal codes have different formats)
++            const cachedLastDigits = cachedPersonalCode.slice(-8)
++            const targetLastDigits = targetPersonalCode.slice(-8)
++            if (cachedLastDigits === targetLastDigits && cachedLastDigits.length === 8) {
++              Logger.debug(`Found student with matching last 8 digits: ${cachedStudent.name} (${cachedPersonalCode})`)
++              studentEntry = student
++              break
++            }
+           }
+ 
+-          // Check if the last 8 digits match (sometimes personal codes have different formats)
+-          const cachedLastDigits = cachedPersonalCode.slice(-8)
+-          const targetLastDigits = targetPersonalCode.slice(-8)
+-          if (cachedLastDigits === targetLastDigits && cachedLastDigits.length === 8) {
+-            Logger.debug(`Found student with matching last 8 digits: ${cachedStudent.name} (${cachedPersonalCode})`)
+-            studentEntry = student
+-            break
++          // If we still don't have a match, DO NOT use a random student as fallback
++          // Instead, throw an error to prevent updating the wrong student's grade
++          if (!studentEntry) {
++            throw new Error(
++              `Could not find student with personal code ${studentPersonalCode} or any similar personal code. Refusing to update a different student's grade for safety reasons.`
++            )
+           }
+         }
+ 
+-        // If we still don't have a match, DO NOT use a random student as fallback
+-        // Instead, throw an error to prevent updating the wrong student's grade
+         if (!studentEntry) {
+-          throw new Error(`Could not find student with personal code ${studentPersonalCode} or any similar personal code. Refusing to update a different student's grade for safety reasons.`)
+-        }
+-      }
+-
+-      if (!studentEntry) {
+-        // Try to find any students with matching personal codes to help diagnose the issue
+-        const availableStudents = []
+-        const allPersonalCodes = []
+-
+-        for (const studentId in this.globalStudentCache) {
+-          const student = this.globalStudentCache[studentId]
+-
+-          // Ensure we have valid student data before adding to the list
+-          if (student && typeof student === 'object') {
+-            const name = student.name || 'Unknown'
+-            const personalCode = student.personalCode || 'No personal code'
+-
+-            // Collect all personal codes for debugging
+-            if (personalCode !== 'No personal code') {
+-              allPersonalCodes.push(String(personalCode))
+-            }
+-
+-            // Only add if we have valid data
+-            if (name !== 'Unknown' || personalCode !== 'No personal code') {
+-              availableStudents.push(`${name} (${personalCode})`)
++          // Build a helpful error message
++          let errorMessage = `Student with personal code ${studentPersonalCode} not found in assignment ${assignmentId}.`
++
++          // Add more specific diagnostic information
++          errorMessage += `\n\nDiagnostic Info:`
++          errorMessage += `\n- Assignment ID: ${assignmentId}`
++          errorMessage += `\n- Journal ID: ${journalId}`
++          errorMessage += `\n- Students in assignment: ${entryData.journalEntryStudents.length}`
++
++          // Check if student exists in journal students
++          const journalStudentsForCheck = await this.getJournalStudents(journalId)
++          let studentInJournal = null
++
++          if (journalStudentsForCheck) {
++            for (const journalStudent of journalStudentsForCheck) {
++              if (journalStudent.student && journalStudent.student.idcode === String(studentPersonalCode)) {
++                studentInJournal = {
++                  name: journalStudent.student.fullname || journalStudent.studentName,
++                  personalCode: journalStudent.student.idcode,
++                  isActive: journalStudent.student.status === 'OPPURSTAATUS_O'
++                }
++                break
++              }
+             }
+           }
+-        }
+-
+-        const studentListStr = availableStudents.length > 0 ?
+-          `Available students: ${availableStudents.slice(0, 5).join(', ')}${availableStudents.length > 5 ? '...' : ''}` :
+-          'No students in cache'
+ 
+-        // Check if the personal code exists in the cache but with a different format
+-        const targetPersonalCode = String(studentPersonalCode)
+-        const similarPersonalCodes = allPersonalCodes.filter(code =>
+-          code.includes(targetPersonalCode) || targetPersonalCode.includes(code))
+-
+-        let errorMessage = `Student with personal code ${studentPersonalCode} not found in assignment ${assignmentId}. ${studentListStr}`
++          if (studentInJournal) {
++            errorMessage += `\n- Student EXISTS in journal: ${studentInJournal.name} (${studentInJournal.personalCode})`
++            errorMessage += `\n- Student status: ${studentInJournal.isActive ? 'Active' : 'Inactive'}`
++            errorMessage += `\n- This means the student is NOT enrolled in this specific assignment`
++            errorMessage += `\n\nSOLUTION: The student needs to be manually added to this assignment in Tahvel first, then you can sync the grade.`
++          } else {
++            errorMessage += `\n- Student NOT FOUND in journal`
++            errorMessage += `\n- This means the student is not enrolled in this journal at all`
++          }
+ 
+-        if (similarPersonalCodes.length > 0) {
+-          errorMessage += `\nSimilar personal codes found: ${similarPersonalCodes.join(', ')}`
++          throw new Error(errorMessage)
+         }
+ 
+-        // Add more specific diagnostic information
+-        errorMessage += `\n\nDiagnostic Info:`
+-        errorMessage += `\n- Assignment ID: ${assignmentId}`
+-        errorMessage += `\n- Journal ID: ${journalId}`
+-        errorMessage += `\n- Students in assignment: ${entryData.journalEntryStudents.length}`
+-        errorMessage += `\n- Students in cache: ${Object.keys(this.globalStudentCache).length}`
++        // Check if we have a valid journalStudent ID
++        if (!studentEntry.journalStudent) {
++          // We need to wait for the journalStudentId from getDetailedStudentInfo
++          Logger.warning(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update.`)
++          throw new Error(
++            `No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update. This might be because the student is not enrolled in this journal.`
++          )
++        }
+ 
+-        // Check if student exists in journal but not in this assignment
+-        const studentInJournal = Object.values(this.globalStudentCache).find(student =>
+-          student && String(student.personalCode) === String(studentPersonalCode))
++        // Log the current grade for debugging
++        const currentGradeCode = studentEntry.grade?.code || 'No grade'
++        Logger.debug(`Current grade for student ${studentPersonalCode}: ${currentGradeCode}`)
+ 
+-        if (studentInJournal) {
+-          errorMessage += `\n- Student EXISTS in journal cache: ${studentInJournal.name} (${studentInJournal.personalCode})`
+-          errorMessage += `\n- Student status: ${studentInJournal.isActive ? 'Active' : 'Inactive'}`
+-          errorMessage += `\n- This means the student is NOT enrolled in this specific assignment`
+-          errorMessage += `\n\nSOLUTION: The student needs to be manually added to this assignment in Tahvel first, then you can sync the grade.`
+-        } else {
+-          errorMessage += `\n- Student NOT FOUND in journal cache`
+-          errorMessage += `\n- This means the student is not enrolled in this journal at all`
+-        }
+-
+-        // Log all personal codes for debugging (moved to function end)
+-        this._logDetailedDiagnostics(entryData, studentPersonalCode, assignmentId, journalId)
+-
+-        throw new Error(errorMessage)
+-      }
+-
+-      // Check if we have a valid journalStudent ID
+-      if (!studentEntry.journalStudent) {
+-        // We need to wait for the journalStudentId from getDetailedStudentInfo
+-        Logger.warning(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update.`)
+-        throw new Error(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update. This might be because the student is not enrolled in this journal.`)
+-      }
+-
+-      // Log the current grade for debugging
+-      const currentGradeCode = studentEntry.grade?.code || 'No grade'
+-      Logger.debug(`Current grade for student ${studentPersonalCode}: ${currentGradeCode}`)
+-
+-      // If we're using a fallback student, log a warning
+-      const cachedStudentForFallback = this.globalStudentCache[studentEntry.journalStudent]
+-      if (cachedStudentForFallback && String(cachedStudentForFallback.personalCode) !== String(studentPersonalCode)) {
+-        Logger.warning(`WARNING: Using fallback student ${cachedStudentForFallback.name} (${cachedStudentForFallback.personalCode}) instead of requested student with personal code ${studentPersonalCode}`)
+-      }
+-
+-      // Prepare the update data - following the exact structure used by the Angular app
+-      // Create the updated student entry with the new grade
+-      const updatedStudentEntry = {
+-        id: studentEntry.id, // This might be null for new students
+-        journalStudent: Number(studentEntry.journalStudent), // Convert to number to match Angular's format
+-        absence: null,
+-        grade: {
+-          code: `KUTSEHINDAMINE_${grade}`,
+-          gradingSchemaRowId: null,
+-          value: String(grade),
+-          value2: String(grade),
+-          extraval1: null,
+-          extraval2: null,
+-          nameEt: `Hinne ${grade}`,
+-          nameEn: `Grade ${grade}`,
+-          valid: true,
+-        },
+-        verbalGrade: null,
+-        removeStudentHistory: true, // Don't remove history for grade updates
+-        // For addInfo, we'll use the pattern from existing students or a default
+-        addInfo: this.getAddInfoFromExistingStudents(entryData.journalEntryStudents),
+-        isLessonAbsence: false,
+-        hasOverlappingLessonAbsence: false,
+-        isPraise: false,
+-        isRemark: false,
+-        lessonAbsences: {},
+-        studentName: null,
+-        studentGroup: null,
+-        journalEntryStudentHistories: [],
+-        hasWholeDayAcceptedAbsence: false,
+-        wholeDayAbsenceCode: null,
+-        gradeValue: null,
+-      }
+-
+-      // Create the update data with ONLY the student we're updating
+-      // This prevents 412 errors caused by inactive students in the assignment
+-      const existingStudentIndex = entryData.journalEntryStudents.findIndex(student =>
+-        student.journalStudent && Number(student.journalStudent) === Number(updatedStudentEntry.journalStudent))
+-
+-      let finalStudentEntry
+-      if (existingStudentIndex !== -1) {
+-        // If the student is already in the entry, update their entry
+-        Logger.info(`Student ${studentPersonalCode} is already in the assignment. Updating existing entry.`)
+-
+-        // Get the original student entry
+-        const originalStudentEntry = entryData.journalEntryStudents[existingStudentIndex]
+-        Logger.debug(`Original student entry: ${JSON.stringify({
+-          id: originalStudentEntry.id,
+-          journalStudent: originalStudentEntry.journalStudent,
+-          addInfo: originalStudentEntry.addInfo,
+-          grade: originalStudentEntry.grade?.code || 'No grade',
+-        })}`)
+-
+-        // Only update the grade, keeping all other fields intact
+-        finalStudentEntry = {
+-          ...originalStudentEntry,
+-          grade: updatedStudentEntry.grade,
+-          // Make sure to keep the original ID
+-          id: originalStudentEntry.id,
+-          // Don't remove student history when updating existing student
+-          removeStudentHistory: true,
++        // If we're using a fallback student, log a warning
++        const cachedStudentForFallback = await this.getCachedStudent(studentEntry.journalStudent)
++        if (cachedStudentForFallback && String(cachedStudentForFallback.personalCode) !== String(studentPersonalCode)) {
++          Logger.warning(
++            `WARNING: Using fallback student ${cachedStudentForFallback.name} (${cachedStudentForFallback.personalCode}) instead of requested student with personal code ${studentPersonalCode}`
++          )
+         }
+-      } else {
+-        // If the student is not in the entry, use the new entry
+-        Logger.info(`Student ${studentPersonalCode} is not in the assignment. Adding new entry.`)
+-        finalStudentEntry = updatedStudentEntry
+-      }
+-
+-      // Check if this specific student is active before sending the update
+-      const cachedStudentForStatus = this.getCachedStudent(finalStudentEntry.journalStudent)
+-      if (cachedStudentForStatus && (!cachedStudentForStatus.isActive || cachedStudentForStatus.isDeleted)) {
+-        const statusReason = cachedStudentForStatus.isDeleted ? 'deleted' : 'inactive'
+-        throw new Error(`Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`)
+-      }
+ 
+-      // Create array with only the student we're updating to avoid 412 errors from inactive students
+-      const studentsToUpdate = [finalStudentEntry]
++        // Prepare the update data - following the exact structure used by the Angular app
++        // Create the updated student entry with the new grade
++        const updatedStudentEntry = {
++          id: studentEntry.id, // This might be null for new students
++          journalStudent: Number(studentEntry.journalStudent), // Convert to number to match Angular's format
++          absence: null,
++          grade: {
++            code: `KUTSEHINDAMINE_${grade}`,
++            gradingSchemaRowId: null,
++            value: String(grade),
++            value2: String(grade),
++            extraval1: null,
++            extraval2: null,
++            nameEt: `Hinne ${grade}`,
++            nameEn: `Grade ${grade}`,
++            valid: true
++          },
++          verbalGrade: null,
++          removeStudentHistory: true, // Don't remove history for grade updates
++          // For addInfo, we'll use the pattern from existing students or a default
++          addInfo: this.getAddInfoFromExistingStudents(entryData.journalEntryStudents),
++          isLessonAbsence: false,
++          hasOverlappingLessonAbsence: false,
++          isPraise: false,
++          isRemark: false,
++          lessonAbsences: {},
++          studentName: null,
++          studentGroup: null,
++          journalEntryStudentHistories: [],
++          hasWholeDayAcceptedAbsence: false,
++          wholeDayAbsenceCode: null,
++          gradeValue: null
++        }
+ 
+-      // Add student names to the entry for debugging purposes
+-      const studentsWithNames = studentsToUpdate.map(student => {
+-        // Use the cache lookup helper method
+-        const cachedStudent = this.getCachedStudent(student.journalStudent)
+-        const studentName = cachedStudent ? cachedStudent.name : 'Unknown'
+-        const studentPersonalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
++        // Create the update data with ONLY the student we're updating
++        // This prevents 412 errors caused by inactive students in the assignment
++        const existingStudentIndex = entryData.journalEntryStudents.findIndex(
++          student => student.journalStudent && Number(student.journalStudent) === Number(updatedStudentEntry.journalStudent)
++        )
++
++        let finalStudentEntry
++        if (existingStudentIndex !== -1) {
++          // If the student is already in the entry, update their entry
++          Logger.info(`Student ${studentPersonalCode} is already in the assignment. Updating existing entry.`)
++
++          // Get the original student entry
++          const originalStudentEntry = entryData.journalEntryStudents[existingStudentIndex]
++          Logger.debug(
++            `Original student entry: ${JSON.stringify({
++              id: originalStudentEntry.id,
++              journalStudent: originalStudentEntry.journalStudent,
++              addInfo: originalStudentEntry.addInfo,
++              grade: originalStudentEntry.grade?.code || 'No grade'
++            })}`
++          )
+ 
+-        // Log cache lookup details for debugging
+-        if (!cachedStudent) {
+-          Logger.warning(`Cache lookup failed for journalStudent=${student.journalStudent}. Available cache keys: ${Object.keys(this.globalStudentCache).slice(0, 10).join(', ')}${Object.keys(this.globalStudentCache).length > 10 ? '...' : ''}`)
++          // Only update the grade, keeping all other fields intact
++          finalStudentEntry = {
++            ...originalStudentEntry,
++            grade: updatedStudentEntry.grade,
++            // Make sure to keep the original ID
++            id: originalStudentEntry.id,
++            // Don't remove student history when updating existing student
++            removeStudentHistory: true
++          }
+         } else {
+-          Logger.debug(`Cache lookup successful for journalStudent=${student.journalStudent}: ${studentName} (${studentPersonalCode})`)
++          // If the student is not in the entry, use the new entry
++          Logger.info(`Student ${studentPersonalCode} is not in the assignment. Adding new entry.`)
++          finalStudentEntry = updatedStudentEntry
+         }
+ 
+-        return {
+-          ...student,
+-          // Add student name for debugging
+-          studentName: studentName,
+-          // Also add personal code for easier identification
+-          studentPersonalCode: studentPersonalCode
++        // Check if this specific student is active before sending the update
++        const cachedStudentForStatus = await this.getCachedStudent(finalStudentEntry.journalStudent)
++        if (cachedStudentForStatus && (!cachedStudentForStatus.isActive || cachedStudentForStatus.isDeleted)) {
++          const statusReason = cachedStudentForStatus.isDeleted ? 'deleted' : 'inactive'
++          throw new Error(
++            `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student's status is ${statusReason} in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
++          )
+         }
+-      })
+ 
+-      // Create the update data with filtered students that include names
+-      const updateData = {
+-        ...entryData,
+-        journalEntryStudents: studentsWithNames,
+-      }
++        // Create array with only the student we're updating to avoid 412 errors from inactive students
++        const studentsToUpdate = [finalStudentEntry]
+ 
+-      // Make sure we include all the fields that the Angular app includes
+-      if (!updateData.version && entryData.version) {
+-        updateData.version = entryData.version
+-      }
++        // Add student names to the entry for debugging purposes
++        const studentsWithNames = []
++        for (const student of studentsToUpdate) {
++          // Use the cache lookup helper method
++          const cachedStudent = await this.getCachedStudent(student.journalStudent)
++          const studentName = cachedStudent ? cachedStudent.name : 'Unknown'
++          const studentPersonalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
++          const isActive = cachedStudent ? cachedStudent.isActive : 'Unknown'
++          const isDeleted = cachedStudent ? cachedStudent.isDeleted : 'Unknown'
++          const gradeCode = student.grade?.code || 'No grade'
+ 
+-      // Ensure teacher information is in the correct format
+-      if (entryData.teacherSelection && Array.isArray(entryData.teacherSelection)) {
+-        updateData.teacherSelection = entryData.teacherSelection
+-      }
++          Logger.info(
++            `Student: ${studentName} (${studentPersonalCode}) - Active: ${isActive}, Deleted: ${isDeleted}, Grade: ${gradeCode}, JournalStudentId: ${student.journalStudent}`
++          )
+ 
+-      // Convert journalEntryTeachers to strings if they're not already
+-      if (Array.isArray(updateData.journalEntryTeachers)) {
+-        updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
+-      }
++          studentsWithNames.push({
++            ...student,
++            // Add student name for debugging
++            studentName: studentName,
++            // Also add personal code for easier identification
++            studentPersonalCode: studentPersonalCode
++          })
++        }
+ 
+-      // Make sure we have the correct capacity types
+-      if (!updateData.journalEntryCapacityTypes && entryData.entryType) {
+-        // Set default capacity types based on entry type
+-        if (entryData.entryType === 'SISSEKANNE_I') {
+-          updateData.journalEntryCapacityTypes = ['MAHT_i']
+-        } else if (entryData.entryType === 'SISSEKANNE_H') {
+-          updateData.journalEntryCapacityTypes = ['MAHT_h']
++        // Create the update data with filtered students that include names
++        const updateData = {
++          ...entryData,
++          journalEntryStudents: studentsWithNames
+         }
+-      }
+ 
+-      // Convert teacher IDs from numbers to strings for the PUT request
+-      if (Array.isArray(updateData.journalEntryTeachers)) {
+-        updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => id.toString())
+-      }
++        // Make sure we include all the fields that the Angular app includes
++        if (!updateData.version && entryData.version) {
++          updateData.version = entryData.version
++        }
+ 
+-      // Log the update data for debugging
+-      Logger.debug(`Sending update for assignment ${assignmentId}, student ${studentPersonalCode}, new grade: ${grade}`)
++        // Ensure teacher information is in the correct format
++        if (entryData.teacherSelection && Array.isArray(entryData.teacherSelection)) {
++          updateData.teacherSelection = entryData.teacherSelection
++        }
+ 
+-      // Log whether we're adding a new student or updating an existing one
+-      if (studentEntry.id) {
+-        Logger.info(`Updating grade for existing student ${studentPersonalCode} in assignment ${assignmentId}`)
+-      } else {
+-        Logger.info(`Adding new student ${studentPersonalCode} to assignment ${assignmentId} with grade ${grade}`)
+-      }
++        // Convert journalEntryTeachers to strings if they're not already
++        if (Array.isArray(updateData.journalEntryTeachers)) {
++          updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
++        }
+ 
+-      // Log the student being sent in the update
+-      Logger.debug(`Sending update with student: ${studentEntry.studentName || 'Unknown'} (${studentEntry.journalStudent}) with grade ${grade}`)
++        // Make sure we have the correct capacity types
++        if (!updateData.journalEntryCapacityTypes && entryData.entryType) {
++          // Set default capacity types based on entry type
++          if (entryData.entryType === 'SISSEKANNE_I') {
++            updateData.journalEntryCapacityTypes = ['MAHT_i']
++          } else if (entryData.entryType === 'SISSEKANNE_H') {
++            updateData.journalEntryCapacityTypes = ['MAHT_h']
++          }
++        }
+ 
+-      // Log the structure of the update data
+-      Logger.debug(`Update data structure: ${Object.keys(updateData).join(', ')}`)
+-      Logger.debug(`Student entry structure: ${Object.keys(updatedStudentEntry).join(', ')}`)
++        // Convert teacher IDs from numbers to strings for the PUT request
++        if (Array.isArray(updateData.journalEntryTeachers)) {
++          updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => id.toString())
++        }
+ 
+-      // Log the number of students in the update (should be 1 now)
+-      Logger.info(`Sending update with ${updateData.journalEntryStudents.length} student (${existingStudentIndex !== -1 ? 'updating existing' : 'adding new'} student)`)
++        // Log the update data for debugging
++        Logger.debug(`Sending update for assignment ${assignmentId}, student ${studentPersonalCode}, new grade: ${grade}`)
+ 
+-      // Enhanced logging: Log the specific student being updated
+-      Logger.info('=== STUDENT BEING UPDATED ===')
+-      updateData.journalEntryStudents.forEach((student, index) => {
+-        const cachedStudentInfo = this.globalStudentCache[student.journalStudent]
+-        const studentName = cachedStudentInfo ? cachedStudentInfo.name : 'Unknown'
+-        const personalCode = cachedStudentInfo ? cachedStudentInfo.personalCode : 'Unknown'
+-        const isActive = cachedStudentInfo ? cachedStudentInfo.isActive : 'Unknown'
+-        const isDeleted = cachedStudentInfo ? cachedStudentInfo.isDeleted : 'Unknown'
+-        const gradeCode = student.grade?.code || 'No grade'
++        // Log whether we're adding a new student or updating an existing one
++        if (studentEntry.id) {
++          Logger.info(`Updating grade for existing student ${studentPersonalCode} in assignment ${assignmentId}`)
++        } else {
++          Logger.info(`Adding new student ${studentPersonalCode} to assignment ${assignmentId} with grade ${grade}`)
++        }
+ 
+-        Logger.info(`Student: ${studentName} (${personalCode}) - Active: ${isActive}, Deleted: ${isDeleted}, Grade: ${gradeCode}, JournalStudentId: ${student.journalStudent}`)
+-      })
+-      Logger.info('=== END STUDENT BEING UPDATED ===')
++        // Log the student being sent in the update
++        Logger.debug(`Sending update with student: ${studentEntry.studentName || 'Unknown'} (${studentEntry.journalStudent}) with grade ${grade}`)
++
++        // Log the structure of the update data
++        Logger.debug(`Update data structure: ${Object.keys(updateData).join(', ')}`)
++        Logger.debug(`Student entry structure: ${Object.keys(updatedStudentEntry).join(', ')}`)
++
++        // Log the number of students in the update (should be 1 now)
++        Logger.info(
++          `Sending update with ${updateData.journalEntryStudents.length} student (${existingStudentIndex !== -1 ? 'updating existing' : 'adding new'} student)`
++        )
++
++        // Enhanced logging: Log the specific student being updated
++        Logger.info('=== STUDENT BEING UPDATED ===')
++        for (const [_index, student] of updateData.journalEntryStudents.entries()) {
++          const cachedStudentInfo = await this.getCachedStudent(student.journalStudent)
++          const studentName = cachedStudentInfo ? cachedStudentInfo.name : 'Unknown'
++          const personalCode = cachedStudentInfo ? cachedStudentInfo.personalCode : 'Unknown'
++          const isActive = cachedStudentInfo ? cachedStudentInfo.isActive : 'Unknown'
++          const isDeleted = cachedStudentInfo ? cachedStudentInfo.isDeleted : 'Unknown'
++          const gradeCode = student.grade?.code || 'No grade'
++
++          Logger.info(
++            `Student: ${studentName} (${personalCode}) - Active: ${isActive}, Deleted: ${isDeleted}, Grade: ${gradeCode}, JournalStudentId: ${student.journalStudent}`
++          )
++        }
++        Logger.info('=== END STUDENT BEING UPDATED ===')
+ 
+-      // Send the update request
+-      let response
+-      try {
+-        Logger.info(`Sending PUT request to /journals/${journalId}/journalEntry/${assignmentId}`)
+-        Logger.debug(`PUT request data: ${JSON.stringify(updateData)}`)
+-
+-        // Log the request URL for debugging
+-        const requestUrl = `${this.api.tahvel.baseUrl}/journals/${journalId}/journalEntry/${assignmentId}`
+-        Logger.debug(`Full request URL: ${requestUrl}`)
+-
+-        // Add a timestamp to track how long the request takes
+-        const startTime = Date.now()
+-        Logger.debug(`Starting PUT request at ${new Date().toISOString()}`)
+-
+-        response = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, updateData)
+-
+-        // Log the time it took to complete the request
+-        const endTime = Date.now()
+-        Logger.debug(`PUT request completed in ${endTime - startTime}ms`)
+-
+-        // Log detailed response information
+-        Logger.debug(`Response type: ${typeof response}`)
+-        Logger.debug(`Response value: ${response}`)
+-        Logger.debug(`Response JSON: ${JSON.stringify(response)}`)
+-        Logger.debug(`Response is null: ${response === null}`)
+-        Logger.debug(`Response is undefined: ${response === undefined}`)
+-        Logger.debug(`Response is empty string: ${response === ''}`)
+-        Logger.debug(`Response is falsy: ${!response}`)
+-      } catch (error) {
+-        // Provide detailed error information
+-        let errorMessage = `Failed to update grade in Tahvel: ${error.message}`
++        // Send the update request
++        let response
++        try {
++          Logger.info(`Sending PUT request to /journals/${journalId}/journalEntry/${assignmentId}`)
++          Logger.debug(`PUT request data: ${JSON.stringify(updateData)}`)
++
++          // Log the request URL for debugging
++          const requestUrl = `${this.api.tahvel.baseUrl}/journals/${journalId}/journalEntry/${assignmentId}`
++          Logger.debug(`Full request URL: ${requestUrl}`)
++
++          // Add a timestamp to track how long the request takes
++          const startTime = Date.now()
++          Logger.debug(`Starting PUT request at ${new Date().toISOString()}`)
++
++          response = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, updateData)
++
++          // Log the time it took to complete the request
++          const endTime = Date.now()
++          Logger.debug(`PUT request completed in ${endTime - startTime}ms`)
++
++          // Log detailed response information
++          Logger.debug(`Response type: ${typeof response}`)
++          Logger.debug(`Response value: ${response}`)
++          Logger.debug(`Response JSON: ${JSON.stringify(response)}`)
++          Logger.debug(`Response is null: ${response === null}`)
++          Logger.debug(`Response is undefined: ${response === undefined}`)
++          Logger.debug(`Response is empty string: ${response === ''}`)
++          Logger.debug(`Response is falsy: ${!response}`)
++        } catch (error) {
++          // Provide detailed error information
++          let errorMessage = `Failed to update grade in Tahvel: ${error.message}`
+ 
+-        // Check for common error cases
+-        if (error.message.includes('403')) {
+-          errorMessage = 'Permission denied. You may not have rights to modify this journal. This is expected if you are not the teacher of this journal.'
++          // Check for common error cases
++          if (error.message.includes('403')) {
++            errorMessage =
++              'Permission denied. You may not have rights to modify this journal. This is expected if you are not the teacher of this journal.'
+ 
+-          // Log more details about the permission issue
+-          Logger.warning(`Permission denied when updating journal ${journalId}, assignment ${assignmentId}. This is expected if you are not the teacher of this journal.`)
++            // Log more details about the permission issue
++            Logger.warning(
++              `Permission denied when updating journal ${journalId}, assignment ${assignmentId}. This is expected if you are not the teacher of this journal.`
++            )
+ 
+-          // Add more context to the error message
+-          const teacherInfo = entryData.teacherSelection ?
+-            entryData.teacherSelection.map(t => t.nameEt || t.fullname || t.id).join(', ') :
+-            'Unknown'
++            // Add more context to the error message
++            const teacherInfo = entryData.teacherSelection ? entryData.teacherSelection.map(t => t.nameEt || t.fullname || t.id).join(', ') : 'Unknown'
+ 
+-          Logger.debug(`Journal teachers: ${teacherInfo}`)
+-          errorMessage += ` Journal teachers: ${teacherInfo}`
++            Logger.debug(`Journal teachers: ${teacherInfo}`)
++            errorMessage += ` Journal teachers: ${teacherInfo}`
+ 
+-          // Check if XSRF token might be missing
+-          const cookies = document.cookie.split(';')
+-          let hasXsrfToken = false
++            // Check if XSRF token might be missing
++            const cookies = document.cookie.split(';')
++            let hasXsrfToken = false
+ 
+-          for (const cookie of cookies) {
+-            const [name] = cookie.trim().split('=')
+-            if (name === 'XSRF-TOKEN') {
+-              hasXsrfToken = true
+-              break
++            for (const cookie of cookies) {
++              const [name] = cookie.trim().split('=')
++              if (name === 'XSRF-TOKEN') {
++                hasXsrfToken = true
++                break
++              }
+             }
+-          }
+ 
+-          if (!hasXsrfToken) {
+-            Logger.warning('XSRF-TOKEN cookie is missing. This might be causing the 403 error.')
+-            errorMessage += ' XSRF-TOKEN cookie is missing, which might be causing this error. Try refreshing the page.'
+-          }
+-        } else if (error.message.includes('404')) {
+-          errorMessage = 'Assignment not found. It may have been deleted or moved.'
+-        } else if (error.message.includes('400')) {
+-          errorMessage = `Bad request: ${error.message}. The data format may be incorrect.`
+-        } else if (error.message.includes('412')) {
+-          // Precondition Failed - often means the student is not actively studying
+-          Logger.warning(`Server returned 412 error when updating assignment ${assignmentId}`)
+-
+-          // Check if the error message contains specific error codes
+-          if (error.message.includes('changeIsNotAllowedStudentIsNotStudying') ||
+-            error.message.includes('journal.messages.changeIsNotAllowedStudentIsNotStudying')) {
+-            errorMessage = `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student may be on academic leave or their status is inactive in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
+-
+-            // Check the student's status in our cache
+-            const cachedStudent = this.globalStudentCache[studentEntry.journalStudent]
+-            if (cachedStudent) {
+-              Logger.debug(`Student status in cache: ${cachedStudent.isActive ? 'Active' : 'Inactive'}`)
+-              if (!cachedStudent.isActive) {
+-                errorMessage += ' Student status in our cache is marked as inactive.'
+-              }
++            if (!hasXsrfToken) {
++              Logger.warning('XSRF-TOKEN cookie is missing. This might be causing the 403 error.')
++              errorMessage += ' XSRF-TOKEN cookie is missing, which might be causing this error. Try refreshing the page.'
+             }
++          } else if (error.message.includes('404')) {
++            errorMessage = 'Assignment not found. It may have been deleted or moved.'
++          } else if (error.message.includes('400')) {
++            errorMessage = `Bad request: ${error.message}. The data format may be incorrect.`
++          } else if (error.message.includes('412')) {
++            // Precondition Failed - often means the student is not actively studying
++            Logger.warning(`Server returned 412 error when updating assignment ${assignmentId}`)
++
++            // Check if the error message contains specific error codes
++            if (
++              error.message.includes('changeIsNotAllowedStudentIsNotStudying') ||
++              error.message.includes('journal.messages.changeIsNotAllowedStudentIsNotStudying')
++            ) {
++              errorMessage = `Cannot update grade for student ${studentPersonalCode} because they are not actively studying. The student may be on academic leave or their status is inactive in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.`
++
++              // Check the student's status in our cache
++              const cachedStudent = await this.getCachedStudent(studentEntry.journalStudent)
++              if (cachedStudent) {
++                Logger.debug(`Student status in cache: ${cachedStudent.isActive ? 'Active' : 'Inactive'}`)
++                if (!cachedStudent.isActive) {
++                  errorMessage += ' Student status in our cache is marked as inactive.'
++                }
++              }
+ 
+-            // Enhanced debugging: Log all students in the update request to identify the problematic one
+-            Logger.debug('=== 412 ERROR DEBUGGING ===')
+-            Logger.debug(`Assignment ID: ${assignmentId}, Journal ID: ${journalId}`)
+-            Logger.debug(`Total students in update request: ${updateData.journalEntryStudents.length}`)
++              // Enhanced debugging: Log all students in the update request to identify the problematic one
++              Logger.debug('=== 412 ERROR DEBUGGING ===')
++              Logger.debug(`Assignment ID: ${assignmentId}, Journal ID: ${journalId}`)
++              Logger.debug(`Total students in update request: ${updateData.journalEntryStudents.length}`)
+ 
+-            // Log the student names that are actually being sent in the request payload
+-            Logger.debug('=== STUDENTS IN REQUEST PAYLOAD ===')
+-            updateData.journalEntryStudents.forEach((student, index) => {
+-              Logger.debug(`Student ${index + 1} in payload: Name="${student.studentName || 'Not set'}", PersonalCode="${student.studentPersonalCode || 'Not set'}", JournalStudentId=${student.journalStudent}`)
+-            })
+-            Logger.debug('=== END STUDENTS IN REQUEST PAYLOAD ===')
+-
+-            // Log each student's status from cache
+-            updateData.journalEntryStudents.forEach((student, index) => {
+-              const cachedStudentData = this.globalStudentCache[student.journalStudent]
+-              if (cachedStudentData) {
+-                const status = cachedStudentData.isActive ? 'ACTIVE' : 'INACTIVE'
+-                const isDeleted = cachedStudentData.isDeleted ? 'DELETED' : 'NOT_DELETED'
+-                Logger.debug(`Student ${index + 1}: ${cachedStudentData.name} (${cachedStudentData.personalCode}) - Status: ${status}, ${isDeleted}`)
+-              } else {
+-                Logger.debug(`Student ${index + 1}: journalStudent=${student.journalStudent} - NO CACHE DATA`)
++              // Log the student names that are actually being sent in the request payload
++              Logger.debug('=== STUDENTS IN REQUEST PAYLOAD ===')
++              updateData.journalEntryStudents.forEach((student, index) => {
++                Logger.debug(
++                  `Student ${index + 1} in payload: Name="${student.studentName || 'Not set'}", PersonalCode="${student.studentPersonalCode || 'Not set'}", JournalStudentId=${student.journalStudent}`
++                )
++              })
++              Logger.debug('=== END STUDENTS IN REQUEST PAYLOAD ===')
++
++              // Log each student's status from cache
++              for (const [index, student] of updateData.journalEntryStudents.entries()) {
++                const cachedStudentData = await this.getCachedStudent(student.journalStudent)
++                if (cachedStudentData) {
++                  const status = cachedStudentData.isActive ? 'ACTIVE' : 'INACTIVE'
++                  const isDeleted = cachedStudentData.isDeleted ? 'DELETED' : 'NOT_DELETED'
++                  Logger.debug(`Student ${index + 1}: ${cachedStudentData.name} (${cachedStudentData.personalCode}) - Status: ${status}, ${isDeleted}`)
++                } else {
++                  Logger.debug(`Student ${index + 1}: journalStudent=${student.journalStudent} - NO CACHE DATA`)
++                }
+               }
+-            })
+ 
+-            // Suggest filtering out inactive students
+-            const inactiveStudents = updateData.journalEntryStudents.filter(student => {
+-              const cachedStudentData = this.globalStudentCache[student.journalStudent]
+-              return cachedStudentData && (!cachedStudentData.isActive || cachedStudentData.isDeleted)
+-            })
++              // Check for inactive students (simplified check without iteration)
++              Logger.debug('Checking for inactive students...')
++              let hasInactiveStudents = false
++              for (const student of updateData.journalEntryStudents) {
++                const cachedStudentData = await this.getCachedStudent(student.journalStudent)
++                if (cachedStudentData && (!cachedStudentData.isActive || cachedStudentData.isDeleted)) {
++                  hasInactiveStudents = true
++                  Logger.debug(`Found inactive student: ${cachedStudentData.name} (${cachedStudentData.personalCode})`)
++                }
++              }
+ 
+-            if (inactiveStudents.length > 0) {
+-              Logger.debug(`Found ${inactiveStudents.length} inactive/deleted students in the update request`)
+-              errorMessage += ` Found ${inactiveStudents.length} inactive/deleted students that may be causing this error.`
++              if (hasInactiveStudents) {
++                Logger.debug(`Found inactive/deleted students in the update request`)
++                errorMessage += ` Found inactive/deleted students that may be causing this error.`
++              }
++
++              Logger.debug('=== END 412 ERROR DEBUGGING ===')
++            } else {
++              errorMessage = `Precondition failed: ${error.message}. The server rejected the request.`
++            }
++          } else if (error.message.includes('500')) {
++            // Server error - likely due to invalid data structure
++            Logger.error(`Server returned 500 error when updating assignment ${assignmentId}`)
++
++            // Log the data we sent for debugging
++            Logger.debug(`Update data that caused 500 error: ${JSON.stringify(updateData)}`)
++
++            // Check for common issues
++            if (!studentEntry.id && !updateData.version) {
++              errorMessage = 'Server error when adding new student. The server might require a version number for the update.'
++              Logger.warning('Missing version number might be causing the 500 error')
++            } else if (!studentEntry.id) {
++              errorMessage = 'Server error when adding new student. The server might not allow adding students through this API.'
++              Logger.warning('Adding new student might not be supported by the API')
++            } else {
++              errorMessage = 'Tahvel server error. Please try again later.'
+             }
+ 
+-            Logger.debug('=== END 412 ERROR DEBUGGING ===')
+-          } else {
+-            errorMessage = `Precondition failed: ${error.message}. The server rejected the request.`
+-          }
+-        } else if (error.message.includes('500')) {
+-          // Server error - likely due to invalid data structure
+-          Logger.error(`Server returned 500 error when updating assignment ${assignmentId}`)
+-
+-          // Log the data we sent for debugging
+-          Logger.debug(`Update data that caused 500 error: ${JSON.stringify(updateData)}`)
+-
+-          // Check for common issues
+-          if (!studentEntry.id && !updateData.version) {
+-            errorMessage = 'Server error when adding new student. The server might require a version number for the update.'
+-            Logger.warning('Missing version number might be causing the 500 error')
+-          } else if (!studentEntry.id) {
+-            errorMessage = 'Server error when adding new student. The server might not allow adding students through this API.'
+-            Logger.warning('Adding new student might not be supported by the API')
+-          } else {
+-            errorMessage = 'Tahvel server error. Please try again later.'
++            // Suggest a workaround
++            errorMessage += ' Try adding the student to the assignment manually in Tahvel first, then sync the grade.'
+           }
+ 
+-          // Suggest a workaround
+-          errorMessage += ' Try adding the student to the assignment manually in Tahvel first, then sync the grade.'
++          throw new Error(errorMessage)
+         }
+ 
+-        throw new Error(errorMessage)
+-      }
+-
+-      // Handle successful responses, including empty responses
+-      // Some PUT operations return empty body with 200 status, which is valid
+-      if (response === null || response === undefined) {
+-        throw new Error('No response from Tahvel API after update')
+-      }
+-
+-      // Log the response type and content for debugging
+-      Logger.debug(`Response type: ${typeof response}, Content: ${JSON.stringify(response)}`)
+-      Logger.debug(`Successfully updated grade for student ${studentPersonalCode} in assignment ${assignmentId}`)
+-
+-      // === DETAILED DEBUG INFORMATION (shown at end to avoid scrolling) ===
+-      Logger.debug('=== DETAILED DEBUG INFORMATION ===')
+-      Logger.debug(`Detailed list of all students in assignment ${assignmentId}:`)
+-
+-      // Log all students in the entry data
+-      entryData.journalEntryStudents.forEach(student => {
+-        if (student.journalStudent) {
+-          const studentId = student.journalStudent
+-          const cachedStudent = this.globalStudentCache[studentId]
+-
+-          // Get grade info if available
+-          const gradeInfo = student.grade ? `Grade: ${student.grade.code}` : 'No grade'
+-
+-          if (cachedStudent) {
+-            Logger.debug(`- Student ID: ${studentId}, Personal Code: ${cachedStudent.personalCode}, Name: ${cachedStudent.name}, ${gradeInfo}`)
+-          } else {
+-            // Try to get name from the entry data
+-            const studentName = student.studentName || 'Unknown'
+-            Logger.debug(`- Student ID: ${studentId}, Name: ${studentName}, ${gradeInfo} (personal code not in cache)`)
+-          }
++        // Handle successful responses, including empty responses
++        // Some PUT operations return empty body with 200 status, which is valid
++        if (response === null || response === undefined) {
++          throw new Error('No response from Tahvel API after update')
+         }
+-      })
+ 
+-      // Log a summary of all personal codes in the cache for comparison
+-      const allPersonalCodes = Object.values(this.globalStudentCache)
+-        .filter(student => student && student.personalCode)
+-        .map(student => `${student.name} (${student.personalCode})`)
++        // Log the response type and content for debugging
++        Logger.debug(`Response type: ${typeof response}, Content: ${JSON.stringify(response)}`) // === DETAILED DEBUG INFORMATION (shown at end to avoid scrolling) ===
++        Logger.debug('=== DETAILED DEBUG INFORMATION ===')
++        Logger.debug(`Assignment ${assignmentId} has ${entryData.journalEntryStudents.length} students`)
++        Logger.debug('Cache summary skipped - using API cache service')
++        Logger.debug('=== END DETAILED DEBUG INFORMATION ===')
+ 
+-      if (allPersonalCodes.length > 0) {
+-        Logger.debug(`All students in global cache (${allPersonalCodes.length} total):`)
+-        // Log in chunks to avoid too long messages
+-        for (let i = 0; i < allPersonalCodes.length; i += 10) {
+-          const chunk = allPersonalCodes.slice(i, i + 10)
+-          Logger.debug(`  ${chunk.join(', ')}`)
+-        }
++        // Return the response, even if it's an empty string (which indicates success)
++        return response
+       }
+-      Logger.debug('=== END DETAILED DEBUG INFORMATION ===')
+-
+-      // Return the response, even if it's an empty string (which indicates success)
+-      return response
+     } catch (error) {
+       // Add context to the error message
+       const contextualError = new Error(`Error syncing grade for student ${studentPersonalCode} in assignment ${assignmentId}: ${error.message}`)
+@@ -2909,99 +3075,42 @@ class JournalListSyncFeature extends BaseFeature {
+   /**
+    * Get student from cache using multiple lookup strategies
+    * @param {string|number} journalStudentId - Journal student ID to look up
+-   * @returns {Object|null} Cached student data or null if not found
++   * @returns {Promise<Object|null>} Cached student data or null if not found
+    */
+-  getCachedStudent(journalStudentId) {
++  async getCachedStudent(journalStudentId) {
+     if (!journalStudentId) return null
+ 
+-    // Try direct lookup first
+-    let cachedStudent = this.globalStudentCache[journalStudentId]
++    Logger.debug(`🔍 Looking for student in cache with journalStudentId: ${journalStudentId}`)
+ 
+-    // If not found, try string version
+-    if (!cachedStudent) {
+-      cachedStudent = this.globalStudentCache[String(journalStudentId)]
+-    }
++    // Use the mapping to find the actual studentId
++    const studentId = this.journalStudentIdToStudentId[journalStudentId]
++    if (studentId) {
++      Logger.debug(`✓ Found mapping: journalStudentId ${journalStudentId} -> studentId ${studentId}`)
+ 
+-    // If still not found, try number version
+-    if (!cachedStudent && !isNaN(journalStudentId)) {
+-      cachedStudent = this.globalStudentCache[Number(journalStudentId)]
+-    }
++      try {
++        // Use the API cache to get student details
++        const studentDetails = await this.getStudentDetails(studentId)
++        if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
++          const isActive = studentDetails.status === 'OPPURSTAATUS_O'
++          const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
++
++          const cachedStudent = {
++            personalCode: studentDetails.person.idcode,
++            name: studentDetails.person.firstname + ' ' + studentDetails.person.lastname,
++            isActive: isActive,
++            isDeleted: isDeleted
++          }
+ 
+-    // If still not found, search through all cache entries
+-    if (!cachedStudent) {
+-      for (const [cacheKey, studentData] of Object.entries(this.globalStudentCache)) {
+-        if (studentData && (
+-          String(cacheKey) === String(journalStudentId) ||
+-          (studentData.journalStudentId && String(studentData.journalStudentId) === String(journalStudentId))
+-        )) {
+-          cachedStudent = studentData
+-          Logger.debug(`Found student in cache using fallback lookup: key=${cacheKey}, journalStudent=${journalStudentId}`)
+-          break
++          Logger.debug(`✓ Found student from API cache: ${cachedStudent.personalCode} (${cachedStudent.name})`)
++          return cachedStudent
+         }
++      } catch (error) {
++        Logger.debug(`Error getting student ${studentId} from API cache: ${error.message}`)
+       }
+     }
+ 
+-    return cachedStudent
+-  }
+-
+-  /**
+-   * Filter out inactive or deleted students to prevent 412 errors
+-   * @param {Array} students - Array of student entries
+-   * @returns {Array} Filtered array with only active students
+-   */
+-  filterActiveStudents(students) {
+-    return students.filter(student => {
+-      if (!student.journalStudent) {
+-        Logger.debug('Keeping student without journalStudent ID (likely new student)')
+-        return true
+-      }
+-
+-      const cachedStudent = this.globalStudentCache[student.journalStudent]
+-      if (!cachedStudent) {
+-        Logger.debug(`No cache data for student ${student.journalStudent}, keeping in request`)
+-        return true
+-      }
+-
+-      // Filter out inactive or deleted students
+-      if (!cachedStudent.isActive || cachedStudent.isDeleted) {
+-        Logger.warning(`Filtering out inactive/deleted student: ${cachedStudent.name} (${cachedStudent.personalCode}) - Active: ${cachedStudent.isActive}, Deleted: ${cachedStudent.isDeleted}`)
+-        return false
+-      }
+-
+-      return true
+-    })
+-  }
+-
+-  /**
+-   * Log detailed diagnostic information for debugging (called only when needed)
+-   * @private
+-   */
+-  _logDetailedDiagnostics(entryData, studentPersonalCode, assignmentId, journalId) {
+-    Logger.debug('=== DETAILED DIAGNOSTIC INFORMATION ===')
+-
+-    // Log all personal codes in cache
+-    const allPersonalCodes = []
+-    for (const studentId in this.globalStudentCache) {
+-      const student = this.globalStudentCache[studentId]
+-      if (student && student.personalCode) {
+-        allPersonalCodes.push(String(student.personalCode))
+-      }
+-    }
+-
+-    Logger.debug(`All personal codes in cache: ${allPersonalCodes.join(', ')}`)
+-    Logger.debug(`Target personal code: ${studentPersonalCode}`)
+-
+-    // Log all students in the entry data
+-    Logger.debug(`All students in assignment ${assignmentId}:`)
+-    entryData.journalEntryStudents.forEach(student => {
+-      const studentId = student.journalStudent
+-      const cachedStudent = this.globalStudentCache[studentId]
+-      const personalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
+-      const name = cachedStudent ? cachedStudent.name : 'Unknown'
+-      Logger.debug(`- ID: ${student.id}, journalStudent: ${studentId}, personalCode: ${personalCode}, name: ${name}`)
+-    })
+-
+-    Logger.debug('=== END DETAILED DIAGNOSTIC INFORMATION ===')
++    Logger.debug(`❌ Student not found in cache for journalStudentId: ${journalStudentId}`)
++    return null
+   }
+ }
+ 
+@@ -3031,7 +3140,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
+   try {
+     return await cacheService.getOrFetch(
+       cacheKey,
+-      async () => {
++      async() => {
+         try {
+           return await api.tahvel.get(endpoint)
+         } catch (error) {
+@@ -3068,43 +3177,31 @@ async function getTeacherPersonalCodeCached(api, teacher) {
+ 
+   // Check global cache first
+   if (globalModuleTeacherCache[cacheKey]) {
+-    Logger.debug(`Using global teacher cache for ${teacherName} (ID: ${teacherId}) with key: ${cacheKey}`)
+     return globalModuleTeacherCache[cacheKey]
+   }
+ 
+   // Check if request is already pending to prevent duplicate requests
+   if (pendingTeacherRequests.has(cacheKey)) {
+-    Logger.debug(`Teacher request already pending for ${teacherName} (ID: ${teacherId}) with key: ${cacheKey}, waiting...`)
+     return await pendingTeacherRequests.get(cacheKey)
+   }
+ 
+   // Create the fetch promise
+-  const fetchPromise = (async () => {
++  const fetchPromise = (async() => {
+     try {
+-      Logger.debug(`Fetching teacher personal code for ${teacherName} (ID: ${teacherId}) with endpoint: ${endpoint}`)
++      const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
+ 
+-      const teacherSearchResult = await fetchCachedData(
+-        api,
+-        endpoint,
+-        ONE_WEEK_MS
+-      )
+-
+-      if (
+-        teacherSearchResult?.content &&
+-        Array.isArray(teacherSearchResult.content) &&
+-        teacherSearchResult.content.length > 0
+-      ) {
++      if (teacherSearchResult?.content && Array.isArray(teacherSearchResult.content) && teacherSearchResult.content.length > 0) {
+         let foundTeacher = teacherSearchResult.content.find(t => t.id === teacherId)
+ 
+         if (!foundTeacher) {
+-          foundTeacher = teacherSearchResult.content.find(t =>
+-            t.name === teacherName ||
+-            t.name === teacher.fullname)
++          foundTeacher = teacherSearchResult.content.find(t => t.name === teacherName || t.name === teacher.fullname)
+         }
+ 
+         if (!foundTeacher) {
+           foundTeacher = teacherSearchResult.content[0]
+-          Logger.warning(`No exact match found for teacher ${teacherName} (ID: ${teacherId}). Using first result: ${foundTeacher.name} (ID: ${foundTeacher.id})`)
++          Logger.warning(
++            `No exact match found for teacher ${teacherName} (ID: ${teacherId}). Using first result: ${foundTeacher.name} (ID: ${foundTeacher.id})`
++          )
+         }
+ 
+         const teacherData = {
+@@ -3115,7 +3212,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
+ 
+         // Store in global cache using URL-based key
+         globalModuleTeacherCache[cacheKey] = teacherData
+-        Logger.debug(`Cached teacher data with key ${cacheKey}: ${teacherId} -> ${teacherData.name} (${teacherData.personalCode})`)
+ 
+         return teacherData
+       }
+@@ -3129,7 +3225,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
+       // Cache the fallback data too to prevent repeated requests
+       globalModuleTeacherCache[cacheKey] = fallbackData
+       return fallbackData
+-
+     } catch (error) {
+       Logger.warning(`Failed to get teacher personal code for ${teacherName}: ${error.message}`)
+       const errorData = { personalCode: '', name: teacherName, id: teacherId }
+@@ -3155,7 +3250,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
+  */
+ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = []) {
+   try {
+-
+     // Ensure we have journal IDs to process
+     if (!journalIds || journalIds.length === 0) {
+       Logger.warning('No journal IDs provided to getTahvelSubjectsWithAssignmentsAndGrades')
+@@ -3201,7 +3295,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
+             if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
+               studentDetailsMap[student.id] = {
+                 personalCode: studentDetails.person.idcode,
+-                name: student.fullname || `${student.firstname} ${student.lastname}`,
++                name: student.fullname || student.studentName,
+                 isActive: studentDetails.status === 'OPPURSTAATUS_O' // O means actively studying
+               }
+             }
+@@ -3227,9 +3321,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
+             Object.values(studentDetailsMap).forEach(studentDetails => {
+               if (studentDetails) {
+                 // Find this student's journal student ID
+-                const journalStudentId = Object.keys(studentDetailsMap).find(id =>
+-                  studentDetailsMap[id] === studentDetails
+-                )
++                const journalStudentId = Object.keys(studentDetailsMap).find(id => studentDetailsMap[id] === studentDetails)
+ 
+                 // Check if this student has results for this assignment
+                 const studentResults = studentResultsMap[journalStudentId]
+@@ -3324,8 +3416,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
+ 
+ // Expose the fetchCachedData function for testing purposes
+ getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
+-// Export a singleton instance
+-// Add a static property to indicate this feature requires Kriit
++
+ JournalListSyncFeature.requiresKriit = true
+ 
+ export const journalListSync = new JournalListSyncFeature()
