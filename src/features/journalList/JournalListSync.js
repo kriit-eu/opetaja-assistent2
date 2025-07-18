@@ -3100,27 +3100,6 @@ class JournalListSyncFeature extends BaseFeature {
     Logger.debug(`❌ Student not found in cache for journalStudentId: ${journalStudentId}`)
     return null
   }
-
-  /**
-   * Get all students from cache by iterating through possible keys
-   * @returns {Promise<Object>} Object with studentId as key and student data as value
-   */
-  async getAllStudentsFromCache() {
-    // Since we use the API cache directly, we can return the mapping
-    return this.journalStudentIdToStudentId
-  }
-
-  /**
-   * Clear all student cache entries
-   * @returns {Promise<number>} Number of entries cleared
-   */
-  async clearStudentCache() {
-    // Clear the mapping
-    const count = Object.keys(this.journalStudentIdToStudentId).length
-    this.journalStudentIdToStudentId = {}
-    Logger.debug(`Cleared ${count} student mappings`)
-    return count
-  }
 }
 
 // Cache expiration constants
