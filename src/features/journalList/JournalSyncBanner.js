@@ -61,10 +61,17 @@ class DifferenceRenderer {
       })
     })
 
+    const getAssignmentName = (assignment) => {
+      if (typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null) {
+        return newNames[assignment.assignmentExternalId] || assignment.assignmentName.Tahvel || assignment.assignmentName.kriit
+      }
+      return newNames[assignment.assignmentExternalId] || assignment.assignmentName
+    }
+
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
       (subject.assignments || []).forEach(assignment => {
-        const assignmentName = newNames[assignment.assignmentExternalId] || assignment.assignmentName
+        const assignmentName = getAssignmentName(assignment)
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
           const kriitGrade = normalize(result.grade)
