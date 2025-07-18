@@ -1,11 +1,11 @@
-import { domService } from '../../services/DomService.js';
-import { styleService } from '../../services/StyleService.js';
-import { bannerService } from '../../services/BannerService.js';
-import Logger from '../../services/Logger.js';
+import { domService } from '../../services/DomService.js'
+import { styleService } from '../../services/StyleService.js'
+import { bannerService } from '../../services/BannerService.js'
+import Logger from '../../services/Logger.js'
 
 class DifferenceRenderer {
-  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs) {
-    const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs)
+  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
+    const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
 
     for (const subjectName in groupedDiffs) {
       const subjectContainer = this.createSubjectContainer(container, subjectName)
@@ -26,9 +26,9 @@ class DifferenceRenderer {
     }
   }
 
-  collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs) {
+  collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
     const grouped = {}
-    const normalize = grade => (grade === null || grade === undefined || grade === '') ? null : String(grade)
+    const normalize = grade => (grade === null || grade === undefined || grade === '' ? null : String(grade))
 
     // Create a map of new assignment names
     const newNames = {}
@@ -38,26 +38,27 @@ class DifferenceRenderer {
       })
     })
 
-    // Helper to add a difference to the grouped object
+    // Helper to add a difference to the grouped object (by subjectName only)
     const addDiff = (subjectName, diff) => {
-      if (!grouped[subjectName]) {
-        grouped[subjectName] = []
+      const key = subjectName
+      if (!grouped[key]) {
+        grouped[key] = []
       }
-      grouped[subjectName].push(diff)
+      grouped[key].push(diff)
     }
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-        ;(subject.nameDiffs || []).forEach(nameDiff => {
-            addDiff(subject.subjectName, {
-                type: 'name',
-                typeName: 'Nimetus',
-                assignmentName: nameDiff.remote,
-                studentName: '',
-                oldValue: nameDiff.remote,
-                newValue: nameDiff.kriit
-            })
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
+        addDiff(subject.subjectName, {
+          type: 'name',
+          typeName: 'Nimetus',
+          assignmentName: nameDiff.remote,
+          studentName: '',
+          oldValue: nameDiff.remote,
+          newValue: nameDiff.kriit
         })
+      })
     })
 
     // Grade Diffs
@@ -95,29 +96,37 @@ class DifferenceRenderer {
       })
     })
 
+    // Entry Date Diffs
+    ;(entryDateDiffs || []).forEach(diff => {
+      const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
+      addDiff(diff.subjectName, {
+        type: 'entrydate',
+        typeName: 'Sissekande kuupäev',
+        assignmentName: assignmentName,
+        studentName: '',
+        oldValue: diff.oldValue,
+        newValue: diff.newValue
+      })
+    })
+
     return grouped
   }
 
-  createSubjectContainer(container, subjectName) {
+  createSubjectContainer(container, subjectGroupKey) {
     const subjectContainer = domService.createAndInsertElement('div', {}, '', container)
-    domService.createAndInsertElement('h3', {}, subjectName, subjectContainer)
+    domService.createAndInsertElement('h3', {}, subjectGroupKey, subjectContainer)
     return subjectContainer
   }
 
   createRow(container) {
-    return domService.createAndInsertElement(
-      'div',
-      { classList: ['change-item'] },
-      '',
-      container
-    )
+    return domService.createAndInsertElement('div', { classList: ['change-item'] }, '', container)
   }
 
   createBadge(row, text, className) {
     const badge = domService.createAndInsertElement(
       'span',
       {
-        classList: ['badge', className],
+        classList: ['badge', className]
       },
       text,
       row
@@ -191,12 +200,7 @@ export class JournalSyncBannerService {
     )
 
     // Add title
-    domService.createAndInsertElement(
-      'h1',
-      {},
-      'Kriit API võti puudub',
-      banner
-    )
+    domService.createAndInsertElement('h1', {}, 'Kriit API võti puudub', banner)
 
     // Add message
     domService.createAndInsertElement(
@@ -259,20 +263,10 @@ export class JournalSyncBannerService {
     )
 
     // Add title
-    domService.createAndInsertElement(
-      'h1',
-      {},
-      'Kõik hinded on sünkroonis!',
-      banner
-    )
+    domService.createAndInsertElement('h1', {}, 'Kõik hinded on sünkroonis!', banner)
 
     // Add message
-    domService.createAndInsertElement(
-      'p',
-      {},
-      'Tahvli ja Kriidi vahel pole erinevusi. Kõik hinded on juba õigesti sünkroniseeritud.',
-      banner
-    )
+    domService.createAndInsertElement('p', {}, 'Tahvli ja Kriidi vahel pole erinevusi. Kõik hinded on juba õigesti sünkroniseeritud.', banner)
 
     const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
     // Add refresh button
@@ -330,12 +324,7 @@ export class JournalSyncBannerService {
     )
 
     // Add title
-    domService.createAndInsertElement(
-      'h1',
-      {},
-      'Sünkroniseerimata muudatused',
-      banner
-    )
+    domService.createAndInsertElement('h1', {}, 'Sünkroniseerimata muudatused', banner)
 
     const changesContainer = domService.createAndInsertElement('div', { id: 'changes' }, '', banner)
 
@@ -360,17 +349,16 @@ export class JournalSyncBannerService {
     }
 
     if (onRefresh) {
-        domService.createAndInsertElement(
-            'button',
-            {
-                classList: ['btn-secondary'],
-                onclick: onRefresh
-            },
-            'Tühista',
-            actions
-        )
+      domService.createAndInsertElement(
+        'button',
+        {
+          classList: ['btn-secondary'],
+          onclick: onRefresh
+        },
+        'Tühista',
+        actions
+      )
     }
-
 
     // Update the banner service's current banner reference
     bannerService.currentBanner = banner
@@ -431,20 +419,10 @@ export class JournalSyncBannerService {
       errorTitle = 'Info'
     }
 
-    domService.createAndInsertElement(
-      'h1',
-      {},
-      errorTitle,
-      banner
-    )
+    domService.createAndInsertElement('h1', {}, errorTitle, banner)
 
     // Add error message
-    domService.createAndInsertElement(
-      'p',
-      {},
-      error,
-      banner
-    )
+    domService.createAndInsertElement('p', {}, error, banner)
 
     // Add appropriate action buttons and help text based on error type
     this._addSyncErrorActions(banner, error, options)
@@ -492,12 +470,7 @@ export class JournalSyncBannerService {
         }
       } else {
         // Authentication error
-        domService.createAndInsertElement(
-          'p',
-          {},
-          'See on autentimise viga. Palun kontrollige oma Kriit API võtit.',
-          banner
-        )
+        domService.createAndInsertElement('p', {}, 'See on autentimise viga. Palun kontrollige oma Kriit API võtit.', banner)
 
         // Add button to reset token
         if (options.onSettings) {
@@ -526,12 +499,7 @@ export class JournalSyncBannerService {
       }
     } else if (error && error.includes('No journal links found')) {
       // Journal link detection error
-      domService.createAndInsertElement(
-        'p',
-        {},
-        'See funktsioon vajab päeviku linke lehel. Palun veenduge, et olete päevikute nimekirja lehel.',
-        banner
-      )
+      domService.createAndInsertElement('p', {}, 'See funktsioon vajab päeviku linke lehel. Palun veenduge, et olete päevikute nimekirja lehel.', banner)
 
       // Add refresh page button
       if (options.onRefresh) {
@@ -588,12 +556,7 @@ export class JournalSyncBannerService {
           'Õpilase isikukoodi ei leitud Tahvlis. Sünkroniseerimine ei ole võimalik, kuna me ei saa tuvastada, millise õpilase hinnet tuleks muuta. See võib juhtuda, kui õpilane on Kriidis, kuid mitte Tahvlis, või kui isikukoodid on erinevates formaatides.'
       }
 
-      domService.createAndInsertElement(
-        'p',
-        {},
-        helpText,
-        banner
-      )
+      domService.createAndInsertElement('p', {}, helpText, banner)
 
       // Add retry button
       if (options.onRetry) {
@@ -609,12 +572,7 @@ export class JournalSyncBannerService {
       }
     } else {
       // Generic error
-      domService.createAndInsertElement(
-        'p',
-        {},
-        'Proovige lehte värskendada või puhastada vahemälu.',
-        banner
-      )
+      domService.createAndInsertElement('p', {}, 'Proovige lehte värskendada või puhastada vahemälu.', banner)
 
       // Add retry button
       if (options.onRetry) {
@@ -681,19 +639,9 @@ export class JournalSyncBannerService {
    * @returns {Element} The created category section
    */
   createCategorySection(parent, categoryName) {
-    const categorySection = domService.createAndInsertElement(
-      'div',
-      {},
-      '',
-      parent
-    )
+    const categorySection = domService.createAndInsertElement('div', {}, '', parent)
 
-    domService.createAndInsertElement(
-      'h3',
-      {},
-      categoryName,
-      categorySection
-    )
+    domService.createAndInsertElement('h3', {}, categoryName, categorySection)
 
     return categorySection
   }

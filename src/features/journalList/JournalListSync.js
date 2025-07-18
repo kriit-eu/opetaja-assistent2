@@ -24,6 +24,33 @@ import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
+   * Extract assignment entry date differences from Kriit response
+   */
+  extractEntryDateDifferences() {
+    Logger.info('✨ [extractEntryDateDifferences] Called')
+    const entryDateDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) return entryDateDiffs
+    this.differences.forEach(subjectDiff => {
+      const subjectName = subjectDiff.subjectName || 'Tund'
+      if (Array.isArray(subjectDiff.assignments)) {
+        subjectDiff.assignments.forEach(assignment => {
+          if (assignment.assignmentEntryDate && assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.remote) {
+            entryDateDiffs.push({
+              subjectName,
+              assignmentName: assignment.assignmentName || '',
+              assignmentExternalId: assignment.assignmentExternalId,
+              oldValue: assignment.assignmentEntryDate.remote,
+              newValue: assignment.assignmentEntryDate.kriit
+            })
+          }
+        })
+      }
+    })
+    Logger.info(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
+    return entryDateDiffs
+  }
+  // ...existing code...
+  /**
    * Update assignment names in Tahvel to match Kriit
    */
   async syncAssignmentNameDifferences() {
@@ -853,7 +880,8 @@ class JournalListSyncFeature extends BaseFeature {
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
         const dueDateDiffs = this.extractDueDateDifferences()
-        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs)
+        const entryDateDiffs = this.extractEntryDateDifferences()
+        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
       }
     )
   }
@@ -3399,7 +3427,5 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
 getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
 
 JournalListSyncFeature.requiresKriit = true
-
-
 
 export const journalListSync = new JournalListSyncFeature()
