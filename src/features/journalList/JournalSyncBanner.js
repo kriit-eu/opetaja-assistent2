@@ -28,7 +28,7 @@ class DifferenceRenderer {
 
   collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
     const grouped = {}
-    const normalize = grade => (grade === null || grade === undefined || grade === '' ? null : String(grade))
+    const normalize = val => (val === null || val === undefined || val === '' ? null : String(val))
 
     // Create a map of new assignment names
     const newNames = {}
@@ -55,8 +55,8 @@ class DifferenceRenderer {
           typeName: 'Nimetus',
           assignmentName: nameDiff.Tahvel,
           studentName: '',
-          oldValue: nameDiff.Tahvel,
-          newValue: nameDiff.kriit
+          oldValue: normalize(nameDiff.Tahvel) || 'puudub',
+          newValue: normalize(nameDiff.kriit) || 'puudub'
         })
       })
     })
@@ -91,8 +91,8 @@ class DifferenceRenderer {
         typeName: 'Tähtaeg',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: diff.Tahvel,
-        newValue: diff.kriit
+        oldValue: normalize(diff.Tahvel) || 'puudub',
+        newValue: normalize(diff.kriit) || 'puudub'
       })
     })
 
@@ -104,8 +104,8 @@ class DifferenceRenderer {
         typeName: 'Sissekande kuupäev',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: diff.Tahvel,
-        newValue: diff.kriit
+        oldValue: normalize(diff.Tahvel) || 'puudub',
+        newValue: normalize(diff.kriit) || 'puudub'
       })
     })
 

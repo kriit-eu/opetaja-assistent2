@@ -1122,17 +1122,29 @@ class JournalListSyncFeature extends BaseFeature {
                 const matchingAssignment = matchingSubject.assignments.find(a => a.assignmentExternalId === diffAssignment.assignmentExternalId)
 
                 if (matchingAssignment) {
-                  // Preserve assignmentName object from diffAssignment if present, otherwise use matchingAssignment.assignmentName
-                  if (
-                    diffAssignment.assignmentName &&
-                    typeof diffAssignment.assignmentName === 'object' &&
-                    diffAssignment.assignmentName.kriit !== undefined &&
-                    diffAssignment.assignmentName.Tahvel !== undefined
-                  ) {
-                    // Already an object from Kriit response, keep as is
-                  } else {
-                    diffAssignment.assignmentName = matchingAssignment.assignmentName
+                  const kriitAssignment = diffAssignment
+                  const tahvelAssignment = matchingAssignment
+
+                  // Use Tahvel's assignment name for display, as Kriit response may not have it.
+                  diffAssignment.assignmentName = tahvelAssignment.assignmentName
+
+                  const compareAndCreateDiff = fieldName => {
+                    const kriitValue = kriitAssignment[fieldName]
+                    const tahvelValue = tahvelAssignment[fieldName]
+
+                    // Normalize undefined to null for comparison
+                    const normKriit = kriitValue === undefined ? null : kriitValue
+                    const normTahvel = tahvelValue === undefined ? null : tahvelValue
+
+                    if (normKriit !== normTahvel) {
+                      diffAssignment[fieldName] = { kriit: kriitValue, Tahvel: tahvelValue }
+                    }
                   }
+
+                  compareAndCreateDiff('assignmentDueAt')
+                  compareAndCreateDiff('assignmentEntryDate')
+                  // The sample response doesn't include assignmentName, so we won't diff it.
+                  // If it were included, we would call: compareAndCreateDiff('assignmentName');
 
                   // Process each result
                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
@@ -1142,6 +1154,7 @@ class JournalListSyncFeature extends BaseFeature {
 
                       if (matchingResult) {
                         // Add student name and active status from our data
+                        // Kriit response for result has studentName, but we'll trust Tahvel's for consistency.
                         diffResult.studentName = matchingResult.studentName
                         diffResult.studentIsActive = matchingResult.studentIsActive
 
