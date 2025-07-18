@@ -33,7 +33,7 @@ class DifferenceRenderer {
     // Create a map of new assignment names
     const newNames = {}
     ;(assignmentNameDiffs || []).forEach(subject => {
-      ;(subject.nameDiffs || []).forEach(nameDiff => {
+      (subject.nameDiffs || []).forEach(nameDiff => {
         newNames[nameDiff.assignmentExternalId] = nameDiff.kriit
       })
     })
@@ -49,7 +49,7 @@ class DifferenceRenderer {
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-      ;(subject.nameDiffs || []).forEach(nameDiff => {
+      (subject.nameDiffs || []).forEach(nameDiff => {
         addDiff(subject.subjectName, {
           type: 'name',
           typeName: 'Nimetus',
@@ -63,7 +63,7 @@ class DifferenceRenderer {
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
-      ;(subject.assignments || []).forEach(assignment => {
+      (subject.assignments || []).forEach(assignment => {
         const assignmentName = newNames[assignment.assignmentExternalId] || assignment.assignmentName
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
