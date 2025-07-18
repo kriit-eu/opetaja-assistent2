@@ -53,9 +53,9 @@ class DifferenceRenderer {
         addDiff(subject.subjectName, {
           type: 'name',
           typeName: 'Nimetus',
-          assignmentName: nameDiff.remote,
+          assignmentName: nameDiff.Tahvel,
           studentName: '',
-          oldValue: nameDiff.remote,
+          oldValue: nameDiff.Tahvel,
           newValue: nameDiff.kriit
         })
       })
@@ -91,7 +91,7 @@ class DifferenceRenderer {
         typeName: 'Tähtaeg',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: diff.remote,
+        oldValue: diff.Tahvel,
         newValue: diff.kriit
       })
     })
@@ -104,7 +104,7 @@ class DifferenceRenderer {
         typeName: 'Sissekande kuupäev',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: diff.remote,
+        oldValue: diff.Tahvel,
         newValue: diff.kriit
       })
     })

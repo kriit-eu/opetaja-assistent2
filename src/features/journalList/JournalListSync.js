@@ -36,17 +36,17 @@ class JournalListSyncFeature extends BaseFeature {
           if (
             assignment.assignmentEntryDate &&
             typeof assignment.assignmentEntryDate === 'object' &&
-            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.remote
+            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
           ) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
-              assignmentName = assignmentName.kriit || assignmentName.remote || ''
+              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
             }
             entryDateDiffs.push({
               assignmentExternalId: assignment.assignmentExternalId,
               assignmentName,
               kriit: assignment.assignmentEntryDate.kriit,
-              remote: assignment.assignmentEntryDate.remote,
+              Tahvel: assignment.assignmentEntryDate.Tahvel,
               subjectName: subjectDiff.subjectName || '',
               subjectExternalId: subjectDiff.subjectExternalId || ''
             })
@@ -147,7 +147,7 @@ class JournalListSyncFeature extends BaseFeature {
       payload.journalEntryCapacityTypes = ['MAHT_i']
       // Optionally add homework field with Kriit link
       let kriitAssignmentUrl = ''
-      const groupCode = (currentEntry.groupName || '')
+      const groupCode = currentEntry.groupName || ''
       kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
       payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
       Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
@@ -172,8 +172,8 @@ class JournalListSyncFeature extends BaseFeature {
     this.differences.forEach(subject => {
       if (subject && Array.isArray(subject.assignments)) {
         const nameDiffs = subject.assignments
-          .filter(a => a.assignmentName && a.assignmentName.kriit !== a.assignmentName.remote)
-          .map(a => ({ kriit: a.assignmentName.kriit, remote: a.assignmentName.remote, assignmentExternalId: a.assignmentExternalId }))
+          .filter(a => a.assignmentName && a.assignmentName.kriit !== a.assignmentName.Tahvel)
+          .map(a => ({ kriit: a.assignmentName.kriit, Tahvel: a.assignmentName.Tahvel, assignmentExternalId: a.assignmentExternalId }))
         if (nameDiffs.length > 0) {
           groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
         }
@@ -194,17 +194,17 @@ class JournalListSyncFeature extends BaseFeature {
         if (
           assignment.assignmentDueAt &&
           typeof assignment.assignmentDueAt === 'object' &&
-          assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.remote
+          assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
         ) {
           let assignmentName = assignment.assignmentName
           if (assignmentName && typeof assignmentName === 'object') {
-            assignmentName = assignmentName.kriit || assignmentName.remote || ''
+            assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
           }
           dueDateDiffs.push({
             assignmentExternalId: assignment.assignmentExternalId,
             assignmentName,
             kriit: assignment.assignmentDueAt.kriit,
-            remote: assignment.assignmentDueAt.remote,
+            Tahvel: assignment.assignmentDueAt.Tahvel,
             subjectName: subjectDiff.subjectName || '',
             subjectExternalId: subjectDiff.subjectExternalId || ''
           })
@@ -1131,7 +1131,7 @@ class JournalListSyncFeature extends BaseFeature {
                     diffAssignment.assignmentName &&
                     typeof diffAssignment.assignmentName === 'object' &&
                     diffAssignment.assignmentName.kriit !== undefined &&
-                    diffAssignment.assignmentName.remote !== undefined
+                    diffAssignment.assignmentName.Tahvel !== undefined
                   ) {
                     // Already an object from Kriit response, keep as is
                   } else {
