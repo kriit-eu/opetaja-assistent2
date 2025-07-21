@@ -3,6 +3,7 @@
 // See feature.md for requirements and LessonDiscrepanciesFeature.js for reference implementation.
 
 import { BaseFeature } from '../../../core/BaseFeature.js'
+import Logger from '../../../services/Logger.js'
 
 /**
  * LastLessonNotificationFeature
@@ -27,9 +28,9 @@ export default class LastLessonNotificationFeature extends BaseFeature {
   }
 
   async activate() {
-    console.debug('[LastLessonNotificationFeature] activate called')
-    console.debug('[LastLessonNotificationFeature] Using comparison date:', this.comparisonDate)
-    console.debug('[LastLessonNotificationFeature] Current URL:', window.location.href)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] activate called')
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Using comparison date:', this.comparisonDate)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Current URL:', window.location.href)
 
     try {
       // Only show the last lesson notification banner
@@ -46,18 +47,18 @@ export default class LastLessonNotificationFeature extends BaseFeature {
   }
   async #showLastLessonNotification() {
     const journalId = this.#extractJournalId()
-    console.debug('[LastLessonNotificationFeature] journalId:', journalId)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] journalId:', journalId)
     if (!journalId) {
-      console.debug('[LastLessonNotificationFeature] No journalId found, exiting')
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] No journalId found, exiting')
       return
     }
 
     const { timetable, journalEntries } = await this.#fetchData(journalId)
-    console.debug('[LastLessonNotificationFeature] timetable:', timetable)
-    console.debug('[LastLessonNotificationFeature] journalEntries:', journalEntries)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] timetable:', timetable)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] journalEntries:', journalEntries)
 
     if (!journalEntries.length) {
-      console.debug('[LastLessonNotificationFeature] No journal entries, exiting')
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] No journal entries, exiting')
       this._removeBanner()
       return
     }
@@ -96,7 +97,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     if (independentWorkMessages.length > 0) {
       window.__lastLessonNotification_independentWorkMessage = independentWorkMessages
       document.getElementById('independent-work-deadline-banner')?.remove()
-      console.debug('[LastLessonNotificationFeature] Provided independent work messages to table:', independentWorkMessages)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Provided independent work messages to table:', independentWorkMessages)
     }
 
     const comparisonDateTime = new Date(this.comparisonDate)
@@ -123,7 +124,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     this._removeBanner()
     const subjectSpan = document.querySelector('.hois-collapse-header .flex-gt-md-50 span')
     if (!subjectSpan) {
-      console.debug('[LastLessonNotificationFeature] Subject span not found, cannot show notification')
+      if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Subject span not found, cannot show notification')
       return
     }
     const oldNotif = document.getElementById('last-lesson-inline-notification')
@@ -207,23 +208,23 @@ export default class LastLessonNotificationFeature extends BaseFeature {
   }
 
   async #fetchData(journalId) {
-    console.debug('[LastLessonNotificationFeature] #fetchData called with journalId:', journalId)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] #fetchData called with journalId:', journalId)
 
     // Fetch journal info to get schoolId and teacherId
     const info = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true, cacheExpiration: 864e5 })
-    console.debug('[LastLessonNotificationFeature] Journal info:', info)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Journal info:', info)
 
     if (!info) {
-      console.debug('[LastLessonNotificationFeature] No journal info found')
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] No journal info found')
       return { timetable: [], journalEntries: [] }
     }
 
     const schoolId = info.school?.id || LastLessonNotificationFeature.SCHOOL_ID_FALLBACK
     const teacherId = info.journalTeachers?.[0]?.id
-    console.debug('[LastLessonNotificationFeature] schoolId:', schoolId, 'teacherId:', teacherId)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] schoolId:', schoolId, 'teacherId:', teacherId)
 
     if (!teacherId) {
-      console.debug('[LastLessonNotificationFeature] Missing teacherId')
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Missing teacherId')
       return { timetable: [], journalEntries: [] }
     }
 
@@ -233,14 +234,14 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     const from = info.studyYearStartDate || new Date(Date.UTC(studyYear, 8, 1)).toISOString()
     const thru = info.studyYearEndDate || new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
 
-    console.debug('[LastLessonNotificationFeature] Date range:', { from, thru })
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Date range:', { from, thru })
 
     const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherId}&thru=${thru}`
-    console.debug('[LastLessonNotificationFeature] Timetable endpoint:', endpoint)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Timetable endpoint:', endpoint)
 
     const timetableData = await this.api.tahvel.get(endpoint, {}, { cache: true, cacheExpiration: 864e5 })
-    console.debug('[LastLessonNotificationFeature] Raw timetable data:', timetableData)
-    console.debug('[LastLessonNotificationFeature] Timetable events count:', timetableData?.timetableEvents?.length || 0)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Raw timetable data:', timetableData)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Timetable events count:', timetableData?.timetableEvents?.length || 0)
 
 
     const timetable =
@@ -249,7 +250,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
         return matches
       }) || []
 
-    console.debug('[LastLessonNotificationFeature] Filtered timetable events for journal:', timetable)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Filtered timetable events for journal:', timetable)
 
     // Fetch journal entries
     const journalEntries = await this.api.tahvel.get(
@@ -257,7 +258,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       { allStudents: true },
       { cache: true, cacheExpiration: 6e4 }
     )
-    console.debug('[LastLessonNotificationFeature] Journal entries:', journalEntries)
+  if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Journal entries:', journalEntries)
 
     return { timetable, journalEntries: journalEntries ?? [] }
   }
