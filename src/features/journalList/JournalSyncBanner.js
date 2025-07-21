@@ -34,24 +34,16 @@ class DifferenceRenderer {
     const normalize = val => {
       if (val === null || val === undefined || val === '') return null
       if (typeof val === 'object') {
-        // Try common properties
         if ('kriit' in val && val.kriit) return String(val.kriit)
         if ('Tahvel' in val && val.Tahvel) return String(val.Tahvel)
-        // If object has a toString method, use it
         if (typeof val.toString === 'function' && val.toString !== Object.prototype.toString) return val.toString()
-        // Fallback: JSON.stringify
         return JSON.stringify(val)
       }
       return String(val)
     }
 
-    // Create a map of new assignment names
-    const newNames = {}
-    ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
-        newNames[nameDiff.assignmentExternalId] = nameDiff.kriit
-      })
-    })
+    // Track latest assignment name for each assignmentExternalId
+    const latestNames = {}
 
     // Helper to add a difference to the grouped object (by subjectName only)
     const addDiff = (subjectName, diff) => {
@@ -65,28 +57,35 @@ class DifferenceRenderer {
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
       (subject.nameDiffs || []).forEach(nameDiff => {
+        // Update latest name for this assignment
+        latestNames[nameDiff.assignmentExternalId] = nameDiff.kriit || nameDiff.Tahvel
+        // Always show both old and new name in the badge
+        const oldName = normalize(nameDiff.Tahvel) || 'puudub'
+        const newName = normalize(nameDiff.kriit) || 'puudub'
         addDiff(subject.subjectName, {
           type: 'name',
           typeName: 'Nimetus',
-          assignmentName: nameDiff.Tahvel,
+          assignmentName: oldName,
           studentName: '',
-          oldValue: normalize(nameDiff.Tahvel) || 'puudub',
-          newValue: normalize(nameDiff.kriit) || 'puudub'
+          oldValue: oldName,
+          newValue: newName
         })
       })
     })
 
-    const getAssignmentName = assignment => {
-      if (typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null) {
-        return newNames[assignment.assignmentExternalId] || assignment.assignmentName.Tahvel || assignment.assignmentName.kriit
-      }
-      return newNames[assignment.assignmentExternalId] || assignment.assignmentName
+    // Helper to get latest assignment name
+    const getAssignmentName = (assignmentExternalId, fallback) => {
+      return latestNames[assignmentExternalId] || fallback
     }
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
       (subject.assignments || []).forEach(assignment => {
-        const assignmentName = getAssignmentName(assignment)
+        // Always use the latest name if available
+        const assignmentName = getAssignmentName(assignment.assignmentExternalId,
+          typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null
+            ? assignment.assignmentName.kriit || assignment.assignmentName.Tahvel
+            : assignment.assignmentName)
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
           const kriitGrade = normalize(result.grade)
@@ -105,9 +104,26 @@ class DifferenceRenderer {
       })
     })
 
+    // Helper to get new name if a name change exists for this assignmentExternalId
+    const getNewNameIfChanged = assignmentExternalId => {
+      // Search assignmentNameDiffs for a nameDiff with this assignmentExternalId
+      for (const subject of assignmentNameDiffs || []) {
+        for (const nameDiff of subject.nameDiffs || []) {
+          if (nameDiff.assignmentExternalId === assignmentExternalId && nameDiff.kriit) {
+            return nameDiff.kriit
+          }
+        }
+      }
+      return null
+    }
+
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
-      const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
+      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
+      let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
+      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
+      if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
+      assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
         type: 'duedate',
         typeName: 'Tähtaeg',
@@ -120,7 +136,11 @@ class DifferenceRenderer {
 
     // Entry Date Diffs
     ;(entryDateDiffs || []).forEach(diff => {
-      const assignmentName = newNames[diff.assignmentExternalId] || diff.assignmentName
+      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
+      let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
+      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
+      if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
+      assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
         type: 'entrydate',
         typeName: 'Sissekande kuupäev',
