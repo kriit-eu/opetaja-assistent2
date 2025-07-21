@@ -82,4 +82,10 @@ export async function sendOutcomeEntriesToKriit(api, journalLinks) {
       })
     })
   })
+    try {
+      const response = await api.kriit.post('/outcomes/sync', outcomesPayload)
+      Logger.info(`✨ Sent ${outcomesPayload.length} outcome entries to Kriit. Response:`, response)
+    } catch (error) {
+      Logger.error('Failed to send outcome entries to Kriit:', error)
+    }
 }
