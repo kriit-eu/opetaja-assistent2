@@ -35,7 +35,7 @@ class DifferenceRenderer {
     // Create a map of new assignment names
     const newNames = {}
     ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
         newNames[nameDiff.assignmentExternalId] = nameDiff.kriit
       })
     })
@@ -51,7 +51,7 @@ class DifferenceRenderer {
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
         addDiff(subject.subjectName, {
           type: 'name',
           typeName: 'Nimetus',
@@ -72,7 +72,7 @@ class DifferenceRenderer {
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
-      (subject.assignments || []).forEach(assignment => {
+      ;(subject.assignments || []).forEach(assignment => {
         const assignmentName = getAssignmentName(assignment)
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
@@ -253,7 +253,8 @@ export class JournalSyncBannerService {
     const banner = domService.createAndInsertElement(
       'div',
       {
-        classList: ['container']
+        classList: ['container', 'ta-sync-info'],
+        style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px;'
       },
       '',
       container,
@@ -264,19 +265,24 @@ export class JournalSyncBannerService {
     domService.createAndInsertElement(
       'div',
       {
-        style: 'font-size: 1.5rem; margin-bottom: 10px;'
+        style: 'font-size: 3rem; margin-bottom: 18px; text-align: center;'
       },
       '✅',
       banner
     )
 
     // Add title
-    domService.createAndInsertElement('h1', {}, 'Kõik hinded on sünkroonis!', banner)
+    domService.createAndInsertElement('h1', { style: 'margin-bottom: 12px; text-align: center;' }, 'Kõik hinded on sünkroonis!', banner)
 
     // Add message
-    domService.createAndInsertElement('p', {}, 'Tahvli ja Kriidi vahel pole erinevusi. Kõik hinded on juba õigesti sünkroniseeritud.', banner)
+    domService.createAndInsertElement(
+      'p',
+      { style: 'font-size: 1.15rem; margin-bottom: 18px; text-align: center;' },
+      'Tahvli ja Kriidi vahel pole erinevusi. Kõik hinded on juba õigesti sünkroniseeritud.',
+      banner
+    )
 
-    const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
+    const actions = domService.createAndInsertElement('div', { classList: ['actions'], style: 'justify-content: center;' }, '', banner)
     // Add refresh button
     if (onRefresh) {
       domService.createAndInsertElement(
@@ -384,6 +390,12 @@ export class JournalSyncBannerService {
    * @param {Function} options.onRefresh - Callback for refresh button
    */
   showSyncErrorBanner(error, options = {}) {
+    // If all grades are already synced, show the green banner instead
+    if (error && error.includes('Kõik hinded on juba sünkroonis')) {
+      this.showAllInSyncBanner(options.onRetry, null)
+      return
+    }
+
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
@@ -423,8 +435,6 @@ export class JournalSyncBannerService {
       errorTitle = 'API viga'
     } else if (error && error.includes('sync')) {
       errorTitle = 'Sünkroniseerimise viga'
-    } else if (error && error.includes('Kõik hinded on juba sünkroonis')) {
-      errorTitle = 'Info'
     }
 
     domService.createAndInsertElement('h1', {}, errorTitle, banner)

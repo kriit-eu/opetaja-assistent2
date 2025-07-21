@@ -1,4 +1,3 @@
-
 * {
   margin: 0;
   padding: 0;
@@ -21,6 +20,57 @@ body {
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
+}
+
+.ta-sync-error {
+  background: #fff0f0;
+  border: 2px solid #d73a49;
+  color: #d73a49;
+  box-shadow: 0 2px 8px rgba(215, 58, 73, 0.08);
+}
+
+.ta-sync-error h1 {
+  color: #d73a49;
+}
+
+.ta-sync-error p {
+  color: #a94442;
+}
+
+.ta-sync-error .actions button {
+  background: #d73a49;
+  color: #fff;
+}
+
+.ta-sync-error .actions button.btn-secondary {
+  background: #fff;
+  color: #d73a49;
+  border: 1px solid #d73a49;
+}
+
+.ta-sync-info {
+  background: #e6ffed;
+  border: 2px solid #22863a;
+  color: #22863a;
+}
+
+.ta-sync-info h1 {
+  color: #22863a;
+}
+
+.ta-sync-info p {
+  color: #22863a;
+}
+
+.ta-sync-info .actions button {
+  background: #22863a;
+  color: #fff;
+}
+
+.ta-sync-info .actions button.btn-secondary {
+  background: #fff;
+  color: #22863a;
+  border: 1px solid #22863a;
 }
 
 h1 {
