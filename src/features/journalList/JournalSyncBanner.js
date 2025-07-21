@@ -42,6 +42,17 @@ class DifferenceRenderer {
       return String(val)
     }
 
+    // Format date as dd.mm.yyyy if possible
+    const formatDate = val => {
+      if (!val) return 'puudub'
+      // Accept ISO, yyyy-mm-dd, yyyy-mm-ddTHH:mm:ss, etc.
+      const dateMatch = String(val).match(/^(\d{4})-(\d{2})-(\d{2})/)
+      if (dateMatch) {
+        return `${dateMatch[3]}.${dateMatch[2]}.${dateMatch[1]}`
+      }
+      return val
+    }
+
     // Track latest assignment name for each assignmentExternalId
     const latestNames = {}
 
@@ -78,14 +89,30 @@ class DifferenceRenderer {
       return latestNames[assignmentExternalId] || fallback
     }
 
+    // Helper to get new name if a name change exists for this assignmentExternalId
+    const getNewNameIfChanged = assignmentExternalId => {
+      // Search assignmentNameDiffs for a nameDiff with this assignmentExternalId
+      for (const subject of assignmentNameDiffs || []) {
+        for (const nameDiff of subject.nameDiffs || []) {
+          if (nameDiff.assignmentExternalId === assignmentExternalId && nameDiff.kriit) {
+            return nameDiff.kriit
+          }
+        }
+      }
+      return null
+    }
+
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
       (subject.assignments || []).forEach(assignment => {
-        // Always use the latest name if available
-        const assignmentName = getAssignmentName(assignment.assignmentExternalId,
+        // Always use the new name if a name change exists, fallback to latest name, then all possible sources, and normalize
+        let assignmentName = getNewNameIfChanged(assignment.assignmentExternalId)
+        if (!assignmentName) assignmentName = getAssignmentName(assignment.assignmentExternalId,
           typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null
             ? assignment.assignmentName.kriit || assignment.assignmentName.Tahvel
             : assignment.assignmentName)
+        if (!assignmentName) assignmentName = assignment.assignmentName || assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel
+        assignmentName = normalize(assignmentName) || '—'
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
           const kriitGrade = normalize(result.grade)
@@ -104,19 +131,6 @@ class DifferenceRenderer {
       })
     })
 
-    // Helper to get new name if a name change exists for this assignmentExternalId
-    const getNewNameIfChanged = assignmentExternalId => {
-      // Search assignmentNameDiffs for a nameDiff with this assignmentExternalId
-      for (const subject of assignmentNameDiffs || []) {
-        for (const nameDiff of subject.nameDiffs || []) {
-          if (nameDiff.assignmentExternalId === assignmentExternalId && nameDiff.kriit) {
-            return nameDiff.kriit
-          }
-        }
-      }
-      return null
-    }
-
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
       // Always use the new name if a name change exists, fallback to all possible sources, and normalize
@@ -129,8 +143,8 @@ class DifferenceRenderer {
         typeName: 'Tähtaeg',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: normalize(diff.Tahvel) || 'puudub',
-        newValue: normalize(diff.kriit) || 'puudub'
+        oldValue: formatDate(normalize(diff.Tahvel)) || 'puudub',
+        newValue: formatDate(normalize(diff.kriit)) || 'puudub'
       })
     })
 
@@ -146,8 +160,8 @@ class DifferenceRenderer {
         typeName: 'Sissekande kuupäev',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: normalize(diff.Tahvel) || 'puudub',
-        newValue: normalize(diff.kriit) || 'puudub'
+        oldValue: formatDate(normalize(diff.Tahvel)) || 'puudub',
+        newValue: formatDate(normalize(diff.kriit)) || 'puudub'
       })
     })
 
