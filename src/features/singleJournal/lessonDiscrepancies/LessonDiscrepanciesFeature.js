@@ -461,9 +461,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #calculateDuplicateIndex(discrepancy) {
     // Use the same logic as #findJournalEntryElement to ensure consistency
-    Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
     const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
-    Logger.debug(`[${this.name}] calculateDuplicateIndex result: targetIndex=${duplicateInfo.targetIndex}`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] calculateDuplicateIndex result: targetIndex=${duplicateInfo.targetIndex}`)
     return duplicateInfo.targetIndex
   }
 
@@ -489,10 +489,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     let dateSearchCriteria
     if (date === 'NO_DATE') {
       dateSearchCriteria = '-'
-      Logger.debug(`[${this.name}] Searching for null date entries (showing as "-")`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for null date entries (showing as "-")`)
     } else {
       dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
-      Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
     }
 
     // Try multiple selectors to find journal entry rows
@@ -505,7 +505,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       allRows = document.querySelectorAll('tr[ng-click], tr[onclick]')
     }
 
-    Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
     // Filter rows based on date criteria
     let dateMatchingRows
@@ -529,12 +529,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         return false
       })
 
-      Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} journal entry rows with null date`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} journal entry rows with null date`)
     } else {
       dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
     }
 
-    Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
 
     // Get the lesson count from targetEntry (could be lessons or lessonCount property)
     const targetLessonCount = targetEntry.lessons || targetEntry.lessonCount || 1
@@ -559,17 +559,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (targetDateIsNull && entryDateIsNull) {
         // Both are null - they match
         dateMatches = true
-        Logger.debug(`[${this.name}] Both entries have null dates - match: ${entry.id}`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Both entries have null dates - match: ${entry.id}`)
       } else if (!targetDateIsNull && !entryDateIsNull) {
         // Both have dates - compare formatted dates
         dateMatches = this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate)
-        Logger.debug(
+  if (Logger.isDebugMode()) Logger.debug(
           `[${this.name}] Comparing formatted dates: ${this.#formatDate(entry.entryDate)} === ${this.#formatDate(targetEntry.entryDate)} = ${dateMatches}`
         )
       } else {
         // One is null, one isn't - no match
         dateMatches = false
-        Logger.debug(`[${this.name}] Date null mismatch: entry ${entry.id} has ${entry.entryDate}, target has ${targetEntry.entryDate}`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Date null mismatch: entry ${entry.id} has ${entry.entryDate}, target has ${targetEntry.entryDate}`)
       }
 
       // For independent work entries, both entries often have null lesson counts
@@ -586,7 +586,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       const entryTypeMatches = entry.entryType === targetEntry.entryType
 
-      Logger.debug(
+  if (Logger.isDebugMode()) Logger.debug(
         `[${this.name}] Entry ${entry.id}: dateMatches=${dateMatches}, lessonCountMatches=${lessonCountMatches}, entryTypeMatches=${entryTypeMatches}, entryType=${entry.entryType}`
       )
 
@@ -598,14 +598,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Simple position-based matching: assume DOM order matches API order
     const targetIndex = duplicateEntries.findIndex(entry => entry.id == entryId)
 
-    Logger.debug(`[${this.name}] Duplicate matching results:`)
-    Logger.debug(`[${this.name}] - Target entry ID: ${entryId}`)
-    Logger.debug(`[${this.name}] - Target entry date: ${targetEntry.entryDate}`)
-    Logger.debug(`[${this.name}] - Target entry type: ${targetEntry.entryType}`)
-    Logger.debug(`[${this.name}] - Duplicate entries found: ${duplicateEntries.length}`)
-    Logger.debug(`[${this.name}] - Duplicate entry IDs: [${duplicateEntries.map(e => e.id).join(', ')}]`)
-    Logger.debug(`[${this.name}] - Target index in duplicates: ${targetIndex}`)
-    Logger.debug(`[${this.name}] - DOM exact matches found: ${exactMatches.length}`)
+    if (Logger.isDebugMode()) {
+      Logger.debug(`[${this.name}] Duplicate matching results:`)
+      Logger.debug(`[${this.name}] - Target entry ID: ${entryId}`)
+      Logger.debug(`[${this.name}] - Target entry date: ${targetEntry.entryDate}`)
+      Logger.debug(`[${this.name}] - Target entry type: ${targetEntry.entryType}`)
+      Logger.debug(`[${this.name}] - Duplicate entries found: ${duplicateEntries.length}`)
+      Logger.debug(`[${this.name}] - Duplicate entry IDs: [${duplicateEntries.map(e => e.id).join(', ')}]`)
+      Logger.debug(`[${this.name}] - Target index in duplicates: ${targetIndex}`)
+      Logger.debug(`[${this.name}] - DOM exact matches found: ${exactMatches.length}`)
+    }
 
     return {
       exactMatches,
@@ -629,8 +631,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     event.stopPropagation()
     if (button.disabled) return
 
-    Logger.debug(`[${this.name}] Button clicked - starting click handler`)
-    Logger.debug(`[${this.name}] Button element:`, {
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Button clicked - starting click handler`)
+  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Button element:`, {
       tagName: button.tagName,
       className: button.className,
       textContent: button.textContent,

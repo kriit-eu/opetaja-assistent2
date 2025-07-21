@@ -216,28 +216,32 @@ export class DiscrepanciesTable {
         // Only check for highlights and inject banners
         const ovCells = document.querySelectorAll('.highlight-ov-red')
         const ovYellowCells = document.querySelectorAll('.highlight-ov-yellow')
-        Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
-        Logger.info(`✨ [DiscrepanciesTable] Found ${ovYellowCells.length} .highlight-ov-yellow cells after highlight`)
-        ovCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
-        })
-        ovYellowCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}] parent:`, cell.parentNode)
-        })
+        if (Logger.isDebugMode()) {
+          Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
+          Logger.info(`✨ [DiscrepanciesTable] Found ${ovYellowCells.length} .highlight-ov-yellow cells after highlight`)
+          ovCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
+          })
+          ovYellowCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}] parent:`, cell.parentNode)
+          })
+        }
         const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
         const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
-        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeRedCells.length} .highlight-final-grade-red cells after highlight`)
-        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeYellowCells.length} .highlight-final-grade-yellow cells after highlight`)
-        finalGradeRedCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
-        })
-        finalGradeYellowCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}] parent:`, cell.parentNode)
-        })
+        if (Logger.isDebugMode()) {
+          Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeRedCells.length} .highlight-final-grade-red cells after highlight`)
+          Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeYellowCells.length} .highlight-final-grade-yellow cells after highlight`)
+          finalGradeRedCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
+          })
+          finalGradeYellowCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}] parent:`, cell.parentNode)
+          })
+        }
         const notifications = document.querySelector('.notifications-section')
         if (notifications) {
           // Remove old banners
@@ -245,7 +249,7 @@ export class DiscrepanciesTable {
           notifications.querySelectorAll('.oa2-banner-final-grade').forEach(b => b.remove())
           // Inject ÕV banner if needed
           if (ovYellowCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV yellow banner under Hinded')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting ÕV yellow banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--yellow oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund (tähtaeg läheneb)!'
@@ -256,7 +260,7 @@ export class DiscrepanciesTable {
               notifications.appendChild(ovBanner)
             }
           } else if (ovCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV red banner under Hinded')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting ÕV red banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund!'
@@ -267,11 +271,11 @@ export class DiscrepanciesTable {
               notifications.appendChild(ovBanner)
             }
           } else {
-            Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
           }
           // Inject final grade banner if needed
           if (finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
             const fgBanner = document.createElement('div')
             fgBanner.className = 'oa2-banner oa2-banner-final-grade'
             if (finalGradeYellowCells.length > 0) {
@@ -292,10 +296,10 @@ export class DiscrepanciesTable {
               notifications.appendChild(fgBanner)
             }
           } else {
-            Logger.info('✨ [DiscrepanciesTable] No final grade highlights found, not injecting banner')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No final grade highlights found, not injecting banner')
           }
         } else {
-          Logger.info('✨ [DiscrepanciesTable] No notifications section found')
+          if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No notifications section found')
         }
       }, 50)
       return true
