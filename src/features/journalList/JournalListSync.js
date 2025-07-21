@@ -127,21 +127,37 @@ class JournalListSyncFeature extends BaseFeature {
       if (nameEt && typeof nameEt === 'string' && nameEt.trim() !== '' && nameEt !== currentEntry.nameEt) {
         payload.nameEt = nameEt
       }
+      // Ensure date fields are strings, extract from object if needed
       if (homeworkDuedate) {
-        // Format as 'YYYY-MM-DDT00:00:00Z' if not already
-        if (/^\d{4}-\d{2}-\d{2}$/.test(homeworkDuedate)) {
-          payload.homeworkDuedate = `${homeworkDuedate}T00:00:00Z`
+        let dateValue = homeworkDuedate
+        if (typeof dateValue === 'object' && dateValue !== null) {
+          // Prefer kriit, fallback to Tahvel, else toString
+          dateValue = dateValue.kriit || dateValue.Tahvel || ''
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          payload.homeworkDuedate = `${dateValue}T00:00:00Z`
+        } else if (typeof dateValue === 'string') {
+          payload.homeworkDuedate = dateValue
         } else {
-          payload.homeworkDuedate = homeworkDuedate
+          payload.homeworkDuedate = String(dateValue)
         }
       }
       if (entryDate) {
-        // Format as 'YYYY-MM-DDT00:00:00Z' if not already
-        if (/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
-          payload.entryDate = `${entryDate}T00:00:00Z`
-        } else {
-          payload.entryDate = entryDate
+        let dateValue = entryDate
+        if (typeof dateValue === 'object' && dateValue !== null) {
+          dateValue = dateValue.kriit || dateValue.Tahvel || ''
         }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          payload.entryDate = `${dateValue}T00:00:00Z`
+        } else if (typeof dateValue === 'string') {
+          payload.entryDate = dateValue
+        } else {
+          payload.entryDate = String(dateValue)
+        }
+      }
+      // Ensure teacher IDs are strings
+      if (Array.isArray(payload.journalEntryTeachers)) {
+        payload.journalEntryTeachers = payload.journalEntryTeachers.map(id => String(id))
       }
       payload.journalEntryCapacityTypes = ['MAHT_i']
       // Optionally add homework field with Kriit link
