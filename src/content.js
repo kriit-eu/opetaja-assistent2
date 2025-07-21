@@ -17,7 +17,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'toggleDebugMode') {
     if (message.enabled) {
       Logger.enableDebugMode()
-      Logger.debug('Debug mode enabled from popup')
+      if (Logger.isDebugMode()) Logger.debug('Debug mode enabled from popup')
     } else {
       Logger.disableDebugMode()
       Logger.info('Debug mode disabled from popup')
@@ -34,10 +34,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     window.location.reload()
     sendResponse({ success: true })
   } else if (message.action === 'getFutureSubjects') {
-    Logger.debug('Received getFutureSubjects request')
+    if (Logger.isDebugMode()) Logger.debug('Received getFutureSubjects request')
     handleGetFutureSubjects(message.comparisonDate)
       .then(subjects => {
-        Logger.debug('Future subjects found:', subjects)
+        if (Logger.isDebugMode()) Logger.debug('Future subjects found:', subjects)
         sendResponse({ status: 'success', data: subjects })
       })
       .catch(error => {
@@ -107,7 +107,7 @@ async function handleGetFutureSubjects(comparisonDate) {
     // Filter teachers by school
     const schoolTeachers = teachersData.content.filter(teacher => teacher.school && teacher.school.id === schoolId)
 
-    Logger.debug(`Found ${schoolTeachers.length} teachers in school ${schoolId}`)
+    if (Logger.isDebugMode()) Logger.debug(`Found ${schoolTeachers.length} teachers in school ${schoolId}`)
 
     // Get all teacher IDs
     const teacherIds = schoolTeachers.map(teacher => teacher.id)
@@ -120,7 +120,7 @@ async function handleGetFutureSubjects(comparisonDate) {
     const teacherIdsParam = teacherIds.join(',')
     const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherIdsParam}&thru=${thru}`
 
-    Logger.debug(`Fetching timetable for ${teacherIds.length} teachers`)
+    if (Logger.isDebugMode()) Logger.debug(`Fetching timetable for ${teacherIds.length} teachers`)
 
     const timetableData = await apiService.get(
       endpoint,
@@ -146,9 +146,11 @@ async function handleGetFutureSubjects(comparisonDate) {
       return eventDate >= compareDate && event.journalId !== null && event.journalId !== undefined
     })
 
-    Logger.debug(
-      `Found ${futureEvents.length} future timetable events from all teachers (from ${comparisonDate || 'today'}, excluding lessons without journalId)`
-    )
+    if (Logger.isDebugMode()) {
+      Logger.debug(
+        `Found ${futureEvents.length} future timetable events from all teachers (from ${comparisonDate || 'today'}, excluding lessons without journalId)`
+      )
+    }
     return futureEvents
   } catch (error) {
     Logger.error('Error in handleGetFutureSubjects:', error)

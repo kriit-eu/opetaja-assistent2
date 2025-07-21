@@ -461,9 +461,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   #calculateDuplicateIndex(discrepancy) {
     // Use the same logic as #findJournalEntryElement to ensure consistency
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
+    if (Logger.isDebugMode()) Logger.debug(`[${this.name}] calculateDuplicateIndex called with:`, discrepancy)
     const duplicateInfo = this.#findDuplicateMatches(discrepancy.entryId, discrepancy.date)
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] calculateDuplicateIndex result: targetIndex=${duplicateInfo.targetIndex}`)
+    if (Logger.isDebugMode()) Logger.debug(`[${this.name}] calculateDuplicateIndex result: targetIndex=${duplicateInfo.targetIndex}`)
     return duplicateInfo.targetIndex
   }
 
@@ -489,10 +489,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     let dateSearchCriteria
     if (date === 'NO_DATE') {
       dateSearchCriteria = '-'
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for null date entries (showing as "-")`)
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for null date entries (showing as "-")`)
     } else {
       dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
     }
 
     // Try multiple selectors to find journal entry rows
@@ -505,7 +505,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       allRows = document.querySelectorAll('tr[ng-click], tr[onclick]')
     }
 
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
+    if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
     // Filter rows based on date criteria
     let dateMatchingRows
@@ -529,12 +529,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         return false
       })
 
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} journal entry rows with null date`)
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} journal entry rows with null date`)
     } else {
       dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
     }
 
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
+    if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
 
     // Get the lesson count from targetEntry (could be lessons or lessonCount property)
     const targetLessonCount = targetEntry.lessons || targetEntry.lessonCount || 1
@@ -559,17 +559,19 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (targetDateIsNull && entryDateIsNull) {
         // Both are null - they match
         dateMatches = true
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Both entries have null dates - match: ${entry.id}`)
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Both entries have null dates - match: ${entry.id}`)
       } else if (!targetDateIsNull && !entryDateIsNull) {
         // Both have dates - compare formatted dates
         dateMatches = this.#formatDate(entry.entryDate) === this.#formatDate(targetEntry.entryDate)
-  if (Logger.isDebugMode()) Logger.debug(
-          `[${this.name}] Comparing formatted dates: ${this.#formatDate(entry.entryDate)} === ${this.#formatDate(targetEntry.entryDate)} = ${dateMatches}`
-        )
+        if (Logger.isDebugMode())
+          Logger.debug(
+            `[${this.name}] Comparing formatted dates: ${this.#formatDate(entry.entryDate)} === ${this.#formatDate(targetEntry.entryDate)} = ${dateMatches}`
+          )
       } else {
         // One is null, one isn't - no match
         dateMatches = false
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Date null mismatch: entry ${entry.id} has ${entry.entryDate}, target has ${targetEntry.entryDate}`)
+        if (Logger.isDebugMode())
+          Logger.debug(`[${this.name}] Date null mismatch: entry ${entry.id} has ${entry.entryDate}, target has ${targetEntry.entryDate}`)
       }
 
       // For independent work entries, both entries often have null lesson counts
@@ -586,9 +588,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
       const entryTypeMatches = entry.entryType === targetEntry.entryType
 
-  if (Logger.isDebugMode()) Logger.debug(
-        `[${this.name}] Entry ${entry.id}: dateMatches=${dateMatches}, lessonCountMatches=${lessonCountMatches}, entryTypeMatches=${entryTypeMatches}, entryType=${entry.entryType}`
-      )
+      if (Logger.isDebugMode())
+        Logger.debug(
+          `[${this.name}] Entry ${entry.id}: dateMatches=${dateMatches}, lessonCountMatches=${lessonCountMatches}, entryTypeMatches=${entryTypeMatches}, entryType=${entry.entryType}`
+        )
 
       return dateMatches && lessonCountMatches && entryTypeMatches
     })
@@ -631,14 +634,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     event.stopPropagation()
     if (button.disabled) return
 
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Button clicked - starting click handler`)
-  if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Button element:`, {
-      tagName: button.tagName,
-      className: button.className,
-      textContent: button.textContent,
-      id: button.id,
-      innerHTML: button.innerHTML.substring(0, 200) + (button.innerHTML.length > 200 ? '...' : '')
-    })
+    if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Button clicked - starting click handler`)
+    if (Logger.isDebugMode())
+      Logger.debug(`[${this.name}] Button element:`, {
+        tagName: button.tagName,
+        className: button.className,
+        textContent: button.textContent,
+        id: button.id,
+        innerHTML: button.innerHTML.substring(0, 200) + (button.innerHTML.length > 200 ? '...' : '')
+      })
 
     const originalState = this.#captureButtonState(button)
     this.#setButtonProcessingState(button)

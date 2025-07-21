@@ -132,15 +132,14 @@ class ApiService {
         requestOptions.body = JSON.stringify(data)
       }
 
-
       // Log credentials mode for debugging CORS issues
       if (this.name === 'kriit') {
-        Logger.debug(`[${this.name}] Request credentials mode: ${requestOptions.credentials || 'not set'}`)
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Request credentials mode: ${requestOptions.credentials || 'not set'}`)
       }
 
       // For Kriit API requests to localhost, use background script to bypass mixed content restrictions
       if (this.name === 'kriit' && urlString.includes('localhost')) {
-        Logger.debug(`[${this.name}] Using background script for localhost request: ${method} ${urlString}`)
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Using background script for localhost request: ${method} ${urlString}`)
 
         return new Promise((resolve, reject) => {
           // noinspection JSCheckFunctionSignatures
@@ -223,7 +222,7 @@ class ApiService {
 
       // For PUT requests, empty response is often valid (indicates success)
       if (method === 'PUT' && responseText === '') {
-        Logger.debug(`[${this.name}] PUT request returned empty response - treating as success`)
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] PUT request returned empty response - treating as success`)
         return { success: true, status: response.status }
       }
 
@@ -231,7 +230,7 @@ class ApiService {
       try {
         return JSON.parse(responseText)
       } catch (error) {
-        Logger.debug(`[${this.name}] Response is not JSON, returning as text`)
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Response is not JSON, returning as text`)
         return responseText || { success: true, status: response.status }
       }
     } catch (error) {
@@ -314,7 +313,7 @@ class ApiService {
       }
 
       if (xsrfToken) {
-        Logger.debug(`[${this.name}] Using XSRF token: ${xsrfToken}`)
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Using XSRF token: ${xsrfToken}`)
         headers['X-XSRF-TOKEN'] = xsrfToken
       } else {
         Logger.warning(`[${this.name}] No XSRF token found in cookies for PUT request`)
@@ -324,7 +323,7 @@ class ApiService {
       headers['X-Requested-With'] = 'XMLHttpRequest'
     }
 
-    Logger.debug(`[${this.name}] PUT request to ${endpoint} starting`)
+    if (Logger.isDebugMode()) Logger.debug(`[${this.name}] PUT request to ${endpoint} starting`)
 
     try {
       const result = await this.request({
@@ -339,7 +338,7 @@ class ApiService {
         ...options
       })
 
-      Logger.debug(`[${this.name}] PUT request to ${endpoint} completed successfully`)
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] PUT request to ${endpoint} completed successfully`)
       return result
     } catch (error) {
       Logger.error(`[${this.name}] PUT request to ${endpoint} failed: ${error.message}`)
