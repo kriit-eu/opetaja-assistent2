@@ -25,7 +25,7 @@ class JournalListSyncFeature extends BaseFeature {
    * Extract assignment entry date differences from Kriit response
    */
   extractEntryDateDifferences() {
-    Logger.info('✨ [extractEntryDateDifferences] Called')
+    Logger.debug('✨ [extractEntryDateDifferences] Called')
     const entryDateDiffs = []
     if (!this.differences || !Array.isArray(this.differences)) return entryDateDiffs
     this.differences.forEach(subjectDiff => {
@@ -54,7 +54,7 @@ class JournalListSyncFeature extends BaseFeature {
         })
       }
     })
-    Logger.info(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
+    Logger.debug(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
     return entryDateDiffs
   }
   /**
@@ -162,10 +162,10 @@ class JournalListSyncFeature extends BaseFeature {
    * Extract assignment name differences from Kriit response
    */
   extractAssignmentNameDifferences() {
-    Logger.info('✨ [extractAssignmentNameDifferences] Called')
+    Logger.debug('✨ [extractAssignmentNameDifferences] Called')
     const groupedDiffs = []
     if (!this.differences || !Array.isArray(this.differences)) {
-      Logger.info('✨ [extractAssignmentNameDifferences] No differences array found.')
+      Logger.debug('✨ [extractAssignmentNameDifferences] No differences array found.')
       return groupedDiffs
     }
     this.differences.forEach(subject => {
@@ -188,7 +188,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
       }
     })
-    Logger.info(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
+    Logger.debug(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
     return groupedDiffs
   }
 
@@ -289,7 +289,7 @@ class JournalListSyncFeature extends BaseFeature {
     // Log a specific message for this feature's activation
     Logger.feature(this.name, 'Journal List Sync feature initialized')
 
-    console.log('[DEBUG] onActivate: elements', elements)
+    if (Logger.isDebugMode()) Logger.debug('[DEBUG] onActivate: elements', elements)
 
     // First check if Kriit support is enabled
     if (!this.api.kriit.enabled) {
@@ -304,7 +304,7 @@ class JournalListSyncFeature extends BaseFeature {
       // If we have journal links from the observer, store them
       if (elements && elements.length > 0) {
         this.journalLinks = elements
-        console.log('[DEBUG] onActivate: journalLinks set', this.journalLinks)
+        if (Logger.isDebugMode()) Logger.debug('[DEBUG] onActivate: journalLinks set', this.journalLinks)
         this.fetchJournalData()
       } else {
         // This case should not happen anymore with the fixed observer
@@ -380,7 +380,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async fetchJournalData() {
     try {
-      console.log('[DEBUG] fetchJournalData called')
+      if (Logger.isDebugMode()) Logger.debug('[DEBUG] fetchJournalData called')
       this.isLoading = true
       this.updateUI()
 
@@ -888,8 +888,8 @@ class JournalListSyncFeature extends BaseFeature {
   showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
 
-    // Print each detected grade difference with details
-    if (Array.isArray(this.differences)) {
+    // Print each detected grade difference with details only in debug mode
+    if (Logger.isDebugMode() && Array.isArray(this.differences)) {
       this.differences.forEach(subject => {
         if (subject && Array.isArray(subject.assignments)) {
           subject.assignments.forEach(assignment => {
@@ -899,7 +899,7 @@ class JournalListSyncFeature extends BaseFeature {
                 const kriitGrade = result.grade || '(puudub)'
                 // Only log if there is a difference and kriitGrade is not null/empty
                 if (kriitGrade !== '(puudub)' && tahvelGrade !== kriitGrade) {
-                  console.log(
+                  Logger.debug(
                     `[GRADE DIFF] Subject: ${subject.subjectName}, Assignment: ${assignment.assignmentName}, Student: ${result.studentName || '(nimi puudub)'}, Tahvel: ${tahvelGrade}, Kriit: ${kriitGrade}`
                   )
                 }
@@ -1080,7 +1080,7 @@ class JournalListSyncFeature extends BaseFeature {
           this.updateUI()
           return
         } else {
-          console.log('[DEBUG] Backend response is not an array:', response)
+          if (Logger.isDebugMode()) Logger.debug('[DEBUG] Backend response is not an array:', response)
           Logger.warning('Unexpected response format from Kriit:', response)
           this.differences = []
         }
