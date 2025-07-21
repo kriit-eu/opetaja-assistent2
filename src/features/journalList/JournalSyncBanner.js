@@ -30,7 +30,20 @@ class DifferenceRenderer {
 
   collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
     const grouped = {}
-    const normalize = val => (val === null || val === undefined || val === '' ? null : String(val))
+    // Improved normalization: extract string from object, fallback to JSON if needed
+    const normalize = val => {
+      if (val === null || val === undefined || val === '') return null
+      if (typeof val === 'object') {
+        // Try common properties
+        if ('kriit' in val && val.kriit) return String(val.kriit)
+        if ('Tahvel' in val && val.Tahvel) return String(val.Tahvel)
+        // If object has a toString method, use it
+        if (typeof val.toString === 'function' && val.toString !== Object.prototype.toString) return val.toString()
+        // Fallback: JSON.stringify
+        return JSON.stringify(val)
+      }
+      return String(val)
+    }
 
     // Create a map of new assignment names
     const newNames = {}
