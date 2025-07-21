@@ -75,15 +75,18 @@ class JournalListSyncFeature extends BaseFeature {
     // Add name diffs
     assignmentNameDiffs.forEach(subjectDiff => {
       const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
-      if (!subject || !Array.isArray(subject.assignments)) return
+      if (!subject || !Array.isArray(subject.assignments)) return;
       subjectDiff.nameDiffs.forEach(nameDiff => {
-        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
-        if (!assignment) return
-        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
-        if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
-        updateMap.get(key).nameEt = nameDiff.kriit
-      })
-    })
+        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId);
+        if (!assignment) return;
+        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId);
+        if (!updateMap.has(key)) {
+          updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId });
+        }
+        updateMap.get(key).nameEt = nameDiff.kriit;
+        Logger.debug(`[UPDATE MAP] Set nameEt for key ${key}: ${nameDiff.kriit}`);
+      });
+    });
 
     // Add due date diffs
     dueDateDiffs.forEach(diff => {
