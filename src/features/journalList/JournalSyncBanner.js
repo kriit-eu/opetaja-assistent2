@@ -5,6 +5,8 @@ import Logger from '../../services/Logger.js'
 
 class DifferenceRenderer {
   render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
+    // Only render on journal list page, never on edit page
+    if (!window.location.hash.includes('journals?_menu')) return
     const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
 
     for (const subjectName in groupedDiffs) {
@@ -33,7 +35,7 @@ class DifferenceRenderer {
     // Create a map of new assignment names
     const newNames = {}
     ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
         newNames[nameDiff.assignmentExternalId] = nameDiff.kriit
       })
     })
@@ -49,7 +51,7 @@ class DifferenceRenderer {
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
         addDiff(subject.subjectName, {
           type: 'name',
           typeName: 'Nimetus',
@@ -61,7 +63,7 @@ class DifferenceRenderer {
       })
     })
 
-    const getAssignmentName = (assignment) => {
+    const getAssignmentName = assignment => {
       if (typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null) {
         return newNames[assignment.assignmentExternalId] || assignment.assignmentName.Tahvel || assignment.assignmentName.kriit
       }
@@ -70,7 +72,7 @@ class DifferenceRenderer {
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
-      (subject.assignments || []).forEach(assignment => {
+      ;(subject.assignments || []).forEach(assignment => {
         const assignmentName = getAssignmentName(assignment)
         ;(assignment.results || []).forEach(result => {
           const tahvelGrade = normalize(result.currentGrade)
