@@ -242,20 +242,10 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     console.debug('[LastLessonNotificationFeature] Raw timetable data:', timetableData)
     console.debug('[LastLessonNotificationFeature] Timetable events count:', timetableData?.timetableEvents?.length || 0)
 
-    // Log all timetable events with their journalIds for debugging
-    if (timetableData?.timetableEvents) {
-      console.debug('[LastLessonNotificationFeature] All timetable events with journalIds:')
-      timetableData.timetableEvents.forEach((event, index) => {
-        console.debug(`  Event ${index}: journalId=${event.journalId}, date=${event.date}, name=${event.nameEt}`)
-      })
-    }
 
     const timetable =
       timetableData?.timetableEvents?.filter(event => {
         const matches = event.journalId == journalId
-        console.debug(
-          `[LastLessonNotificationFeature] Event journalId ${event.journalId} ${matches ? 'MATCHES' : 'does not match'} target journalId ${journalId}`
-        )
         return matches
       }) || []
 

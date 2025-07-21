@@ -522,27 +522,16 @@ export class DiscrepanciesTable {
 
     // Get formatted date for button data
     // Handle null/undefined dates specially since they show as "-" in the main table
-    console.log(`[DiscrepanciesTable] Debug: entry object:`, entry)
-    console.log(`[DiscrepanciesTable] Debug: entry.entryDate:`, entry.entryDate, typeof entry.entryDate)
-    console.log(`[DiscrepanciesTable] Debug: entry.id:`, entry.id)
-
     let safeFormattedDate = 'NO_DATE' // Special identifier for null dates
     if (entry.entryDate) {
       try {
-        console.log(`[DiscrepanciesTable] Debug: Attempting to parse date:`, entry.entryDate)
         const dateObj = new Date(entry.entryDate)
-        console.log(`[DiscrepanciesTable] Debug: Date object created:`, dateObj)
-        console.log(`[DiscrepanciesTable] Debug: Date object time:`, dateObj.getTime())
-        console.log(`[DiscrepanciesTable] Debug: isNaN check:`, isNaN(dateObj.getTime()))
-
         if (!isNaN(dateObj.getTime())) {
           const day = dateObj.getDate().toString().padStart(2, '0')
           const month = (dateObj.getMonth() + 1).toString().padStart(2, '0')
           const year = dateObj.getFullYear()
           safeFormattedDate = `${day}.${month}.${year}`
-          console.log(`[DiscrepanciesTable] Debug: Successfully formatted date:`, safeFormattedDate)
         } else {
-          console.log(`[DiscrepanciesTable] Debug: Date object is invalid, using NO_DATE`)
           safeFormattedDate = 'NO_DATE'
         }
       } catch (error) {
@@ -550,11 +539,8 @@ export class DiscrepanciesTable {
         safeFormattedDate = 'NO_DATE'
       }
     } else {
-      console.log(`[DiscrepanciesTable] Debug: entry.entryDate is falsy, using NO_DATE:`, entry.entryDate)
       safeFormattedDate = 'NO_DATE'
     }
-
-    console.log(`[DiscrepanciesTable] Debug: Final safeFormattedDate:`, safeFormattedDate)
 
     // Calculate duplicate index for entries with same date
     const duplicateIndexInput = {
@@ -562,9 +548,7 @@ export class DiscrepanciesTable {
       date: safeFormattedDate,
       entryType: entry.entryType
     }
-    console.log(`[DiscrepanciesTable] Calculating duplicate index for:`, duplicateIndexInput)
     const duplicateIndex = this.calculateDuplicateIndex(duplicateIndexInput)
-    console.log(`[DiscrepanciesTable] Calculated duplicate index:`, duplicateIndex)
 
     const action =
       entry.validationResult?.errorType === 'no_teacher_selected'
