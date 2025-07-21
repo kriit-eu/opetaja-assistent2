@@ -887,8 +887,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
-    // Log the full differences array to inspect due date and other diffs
-    console.log('[DEBUG] showDifferencesBanner: this.differences =', JSON.stringify(this.differences, null, 2))
 
     // Print each detected grade difference with details
     if (Array.isArray(this.differences)) {
@@ -1060,15 +1058,12 @@ class JournalListSyncFeature extends BaseFeature {
 
         // Log the full response for debugging
         Logger.debug('Raw response from Kriit:', JSON.stringify(response))
-        console.log('[DEBUG] Raw diff response from backend:', JSON.stringify(response, null, 2))
 
         // Process the response directly
         if (response && Array.isArray(response)) {
-          console.log('[DEBUG] Setting this.differences to:', JSON.stringify(response, null, 2))
           this.differences = response
           Logger.debug('Response is an array with', response.length, 'items')
         } else if (response && response.data && Array.isArray(response.data)) {
-          console.log('[DEBUG] Setting this.differences to:', JSON.stringify(response.data, null, 2))
           this.differences = response.data
           Logger.debug('Response has a data property with', response.data.length, 'items')
         } else if (response && response.status === 200) {

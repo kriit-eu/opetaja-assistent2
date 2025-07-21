@@ -82,12 +82,4 @@ export async function sendOutcomeEntriesToKriit(api, journalLinks) {
       })
     })
   })
-  console.log('Outcomes data being sent to outcomes API:', outcomesPayload)
-  Logger.debug('Sending outcomes to API:', JSON.stringify(outcomesPayload))
-  try {
-    const response = await api.kriit.post('/outcomes/sync', outcomesPayload)
-    Logger.debug('outcomes API response:', JSON.stringify(response))
-  } catch (error) {
-    Logger.error('Error sending outcomes to API:', error)
-  }
 }
