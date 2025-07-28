@@ -389,8 +389,8 @@ class FinalGradesByOvFeature extends BaseFeature {
         studentId: student.studentId
       })
     })
-  Logger.info('✨ FinalGradesByOvFeature: SUMMARY', summary)
-  return { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId }
+    Logger.info('✨ FinalGradesByOvFeature: SUMMARY', summary)
+    return { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId }
   }
 
   #showResults(results, button) {
@@ -444,7 +444,8 @@ class FinalGradesByOvFeature extends BaseFeature {
     html += '</th></tr></thead><tbody>'
     output.forEach(function (r) {
       html += '<tr><td>' + r.name + '</td><td>'
-      let display = '', tooltip = ''
+      let display = '',
+        tooltip = ''
       if (allOvNums.length > 0) {
         var firstOvNum = allOvNums[0]
         const grade = r.ovGrades[firstOvNum]
@@ -546,25 +547,25 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
           // Build a map of (studentId|ovNum) => existing grade object for updating
           const freshGradesMap = {}
-          Logger.info('✨ FinalGradesByOvFeature: latestOutcomeEntry structure', { 
+          Logger.info('✨ FinalGradesByOvFeature: latestOutcomeEntry structure', {
             hasStudentOutcomeResults: latestOutcomeEntry?.hasStudentOutcomeResults,
             studentOutcomeResults: latestOutcomeEntry?.studentOutcomeResults,
             outcomeStudents: latestOutcomeEntry?.outcomeStudents
           })
-          
+
           // Check if outcomeStudents exists (this contains existing grades)
           if (latestOutcomeEntry && latestOutcomeEntry.outcomeStudents && Array.isArray(latestOutcomeEntry.outcomeStudents)) {
             Logger.info('✨ FinalGradesByOvFeature: Processing existing outcomeStudents', {
               ovNum,
               outcomeStudentsCount: latestOutcomeEntry.outcomeStudents.length
             })
-            
+
             latestOutcomeEntry.outcomeStudents.forEach(outcomeStudent => {
               if (outcomeStudent.studentId) {
                 const key = `${outcomeStudent.studentId}|${ovNum}`
                 freshGradesMap[key] = outcomeStudent
-                Logger.info('✨ FinalGradesByOvFeature: Added to freshGradesMap', { 
-                  key, 
+                Logger.info('✨ FinalGradesByOvFeature: Added to freshGradesMap', {
+                  key,
                   studentId: outcomeStudent.studentId,
                   hasId: !!outcomeStudent.id,
                   hasVersion: !!outcomeStudent.version
@@ -572,7 +573,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               }
             })
           } else {
-            Logger.info('✨ FinalGradesByOvFeature: No existing grades found for this ÕV', { 
+            Logger.info('✨ FinalGradesByOvFeature: No existing grades found for this ÕV', {
               ovNum,
               hasOutcomeEntry: !!latestOutcomeEntry,
               hasOutcomeStudents: !!latestOutcomeEntry?.outcomeStudents,
@@ -605,11 +606,11 @@ class FinalGradesByOvFeature extends BaseFeature {
                 value = grade
                 // Map numeric grades to nameEt/nameEn as in Tahvel UI
                 const gradeNames = {
-                  '5': { nameEt: 'Väga hea', nameEn: 'Very good' },
-                  '4': { nameEt: 'Hea', nameEn: 'Good' },
-                  '3': { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
-                  '2': { nameEt: 'Puudulik', nameEn: 'Insufficient' },
-                  '1': { nameEt: 'Nõrk', nameEn: 'Weak' }
+                  5: { nameEt: 'Väga hea', nameEn: 'Very good' },
+                  4: { nameEt: 'Hea', nameEn: 'Good' },
+                  3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
+                  2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
+                  1: { nameEt: 'Nõrk', nameEn: 'Weak' }
                 }
                 nameEt = gradeNames[grade]?.nameEt || ''
                 nameEn = gradeNames[grade]?.nameEn || ''
@@ -648,7 +649,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                     valid: true
                   },
                   gradeDate,
-                  removeStudentHistory: false,
+                  removeStudentHistory: true,
                   addInfo: null,
                   gradeInserted: existing.gradeInserted,
                   gradeInsertedBy: existing.gradeInsertedBy,
