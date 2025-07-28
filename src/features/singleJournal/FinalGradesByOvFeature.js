@@ -401,8 +401,9 @@ class FinalGradesByOvFeature extends BaseFeature {
     // results is now {output, allOvNums, outcomesByNumber, journalStudentIdToStudentId}
     const { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId } = results
 
-    // Build a set of (studentId, ovNum) pairs that already have a grade
-    const existingGrades = new Set()
+    // Build a map of (studentId|ovNum) => existing grade object for updating
+    const existingGradesMap = {}
+    Logger.info('✨ FinalGradesByOvFeature: journalStudentIdToStudentId mapping', journalStudentIdToStudentId)
     if (this._lastEntries) {
       this._lastEntries.forEach(entry => {
         if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
@@ -411,14 +412,17 @@ class FinalGradesByOvFeature extends BaseFeature {
           if (ovNum) {
             Object.entries(entry.studentOutcomeResults).forEach(([journalStudentId, results]) => {
               const studentId = journalStudentIdToStudentId[journalStudentId]
+              Logger.info('✨ FinalGradesByOvFeature: Mapping SISSEKANNE_O', { journalStudentId, studentId, ovNum, results })
               if (studentId && Array.isArray(results) && results.length > 0) {
-                existingGrades.add(`${studentId}|${ovNum}`)
+                // Use the first result (should only be one per student/outcome)
+                existingGradesMap[`${studentId}|${ovNum}`] = results[0]
               }
             })
           }
         }
       })
     }
+    Logger.info('✨ FinalGradesByOvFeature: existingGradesMap keys', Object.keys(existingGradesMap))
     // If there are ÕV columns, show only the first ÕV as the second column (with its label)
     // If not, show Lõpptulemus as the second column
     let html = ''
@@ -524,6 +528,60 @@ class FinalGradesByOvFeature extends BaseFeature {
         let anySuccess = false
         let skipped = []
         for (const ovNum of results.allOvNums) {
+          // Always fetch the latest outcome entry for this ÕV
+          const journalId = this.#extractJournalId()
+          const journalOutcomeId = ovNumToOutcomeId && ovNumToOutcomeId[ovNum] ? ovNumToOutcomeId[ovNum] : ovNum
+          let latestOutcomeEntry = null
+          try {
+            latestOutcomeEntry = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${journalOutcomeId}`)
+            Logger.info('✨ FinalGradesByOvFeature: Latest outcome entry fetched', { ovNum, journalOutcomeId, latestOutcomeEntry })
+            Logger.info('✨ FinalGradesByOvFeature: Full outcome entry structure', {
+              keys: Object.keys(latestOutcomeEntry || {}),
+              hasStudentOutcomeResults: latestOutcomeEntry?.hasStudentOutcomeResults,
+              studentOutcomeResults: latestOutcomeEntry?.studentOutcomeResults,
+              studentOutcomeResultsKeys: latestOutcomeEntry?.studentOutcomeResults ? Object.keys(latestOutcomeEntry.studentOutcomeResults) : null
+            })
+          } catch (err) {
+            Logger.warning('✨ FinalGradesByOvFeature: Could not fetch latest outcome entry', { ovNum, journalOutcomeId, err })
+          }
+          // Build a map of (studentId|ovNum) => existing grade object for updating
+          const freshGradesMap = {}
+          Logger.info('✨ FinalGradesByOvFeature: latestOutcomeEntry structure', { 
+            hasStudentOutcomeResults: latestOutcomeEntry?.hasStudentOutcomeResults,
+            studentOutcomeResults: latestOutcomeEntry?.studentOutcomeResults,
+            outcomeStudents: latestOutcomeEntry?.outcomeStudents
+          })
+          
+          // Check if outcomeStudents exists (this contains existing grades)
+          if (latestOutcomeEntry && latestOutcomeEntry.outcomeStudents && Array.isArray(latestOutcomeEntry.outcomeStudents)) {
+            Logger.info('✨ FinalGradesByOvFeature: Processing existing outcomeStudents', {
+              ovNum,
+              outcomeStudentsCount: latestOutcomeEntry.outcomeStudents.length
+            })
+            
+            latestOutcomeEntry.outcomeStudents.forEach(outcomeStudent => {
+              if (outcomeStudent.studentId) {
+                const key = `${outcomeStudent.studentId}|${ovNum}`
+                freshGradesMap[key] = outcomeStudent
+                Logger.info('✨ FinalGradesByOvFeature: Added to freshGradesMap', { 
+                  key, 
+                  studentId: outcomeStudent.studentId,
+                  hasId: !!outcomeStudent.id,
+                  hasVersion: !!outcomeStudent.version
+                })
+              }
+            })
+          } else {
+            Logger.info('✨ FinalGradesByOvFeature: No existing grades found for this ÕV', { 
+              ovNum,
+              hasOutcomeEntry: !!latestOutcomeEntry,
+              hasOutcomeStudents: !!latestOutcomeEntry?.outcomeStudents,
+              outcomeStudentsType: typeof latestOutcomeEntry?.outcomeStudents,
+              outcomeStudentsIsArray: Array.isArray(latestOutcomeEntry?.outcomeStudents)
+            })
+          }
+          Logger.info('✨ FinalGradesByOvFeature: freshGradesMap keys', Object.keys(freshGradesMap))
+          Logger.info('✨ FinalGradesByOvFeature: freshGradesMap full', freshGradesMap)
           // Build payload for this ÕV, always include all students with a grade (overwrite existing)
           const outcomeStudents = results.output
             .map(r => {
@@ -535,6 +593,8 @@ class FinalGradesByOvFeature extends BaseFeature {
                 if (rounded >= 1 && rounded <= 5) grade = String(rounded)
               }
               const studentId = Number(r.studentId)
+              const lookupKey = `${studentId}|${ovNum}`
+              Logger.info('✨ FinalGradesByOvFeature: Payload build', { studentId, ovNum, lookupKey, existing: !!freshGradesMap[lookupKey] })
               // Only send numeric grades 1-5 or MA/A
               let code = null,
                 nameEt = '',
@@ -566,28 +626,58 @@ class FinalGradesByOvFeature extends BaseFeature {
               } else {
                 return null
               }
-              return {
-                studentId,
-                canEdit: true,
-                isCurriculumOutcome: true,
-                grade: {
-                  code,
-                  gradingSchemaRowId: null,
-                  value,
-                  value2: value,
-                  extraval1: null,
-                  extraval2: null,
-                  nameEt,
-                  nameEn,
-                  valid: true
-                },
-                gradeDate
+              // If an existing grade exists for this student/ÕV, include update fields
+              const existing = freshGradesMap[lookupKey]
+              if (existing) {
+                Logger.info('✨ FinalGradesByOvFeature: Updating existing grade', { studentId, ovNum, id: existing.id, version: existing.version })
+                return {
+                  version: existing.version,
+                  id: existing.id,
+                  studentId,
+                  canEdit: true,
+                  isCurriculumOutcome: true,
+                  grade: {
+                    code,
+                    gradingSchemaRowId: null,
+                    value,
+                    value2: value,
+                    extraval1: null,
+                    extraval2: null,
+                    nameEt,
+                    nameEn,
+                    valid: true
+                  },
+                  gradeDate,
+                  removeStudentHistory: false,
+                  addInfo: null,
+                  gradeInserted: existing.gradeInserted,
+                  gradeInsertedBy: existing.gradeInsertedBy,
+                  history: existing.history || []
+                }
+              } else {
+                Logger.info('✨ FinalGradesByOvFeature: Adding new grade', { studentId, ovNum })
+                // New grade
+                return {
+                  studentId,
+                  canEdit: true,
+                  isCurriculumOutcome: true,
+                  grade: {
+                    code,
+                    gradingSchemaRowId: null,
+                    value,
+                    value2: value,
+                    extraval1: null,
+                    extraval2: null,
+                    nameEt,
+                    nameEn,
+                    valid: true
+                  },
+                  gradeDate
+                }
               }
             })
             .filter(Boolean)
           if (!outcomeStudents.length) continue
-          // Use the correct journalOutcomeId for this ÕV
-          const journalOutcomeId = ovNumToOutcomeId && ovNumToOutcomeId[ovNum] ? ovNumToOutcomeId[ovNum] : ovNum
           const url = `/journals/${journalId}/journalOutcome/${journalOutcomeId}`
           const payload = { outcomeStudents }
           Logger.info('✨ FinalGradesByOvFeature: Sending payload for ÕV', { ovNum, payload })
