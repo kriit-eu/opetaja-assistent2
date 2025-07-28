@@ -31,36 +31,78 @@ class FinalGradesLFeature {
     })
 
     // Only use grades from SISSEKANNE_I and SISSEKANNE_T for calculation
-    const gradesT = {}
-    const gradesI = {}
+    const gradesT = {} // Will store arrays of grades for each student
+    const gradesI = {} // Will store arrays of grades for each student
 
     entries.forEach(entry => {
-      if ((entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_I') && entry.journalStudentResults) {
-        Object.entries(entry.journalStudentResults).forEach(([journalStudentId, resultsArr]) => {
-          if (Array.isArray(resultsArr)) {
-            resultsArr.forEach(result => {
-              if (result.grade && result.grade.code) {
-                const grade = result.grade.code.replace('KUTSEHINDAMINE_', '')
+      if (entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_I') {
+        // 1. Extract from journalStudentResults (if present)
+        if (entry.journalStudentResults) {
+          Logger.info(`✨ FinalGradesLFeature: Processing ${entry.entryType} entry (journalStudentResults)`, entry.journalStudentResults)
+          Object.entries(entry.journalStudentResults).forEach(([journalStudentId, resultsArr]) => {
+            if (Array.isArray(resultsArr)) {
+              resultsArr.forEach(result => {
+                if (result.grade && result.grade.code) {
+                  const grade = result.grade.code.replace('KUTSEHINDAMINE_', '')
+                  if (['1', '2', '3', '4', '5'].includes(grade)) {
+                    if (entry.entryType === 'SISSEKANNE_T') {
+                      if (!gradesT[journalStudentId]) gradesT[journalStudentId] = []
+                      gradesT[journalStudentId].push(parseInt(grade))
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T grade for student ${journalStudentId}: ${grade}`)
+                    } else if (entry.entryType === 'SISSEKANNE_I') {
+                      if (!gradesI[journalStudentId]) gradesI[journalStudentId] = []
+                      gradesI[journalStudentId].push(parseInt(grade))
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I grade for student ${journalStudentId}: ${grade}`)
+                    }
+                  }
+                }
+              })
+            }
+          })
+        }
+        // 2. Extract from journalEntryStudents (if present)
+        if (Array.isArray(entry.journalEntryStudents)) {
+          Logger.info(`✨ FinalGradesLFeature: Processing ${entry.entryType} entry (journalEntryStudents)`, entry.journalEntryStudents)
+          entry.journalEntryStudents.forEach(js => {
+            if (js.grade && js.grade.code) {
+              const grade = js.grade.code.replace('KUTSEHINDAMINE_', '')
+              if (['1', '2', '3', '4', '5'].includes(grade)) {
+                const journalStudentId = js.journalStudent
                 if (entry.entryType === 'SISSEKANNE_T') {
-                  gradesT[journalStudentId] = grade
+                  if (!gradesT[journalStudentId]) gradesT[journalStudentId] = []
+                  gradesT[journalStudentId].push(parseInt(grade))
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
                 } else if (entry.entryType === 'SISSEKANNE_I') {
-                  gradesI[journalStudentId] = grade
+                  if (!gradesI[journalStudentId]) gradesI[journalStudentId] = []
+                  gradesI[journalStudentId].push(parseInt(grade))
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
                 }
               }
-            })
-          }
-        })
+            }
+          })
+        }
       }
     })
 
+    Logger.info('✨ FinalGradesLFeature: All SISSEKANNE_T grades', gradesT)
+    Logger.info('✨ FinalGradesLFeature: All SISSEKANNE_I grades', gradesI)
+
     const output = []
     Object.entries(studentMap).forEach(([journalStudentId, student]) => {
-      // Priority: T > I
+      const tGrades = gradesT[journalStudentId] || []
+      const iGrades = gradesI[journalStudentId] || []
+      const allGrades = [...tGrades, ...iGrades]
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL SISSEKANNE_T grades:`, tGrades)
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL SISSEKANNE_I grades:`, iGrades)
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL COMBINED grades:`, allGrades)
       let finalGrade = ''
-      if (gradesT[journalStudentId]) {
-        finalGrade = gradesT[journalStudentId]
-      } else if (gradesI[journalStudentId]) {
-        finalGrade = gradesI[journalStudentId]
+      if (allGrades.length > 0) {
+        const sum = allGrades.reduce((a, b) => a + b, 0)
+        const avg = sum / allGrades.length
+        finalGrade = String(Math.round(avg))
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: combined avg ${avg} → ${finalGrade}`)
+      } else {
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: no grades`)
       }
       output.push({
         name: student.name,
@@ -164,10 +206,22 @@ class FinalGradesLFeature {
           syncBtn.textContent = 'Sync Lõpptulemus Tahvlisse'
           return
         }
-        // Build journalEntryStudents array from output
-        const journalEntryStudents = results.output
+
+        // Fetch current state from API first
+        statusDiv.textContent = 'Laen praegust seisu...'
+        const currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
+        Logger.info('✨ FinalGradesLFeature: Current entry from API', currentEntry)
+
+        // Build journalEntryStudents array from our calculated grades
+        Logger.info('✨ FinalGradesLFeature: Current journalEntryStudents', currentEntry.journalEntryStudents?.map(js => js.journalStudent) || [])
+        Logger.info(
+          '✨ FinalGradesLFeature: results.output journalStudentIds',
+          results.output.map(r => r.journalStudentId)
+        )
+
+        const mappedStudents = results.output
           .map(r => {
-            const existing = (lEntry.journalEntryStudents || []).find(js => js.journalStudent === r.journalStudentId)
+            const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
             let grade = r.finalGrade
             let code = null,
               value = '',
@@ -175,7 +229,7 @@ class FinalGradesLFeature {
               nameEt = '',
               nameEn = '',
               valid = true
-            if (["1", "2", "3", "4", "5"].includes(grade)) {
+            if (['1', '2', '3', '4', '5'].includes(grade)) {
               code = `KUTSEHINDAMINE_${grade}`
               value = grade
               value2 = grade
@@ -207,6 +261,7 @@ class FinalGradesLFeature {
             if (existing) {
               return {
                 ...existing,
+                journalStudent: String(r.journalStudentId), // Ensure string format
                 grade: {
                   code,
                   gradingSchemaRowId: null,
@@ -223,7 +278,7 @@ class FinalGradesLFeature {
               // Add new with full structure
               return {
                 id: undefined,
-                journalStudent: r.journalStudentId,
+                journalStudent: String(r.journalStudentId), // Ensure string format
                 absence: null,
                 grade: {
                   code,
@@ -253,9 +308,22 @@ class FinalGradesLFeature {
             }
           })
           .filter(Boolean)
-        // Build payload
+
+        // Deduplicate by journalStudent (last one wins), filter out null/undefined journalStudent
+        const seen = new Map()
+        mappedStudents.forEach(js => {
+          if (js && js.journalStudent != null) {
+            seen.set(String(js.journalStudent), js) // Use string key for deduplication
+          }
+        })
+        const journalEntryStudents = Array.from(seen.values()).filter(js => js && js.journalStudent != null)
+
+        // Debug log for outgoing array
+        Logger.info('✨ FinalGradesLFeature: journalEntryStudents to send', journalEntryStudents)
+
+        // Build payload using the current entry from API
         const payload = {
-          ...lEntry,
+          ...currentEntry,
           journalEntryStudents
         }
         Logger.info('✨ FinalGradesLFeature: Sending SISSEKANNE_L PUT', { url: `/journals/${journalId}/journalEntry/${lEntry.id}`, payload })
