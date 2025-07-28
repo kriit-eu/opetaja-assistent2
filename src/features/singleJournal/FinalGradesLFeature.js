@@ -175,7 +175,7 @@ class FinalGradesLFeature {
               nameEt = '',
               nameEn = '',
               valid = true
-            if (['1', '2', '3', '4', '5'].includes(grade)) {
+            if (["1", "2", "3", "4", "5"].includes(grade)) {
               code = `KUTSEHINDAMINE_${grade}`
               value = grade
               value2 = grade
@@ -203,34 +203,53 @@ class FinalGradesLFeature {
             } else {
               return null
             }
-            return {
-              id: existing ? existing.id : undefined,
-              journalStudent: r.journalStudentId,
-              absence: existing ? existing.absence : null,
-              grade: {
-                code,
-                gradingSchemaRowId: null,
-                value,
-                value2,
-                extraval1: null,
-                extraval2: null,
-                nameEt,
-                nameEn,
-                valid
-              },
-              verbalGrade: null,
-              removeStudentHistory: false,
-              addInfo: null,
-              isLessonAbsence: false,
-              hasOverlappingLessonAbsence: false,
-              isPraise: false,
-              isRemark: false,
-              lessonAbsences: {},
-              studentName: null,
-              studentGroup: null,
-              journalEntryStudentHistories: existing ? existing.journalEntryStudentHistories : [],
-              hasWholeDayAcceptedAbsence: false,
-              wholeDayAbsenceCode: null
+            // If updating, preserve all fields from existing, only update grade
+            if (existing) {
+              return {
+                ...existing,
+                grade: {
+                  code,
+                  gradingSchemaRowId: null,
+                  value,
+                  value2,
+                  extraval1: null,
+                  extraval2: null,
+                  nameEt,
+                  nameEn,
+                  valid
+                }
+              }
+            } else {
+              // Add new with full structure
+              return {
+                id: undefined,
+                journalStudent: r.journalStudentId,
+                absence: null,
+                grade: {
+                  code,
+                  gradingSchemaRowId: null,
+                  value,
+                  value2,
+                  extraval1: null,
+                  extraval2: null,
+                  nameEt,
+                  nameEn,
+                  valid
+                },
+                verbalGrade: null,
+                removeStudentHistory: false,
+                addInfo: null,
+                isLessonAbsence: false,
+                hasOverlappingLessonAbsence: false,
+                isPraise: false,
+                isRemark: false,
+                lessonAbsences: {},
+                studentName: null,
+                studentGroup: null,
+                journalEntryStudentHistories: [],
+                hasWholeDayAcceptedAbsence: false,
+                wholeDayAbsenceCode: null
+              }
             }
           })
           .filter(Boolean)
