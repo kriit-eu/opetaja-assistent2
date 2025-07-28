@@ -77,14 +77,15 @@ class FinalGradesByOvFeature extends BaseFeature {
         Logger.warning('✨ FinalGradesByOvFeature: No journal ID found, feature will not work')
         return
       }
-      // Fetch entries and students to check for ÕV columns
+      // Fetch entries and students to check for ÕV columns or SISSEKANNE_L
       const [entries, students] = await Promise.all([
         this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
         this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
       ])
       const results = this.#calculateFinalGrades(entries, students)
-      if (!results.allOvNums || results.allOvNums.length === 0) {
-        Logger.info('✨ FinalGradesByOvFeature: No ÕV columns detected, feature will not activate')
+      const hasSissekanneL = entries.some(entry => entry.entryType === 'SISSEKANNE_L')
+      if (!results.allOvNums || (results.allOvNums.length === 0 && !hasSissekanneL)) {
+        Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected, feature will not activate')
         return
       }
       // Wait for the table container in #main-content
@@ -193,9 +194,10 @@ class FinalGradesByOvFeature extends BaseFeature {
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
           this._lastEntries = entries
           const results = this.#calculateFinalGrades(entries, students)
-          if (!results.allOvNums || results.allOvNums.length === 0) {
-            Logger.info('✨ FinalGradesByOvFeature: No ÕV columns detected on button click, aborting')
-            btn.textContent = 'ÕV-sid ei leitud'
+          const hasSissekanneL = entries.some(entry => entry.entryType === 'SISSEKANNE_L')
+          if (!results.allOvNums || (results.allOvNums.length === 0 && !hasSissekanneL)) {
+            Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected on button click, aborting')
+            btn.textContent = 'ÕV-sid või lõpptulemust ei leitud'
             btn.style.background = '#d32f2f'
             setTimeout(() => {
               btn.disabled = false
@@ -284,10 +286,25 @@ class FinalGradesByOvFeature extends BaseFeature {
     const gradesByStudent = {}
     // Collect outcome grades for each student and outcome number
     const outcomeGradesByStudent = {}
+    // Collect final grades from SISSEKANNE_L entries
+    const finalGradesByStudent = {}
 
     entries.forEach(entry => {
+      // SISSEKANNE_L: final grades (lõpptulemus)
+      if (entry.entryType === 'SISSEKANNE_L' && entry.journalEntryStudents) {
+        entry.journalEntryStudents.forEach(entryStudent => {
+          if (entryStudent.grade && entryStudent.grade.code && entryStudent.journalStudent) {
+            const grade = entryStudent.grade.code.replace('KUTSEHINDAMINE_', '')
+            finalGradesByStudent[entryStudent.journalStudent] = grade
+            Logger.info('✨ FinalGradesByOvFeature: Found SISSEKANNE_L grade', {
+              journalStudent: entryStudent.journalStudent,
+              grade
+            })
+          }
+        })
+      }
       // SISSEKANNE_O: outcomes (for display, not for calculation)
-      if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
+      else if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
         Object.entries(entry.studentOutcomeResults).forEach(([journalStudentId, results]) => {
           if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
           if (Array.isArray(results)) {
@@ -359,18 +376,25 @@ class FinalGradesByOvFeature extends BaseFeature {
     const output = []
     const summary = []
     Object.entries(studentMap).forEach(([journalStudentId, student]) => {
-      // Final grade: only from gradesByStudent (not outcomeGradesByStudent)
-      const grades = gradesByStudent[journalStudentId] || []
+      // Final grade: prioritize SISSEKANNE_L, fallback to calculated grade
       let finalGrade = ''
-      if (grades.includes('MA')) {
-        finalGrade = 'MA'
+      if (finalGradesByStudent[journalStudentId]) {
+        finalGrade = finalGradesByStudent[journalStudentId]
+        Logger.info('✨ FinalGradesByOvFeature: Using SISSEKANNE_L grade', { student: student.name, finalGrade })
       } else {
-        const numeric = grades.filter(g => ['1', '2', '3', '4', '5'].includes(g)).map(Number)
-        if (numeric.length) {
-          finalGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
-        } else if (grades.includes('A')) {
-          finalGrade = 'A'
+        // Calculate from gradesByStudent (not outcomeGradesByStudent)
+        const grades = gradesByStudent[journalStudentId] || []
+        if (grades.includes('MA')) {
+          finalGrade = 'MA'
+        } else {
+          const numeric = grades.filter(g => ['1', '2', '3', '4', '5'].includes(g)).map(Number)
+          if (numeric.length) {
+            finalGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
+          } else if (grades.includes('A')) {
+            finalGrade = 'A'
+          }
         }
+        Logger.info('✨ FinalGradesByOvFeature: Calculated final grade', { student: student.name, finalGrade, grades })
       }
 
       // Per-ÕV grades
@@ -477,6 +501,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           display = grade || ''
         }
       } else {
+        // Show final grade (from SISSEKANNE_L or calculated)
         const grade = r.finalGrade
         if (/^\d+(\.\d+)?$/.test(grade)) {
           display = String(Math.round(Number(grade)))
@@ -499,225 +524,237 @@ class FinalGradesByOvFeature extends BaseFeature {
     }
     container.innerHTML = html
 
-    // Add send ÕV grades button
-    let sendBtn = document.getElementById('oa-send-ov-grades-btn')
-    if (!sendBtn) {
-      sendBtn = domService.createAndInsertElement(
-        'button',
-        {
-          id: 'oa-send-ov-grades-btn',
-          style: {
-            margin: '16px 0px',
-            padding: '8px 16px',
-            background: '#388e3c',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '16px',
-            zIndex: 1000,
-            display: 'block',
-            width: 'auto',
-            maxWidth: '100%'
-          }
-        },
-        'Saada ÕV hinded Tahvlisse',
-        container,
-        'afterend'
-      )
-    }
-    // Status message
-    let statusDiv = document.getElementById('oa-send-ov-status')
-    if (!statusDiv) {
-      statusDiv = domService.createAndInsertElement(
-        'div',
-        { id: 'oa-send-ov-status', style: { margin: '8px 0', color: '#1976d2', fontWeight: 'bold' } },
-        '',
-        sendBtn,
-        'afterend'
-      )
-    }
-    sendBtn.onclick = async () => {
-      sendBtn.disabled = true
-      sendBtn.textContent = 'Saatmine...'
-      statusDiv.textContent = ''
-      try {
-        const journalId = this.#extractJournalId()
-        // Get current date in Europe/Tallinn as YYYY-MM-DD
-        const estDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Tallinn' })
-        const gradeDate = estDate + 'T00:00:00.000Z'
-        let anySuccess = false
-        let skipped = []
-        for (const ovNum of results.allOvNums) {
-          // Always fetch the latest outcome entry for this ÕV
+    // Add send ÕV grades button only if there are ÕV columns
+    if (allOvNums.length > 0) {
+      let sendBtn = document.getElementById('oa-send-ov-grades-btn')
+      if (!sendBtn) {
+        sendBtn = domService.createAndInsertElement(
+          'button',
+          {
+            id: 'oa-send-ov-grades-btn',
+            style: {
+              margin: '16px 0px',
+              padding: '8px 16px',
+              background: '#388e3c',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '16px',
+              zIndex: 1000,
+              display: 'block',
+              width: 'auto',
+              maxWidth: '100%'
+            }
+          },
+          'Saada ÕV hinded Tahvlisse',
+          container,
+          'afterend'
+        )
+      }
+      // Status message
+      let statusDiv = document.getElementById('oa-send-ov-status')
+      if (!statusDiv) {
+        statusDiv = domService.createAndInsertElement(
+          'div',
+          { id: 'oa-send-ov-status', style: { margin: '8px 0', color: '#1976d2', fontWeight: 'bold' } },
+          '',
+          sendBtn,
+          'afterend'
+        )
+      }
+      sendBtn.onclick = async () => {
+        sendBtn.disabled = true
+        sendBtn.textContent = 'Saatmine...'
+        statusDiv.textContent = ''
+        try {
           const journalId = this.#extractJournalId()
-          const journalOutcomeId = ovNumToOutcomeId && ovNumToOutcomeId[ovNum] ? ovNumToOutcomeId[ovNum] : ovNum
-          let latestOutcomeEntry = null
-          try {
-            latestOutcomeEntry = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${journalOutcomeId}`)
-            Logger.info('✨ FinalGradesByOvFeature: Latest outcome entry fetched', { ovNum, journalOutcomeId, latestOutcomeEntry })
-            Logger.info('✨ FinalGradesByOvFeature: Full outcome entry structure', {
-              keys: Object.keys(latestOutcomeEntry || {}),
+          // Get current date in Europe/Tallinn as YYYY-MM-DD
+          const estDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Tallinn' })
+          const gradeDate = estDate + 'T00:00:00.000Z'
+          let anySuccess = false
+          let skipped = []
+          for (const ovNum of results.allOvNums) {
+            // Always fetch the latest outcome entry for this ÕV
+            const journalId = this.#extractJournalId()
+            const journalOutcomeId = ovNumToOutcomeId && ovNumToOutcomeId[ovNum] ? ovNumToOutcomeId[ovNum] : ovNum
+            let latestOutcomeEntry = null
+            try {
+              latestOutcomeEntry = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${journalOutcomeId}`)
+              Logger.info('✨ FinalGradesByOvFeature: Latest outcome entry fetched', { ovNum, journalOutcomeId, latestOutcomeEntry })
+              Logger.info('✨ FinalGradesByOvFeature: Full outcome entry structure', {
+                keys: Object.keys(latestOutcomeEntry || {}),
+                hasStudentOutcomeResults: latestOutcomeEntry?.hasStudentOutcomeResults,
+                studentOutcomeResults: latestOutcomeEntry?.studentOutcomeResults,
+                studentOutcomeResultsKeys: latestOutcomeEntry?.studentOutcomeResults ? Object.keys(latestOutcomeEntry.studentOutcomeResults) : null
+              })
+            } catch (err) {
+              Logger.warning('✨ FinalGradesByOvFeature: Could not fetch latest outcome entry', { ovNum, journalOutcomeId, err })
+            }
+            // Build a map of (studentId|ovNum) => existing grade object for updating
+            const freshGradesMap = {}
+            Logger.info('✨ FinalGradesByOvFeature: latestOutcomeEntry structure', {
               hasStudentOutcomeResults: latestOutcomeEntry?.hasStudentOutcomeResults,
               studentOutcomeResults: latestOutcomeEntry?.studentOutcomeResults,
-              studentOutcomeResultsKeys: latestOutcomeEntry?.studentOutcomeResults ? Object.keys(latestOutcomeEntry.studentOutcomeResults) : null
-            })
-          } catch (err) {
-            Logger.warning('✨ FinalGradesByOvFeature: Could not fetch latest outcome entry', { ovNum, journalOutcomeId, err })
-          }
-          // Build a map of (studentId|ovNum) => existing grade object for updating
-          const freshGradesMap = {}
-          Logger.info('✨ FinalGradesByOvFeature: latestOutcomeEntry structure', {
-            hasStudentOutcomeResults: latestOutcomeEntry?.hasStudentOutcomeResults,
-            studentOutcomeResults: latestOutcomeEntry?.studentOutcomeResults,
-            outcomeStudents: latestOutcomeEntry?.outcomeStudents
-          })
-
-          // Check if outcomeStudents exists (this contains existing grades)
-          if (latestOutcomeEntry && latestOutcomeEntry.outcomeStudents && Array.isArray(latestOutcomeEntry.outcomeStudents)) {
-            Logger.info('✨ FinalGradesByOvFeature: Processing existing outcomeStudents', {
-              ovNum,
-              outcomeStudentsCount: latestOutcomeEntry.outcomeStudents.length
+              outcomeStudents: latestOutcomeEntry?.outcomeStudents
             })
 
-            latestOutcomeEntry.outcomeStudents.forEach(outcomeStudent => {
-              if (outcomeStudent.studentId) {
-                const key = `${outcomeStudent.studentId}|${ovNum}`
-                freshGradesMap[key] = outcomeStudent
-                Logger.info('✨ FinalGradesByOvFeature: Added to freshGradesMap', {
-                  key,
-                  studentId: outcomeStudent.studentId,
-                  hasId: !!outcomeStudent.id,
-                  hasVersion: !!outcomeStudent.version
-                })
-              }
-            })
-          } else {
-            Logger.info('✨ FinalGradesByOvFeature: No existing grades found for this ÕV', {
-              ovNum,
-              hasOutcomeEntry: !!latestOutcomeEntry,
-              hasOutcomeStudents: !!latestOutcomeEntry?.outcomeStudents,
-              outcomeStudentsType: typeof latestOutcomeEntry?.outcomeStudents,
-              outcomeStudentsIsArray: Array.isArray(latestOutcomeEntry?.outcomeStudents)
-            })
+            // Check if outcomeStudents exists (this contains existing grades)
+            if (latestOutcomeEntry && latestOutcomeEntry.outcomeStudents && Array.isArray(latestOutcomeEntry.outcomeStudents)) {
+              Logger.info('✨ FinalGradesByOvFeature: Processing existing outcomeStudents', {
+                ovNum,
+                outcomeStudentsCount: latestOutcomeEntry.outcomeStudents.length
+              })
+
+              latestOutcomeEntry.outcomeStudents.forEach(outcomeStudent => {
+                if (outcomeStudent.studentId) {
+                  const key = `${outcomeStudent.studentId}|${ovNum}`
+                  freshGradesMap[key] = outcomeStudent
+                  Logger.info('✨ FinalGradesByOvFeature: Added to freshGradesMap', {
+                    key,
+                    studentId: outcomeStudent.studentId,
+                    hasId: !!outcomeStudent.id,
+                    hasVersion: !!outcomeStudent.version
+                  })
+                }
+              })
+            } else {
+              Logger.info('✨ FinalGradesByOvFeature: No existing grades found for this ÕV', {
+                ovNum,
+                hasOutcomeEntry: !!latestOutcomeEntry,
+                hasOutcomeStudents: !!latestOutcomeEntry?.outcomeStudents,
+                outcomeStudentsType: typeof latestOutcomeEntry?.outcomeStudents,
+                outcomeStudentsIsArray: Array.isArray(latestOutcomeEntry?.outcomeStudents)
+              })
+            }
+            Logger.info('✨ FinalGradesByOvFeature: freshGradesMap keys', Object.keys(freshGradesMap))
+            Logger.info('✨ FinalGradesByOvFeature: freshGradesMap full', freshGradesMap)
+            // Build payload for this ÕV, always include all students with a grade (overwrite existing)
+            const outcomeStudents = results.output
+              .map(r => {
+                let grade = r.ovGrades[ovNum]
+                if (!grade) return null
+                // If grade is a numeric string with decimals, round and convert to string
+                if (/^\d+(\.\d+)?$/.test(grade)) {
+                  const rounded = Math.round(Number(grade))
+                  if (rounded >= 1 && rounded <= 5) grade = String(rounded)
+                }
+                const studentId = Number(r.studentId)
+                const lookupKey = `${studentId}|${ovNum}`
+                Logger.info('✨ FinalGradesByOvFeature: Payload build', { studentId, ovNum, lookupKey, existing: !!freshGradesMap[lookupKey] })
+                // Only send numeric grades 1-5 or MA/A
+                let code = null,
+                  nameEt = '',
+                  nameEn = '',
+                  value = ''
+                if (['1', '2', '3', '4', '5'].includes(grade)) {
+                  code = `KUTSEHINDAMINE_${grade}`
+                  value = grade
+                  // Map numeric grades to nameEt/nameEn as in Tahvel UI
+                  const gradeNames = {
+                    5: { nameEt: 'Väga hea', nameEn: 'Very good' },
+                    4: { nameEt: 'Hea', nameEn: 'Good' },
+                    3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
+                    2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
+                    1: { nameEt: 'Nõrk', nameEn: 'Weak' }
+                  }
+                  nameEt = gradeNames[grade]?.nameEt || ''
+                  nameEn = gradeNames[grade]?.nameEn || ''
+                } else if (grade === 'MA') {
+                  code = 'KUTSEHINDAMINE_MA'
+                  value = 'MA'
+                  nameEt = 'Mitte arvestatud'
+                  nameEn = 'Fail'
+                } else if (grade === 'A') {
+                  code = 'KUTSEHINDAMINE_A'
+                  value = 'A'
+                  nameEt = 'Arvestatud'
+                  nameEn = 'Pass'
+                } else {
+                  return null
+                }
+                // If an existing grade exists for this student/ÕV, include update fields
+                const existing = freshGradesMap[lookupKey]
+                if (existing) {
+                  Logger.info('✨ FinalGradesByOvFeature: Updating existing grade', { studentId, ovNum, id: existing.id, version: existing.version })
+                  return {
+                    version: existing.version,
+                    id: existing.id,
+                    studentId,
+                    canEdit: true,
+                    isCurriculumOutcome: true,
+                    grade: {
+                      code,
+                      gradingSchemaRowId: null,
+                      value,
+                      value2: value,
+                      extraval1: null,
+                      extraval2: null,
+                      nameEt,
+                      nameEn,
+                      valid: true
+                    },
+                    gradeDate,
+                    removeStudentHistory: true,
+                    addInfo: null,
+                    gradeInserted: existing.gradeInserted,
+                    gradeInsertedBy: existing.gradeInsertedBy,
+                    history: existing.history || []
+                  }
+                } else {
+                  Logger.info('✨ FinalGradesByOvFeature: Adding new grade', { studentId, ovNum })
+                  // New grade
+                  return {
+                    studentId,
+                    canEdit: true,
+                    isCurriculumOutcome: true,
+                    grade: {
+                      code,
+                      gradingSchemaRowId: null,
+                      value,
+                      value2: value,
+                      extraval1: null,
+                      extraval2: null,
+                      nameEt,
+                      nameEn,
+                      valid: true
+                    },
+                    gradeDate
+                  }
+                }
+              })
+              .filter(Boolean)
+            if (!outcomeStudents.length) continue
+            const url = `/journals/${journalId}/journalOutcome/${journalOutcomeId}`
+            const payload = { outcomeStudents }
+            Logger.info('✨ FinalGradesByOvFeature: Sending payload for ÕV', { ovNum, payload })
+            let resp
+            try {
+              resp = await this.api.tahvel.post(url, payload)
+              statusDiv.textContent += `ÕV ${ovNum}: OK. `
+              anySuccess = true
+            } catch (err) {
+              statusDiv.textContent += `ÕV ${ovNum}: VIGA! `
+            }
           }
-          Logger.info('✨ FinalGradesByOvFeature: freshGradesMap keys', Object.keys(freshGradesMap))
-          Logger.info('✨ FinalGradesByOvFeature: freshGradesMap full', freshGradesMap)
-          // Build payload for this ÕV, always include all students with a grade (overwrite existing)
-          const outcomeStudents = results.output
-            .map(r => {
-              let grade = r.ovGrades[ovNum]
-              if (!grade) return null
-              // If grade is a numeric string with decimals, round and convert to string
-              if (/^\d+(\.\d+)?$/.test(grade)) {
-                const rounded = Math.round(Number(grade))
-                if (rounded >= 1 && rounded <= 5) grade = String(rounded)
-              }
-              const studentId = Number(r.studentId)
-              const lookupKey = `${studentId}|${ovNum}`
-              Logger.info('✨ FinalGradesByOvFeature: Payload build', { studentId, ovNum, lookupKey, existing: !!freshGradesMap[lookupKey] })
-              // Only send numeric grades 1-5 or MA/A
-              let code = null,
-                nameEt = '',
-                nameEn = '',
-                value = ''
-              if (['1', '2', '3', '4', '5'].includes(grade)) {
-                code = `KUTSEHINDAMINE_${grade}`
-                value = grade
-                // Map numeric grades to nameEt/nameEn as in Tahvel UI
-                const gradeNames = {
-                  5: { nameEt: 'Väga hea', nameEn: 'Very good' },
-                  4: { nameEt: 'Hea', nameEn: 'Good' },
-                  3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
-                  2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
-                  1: { nameEt: 'Nõrk', nameEn: 'Weak' }
-                }
-                nameEt = gradeNames[grade]?.nameEt || ''
-                nameEn = gradeNames[grade]?.nameEn || ''
-              } else if (grade === 'MA') {
-                code = 'KUTSEHINDAMINE_MA'
-                value = 'MA'
-                nameEt = 'Mitte arvestatud'
-                nameEn = 'Fail'
-              } else if (grade === 'A') {
-                code = 'KUTSEHINDAMINE_A'
-                value = 'A'
-                nameEt = 'Arvestatud'
-                nameEn = 'Pass'
-              } else {
-                return null
-              }
-              // If an existing grade exists for this student/ÕV, include update fields
-              const existing = freshGradesMap[lookupKey]
-              if (existing) {
-                Logger.info('✨ FinalGradesByOvFeature: Updating existing grade', { studentId, ovNum, id: existing.id, version: existing.version })
-                return {
-                  version: existing.version,
-                  id: existing.id,
-                  studentId,
-                  canEdit: true,
-                  isCurriculumOutcome: true,
-                  grade: {
-                    code,
-                    gradingSchemaRowId: null,
-                    value,
-                    value2: value,
-                    extraval1: null,
-                    extraval2: null,
-                    nameEt,
-                    nameEn,
-                    valid: true
-                  },
-                  gradeDate,
-                  removeStudentHistory: true,
-                  addInfo: null,
-                  gradeInserted: existing.gradeInserted,
-                  gradeInsertedBy: existing.gradeInsertedBy,
-                  history: existing.history || []
-                }
-              } else {
-                Logger.info('✨ FinalGradesByOvFeature: Adding new grade', { studentId, ovNum })
-                // New grade
-                return {
-                  studentId,
-                  canEdit: true,
-                  isCurriculumOutcome: true,
-                  grade: {
-                    code,
-                    gradingSchemaRowId: null,
-                    value,
-                    value2: value,
-                    extraval1: null,
-                    extraval2: null,
-                    nameEt,
-                    nameEn,
-                    valid: true
-                  },
-                  gradeDate
-                }
-              }
-            })
-            .filter(Boolean)
-          if (!outcomeStudents.length) continue
-          const url = `/journals/${journalId}/journalOutcome/${journalOutcomeId}`
-          const payload = { outcomeStudents }
-          Logger.info('✨ FinalGradesByOvFeature: Sending payload for ÕV', { ovNum, payload })
-          let resp
-          try {
-            resp = await this.api.tahvel.post(url, payload)
-            statusDiv.textContent += `ÕV ${ovNum}: OK. `
-            anySuccess = true
-          } catch (err) {
-            statusDiv.textContent += `ÕV ${ovNum}: VIGA! `
-          }
+          if (!anySuccess) statusDiv.textContent = 'Ühtegi hinnet ei saadetud.'
+          sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
+        } catch (err) {
+          statusDiv.textContent = 'Viga saatmisel.'
+          sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
+        } finally {
+          sendBtn.disabled = false
         }
-        if (!anySuccess) statusDiv.textContent = 'Ühtegi hinnet ei saadetud.'
-        sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
-      } catch (err) {
-        statusDiv.textContent = 'Viga saatmisel.'
-        sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
-      } finally {
-        sendBtn.disabled = false
+      }
+    } else {
+      // Remove send button if it exists (for SISSEKANNE_L case)
+      const existingSendBtn = document.getElementById('oa-send-ov-grades-btn')
+      if (existingSendBtn) {
+        existingSendBtn.remove()
+      }
+      const existingStatusDiv = document.getElementById('oa-send-ov-status')
+      if (existingStatusDiv) {
+        existingStatusDiv.remove()
       }
     }
     Logger.info('✨ FinalGradesByOvFeature: Results table rendered and visible')
