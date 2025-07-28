@@ -54,6 +54,17 @@ class FinalGradesLFeature {
                       gradesI[journalStudentId].push(parseInt(grade))
                       Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I grade for student ${journalStudentId}: ${grade}`)
                     }
+                  } else if (['A', 'MA'].includes(grade)) {
+                    const key = journalStudentId + '_str'
+                    if (entry.entryType === 'SISSEKANNE_T') {
+                      if (!gradesT[key]) gradesT[key] = []
+                      gradesT[key].push(grade)
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T string grade for student ${journalStudentId}: ${grade}`)
+                    } else if (entry.entryType === 'SISSEKANNE_I') {
+                      if (!gradesI[key]) gradesI[key] = []
+                      gradesI[key].push(grade)
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I string grade for student ${journalStudentId}: ${grade}`)
+                    }
                   }
                 }
               })
@@ -66,8 +77,8 @@ class FinalGradesLFeature {
           entry.journalEntryStudents.forEach(js => {
             if (js.grade && js.grade.code) {
               const grade = js.grade.code.replace('KUTSEHINDAMINE_', '')
+              const journalStudentId = js.journalStudent
               if (['1', '2', '3', '4', '5'].includes(grade)) {
-                const journalStudentId = js.journalStudent
                 if (entry.entryType === 'SISSEKANNE_T') {
                   if (!gradesT[journalStudentId]) gradesT[journalStudentId] = []
                   gradesT[journalStudentId].push(parseInt(grade))
@@ -76,6 +87,17 @@ class FinalGradesLFeature {
                   if (!gradesI[journalStudentId]) gradesI[journalStudentId] = []
                   gradesI[journalStudentId].push(parseInt(grade))
                   Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
+                }
+              } else if (['A', 'MA'].includes(grade)) {
+                const key = journalStudentId + '_str'
+                if (entry.entryType === 'SISSEKANNE_T') {
+                  if (!gradesT[key]) gradesT[key] = []
+                  gradesT[key].push(grade)
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T string grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
+                } else if (entry.entryType === 'SISSEKANNE_I') {
+                  if (!gradesI[key]) gradesI[key] = []
+                  gradesI[key].push(grade)
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I string grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
                 }
               }
             }
@@ -92,11 +114,19 @@ class FinalGradesLFeature {
       const tGrades = gradesT[journalStudentId] || []
       const iGrades = gradesI[journalStudentId] || []
       const allGrades = [...tGrades, ...iGrades]
+      const allStringGrades = [...(gradesT[journalStudentId + '_str'] || []), ...(gradesI[journalStudentId + '_str'] || [])]
       Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL SISSEKANNE_T grades:`, tGrades)
       Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL SISSEKANNE_I grades:`, iGrades)
       Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL COMBINED grades:`, allGrades)
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL STRING grades:`, allStringGrades)
       let finalGrade = ''
-      if (allGrades.length > 0) {
+      if (allStringGrades.includes('MA')) {
+        finalGrade = 'MA'
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: at least one MA → MA`)
+      } else if (allStringGrades.length > 0 && allStringGrades.every(g => g === 'A')) {
+        finalGrade = 'A'
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: all A → A`)
+      } else if (allGrades.length > 0) {
         const sum = allGrades.reduce((a, b) => a + b, 0)
         const avg = sum / allGrades.length
         finalGrade = String(Math.round(avg))
