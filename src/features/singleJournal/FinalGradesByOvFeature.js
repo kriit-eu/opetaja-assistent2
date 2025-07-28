@@ -77,6 +77,16 @@ class FinalGradesByOvFeature extends BaseFeature {
         Logger.warning('✨ FinalGradesByOvFeature: No journal ID found, feature will not work')
         return
       }
+      // Fetch entries and students to check for ÕV columns
+      const [entries, students] = await Promise.all([
+        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+      ])
+      const results = this.#calculateFinalGrades(entries, students)
+      if (!results.allOvNums || results.allOvNums.length === 0) {
+        Logger.info('✨ FinalGradesByOvFeature: No ÕV columns detected, feature will not activate')
+        return
+      }
       // Wait for the table container in #main-content
       let tableContainer = null
       try {
@@ -183,6 +193,17 @@ class FinalGradesByOvFeature extends BaseFeature {
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
           this._lastEntries = entries
           const results = this.#calculateFinalGrades(entries, students)
+          if (!results.allOvNums || results.allOvNums.length === 0) {
+            Logger.info('✨ FinalGradesByOvFeature: No ÕV columns detected on button click, aborting')
+            btn.textContent = 'ÕV-sid ei leitud'
+            btn.style.background = '#d32f2f'
+            setTimeout(() => {
+              btn.disabled = false
+              btn.textContent = 'Näita lõpptulemust ja õpiväljundeid'
+              btn.style.background = 'rgb(21, 101, 192)'
+            }, 3000)
+            return
+          }
           Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
           this.#showResults(results, btn)
           btn.textContent = 'Valmis! (vaata all)'
@@ -201,7 +222,6 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
       window._oaFinalGradesDelegation = delegatedHandler
       document.addEventListener('click', delegatedHandler, true)
-
       // No need to add a direct event listener here; handled by mutation observer logic above
     } catch (e) {
       Logger.error('FinalGradesByOvFeature init error', e)
