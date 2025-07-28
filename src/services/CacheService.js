@@ -76,7 +76,8 @@ const cacheService = {
               ? `journal students for journal ${key.match(/journals\/(\d+)\/journalStudents/)?.[1] || 'unknown'}`
               : `data for ${key}`
 
-          Logger.debug(`Using cached ${itemDescription} (${ageText} old)`)
+          if (Logger.isDebugMode()) Logger.debug(`[Cache] HIT: ${itemDescription} (age: ${ageText})`)
+
           return storageData.data
         }
       }
@@ -85,7 +86,7 @@ const cacheService = {
     }
 
     // Cache miss or expired - fetch fresh data
-    Logger.debug(`Fetching fresh data for ${key}`)
+    if (Logger.isDebugMode()) Logger.debug(`Fetching fresh data for ${key}`)
     try {
       const data = await fetchFn()
 
@@ -138,13 +139,13 @@ const cacheService = {
 
         if (keysToRemove.length > 0) {
           chrome.storage.local.remove(keysToRemove, () => {
-            Logger.debug(`Cleared ${keysToRemove.length} API cache entries from storage`)
-            Logger.debug(`Cleared ${memoryKeysCount} API cache entries from memory`)
+            if (Logger.isDebugMode()) Logger.debug(`Cleared ${keysToRemove.length} API cache entries from storage`)
+            if (Logger.isDebugMode()) Logger.debug(`Cleared ${memoryKeysCount} API cache entries from memory`)
             resolve(keysToRemove.length + memoryKeysCount)
           })
         } else {
-          Logger.debug('No API cache entries to clear from storage')
-          Logger.debug(`Cleared ${memoryKeysCount} API cache entries from memory`)
+          if (Logger.isDebugMode()) Logger.debug('No API cache entries to clear from storage')
+          if (Logger.isDebugMode()) Logger.debug(`Cleared ${memoryKeysCount} API cache entries from memory`)
           resolve(memoryKeysCount)
         }
       })
@@ -173,13 +174,13 @@ const cacheService = {
 
         if (keysToRemove.length > 0) {
           chrome.storage.local.remove(keysToRemove, () => {
-            Logger.debug(`Cleared ${keysToRemove.length} journal cache entries from storage`)
-            Logger.debug(`Cleared ${memoryKeysToRemove.length} journal cache entries from memory`)
+            if (Logger.isDebugMode()) Logger.debug(`Cleared ${keysToRemove.length} journal cache entries from storage`)
+            if (Logger.isDebugMode()) Logger.debug(`Cleared ${memoryKeysToRemove.length} journal cache entries from memory`)
             resolve(keysToRemove.length + memoryKeysToRemove.length)
           })
         } else {
-          Logger.debug('No journal cache entries to clear from storage')
-          Logger.debug(`Cleared ${memoryKeysToRemove.length} journal cache entries from memory`)
+          if (Logger.isDebugMode()) Logger.debug('No journal cache entries to clear from storage')
+          if (Logger.isDebugMode()) Logger.debug(`Cleared ${memoryKeysToRemove.length} journal cache entries from memory`)
           resolve(memoryKeysToRemove.length)
         }
       })
