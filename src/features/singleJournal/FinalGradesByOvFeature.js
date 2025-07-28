@@ -284,8 +284,22 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
         }
       }
-      // Also support ÕVn in nameEt for SISSEKANNE_I
+      // Support ÕVn in nameEt for SISSEKANNE_I, including patterns like (ÕV1) or (ÕV1, ÕV2)
       if (entry.entryType === 'SISSEKANNE_I' && entry.nameEt) {
+        // Find all ÕV numbers in parentheses, e.g. (ÕV1), (ÕV2), (ÕV1, ÕV2)
+        const parenOvMatches = entry.nameEt.match(/\(\s*ÕV(\d+)(?:,\s*ÕV(\d+))*\s*\)/gi)
+        if (parenOvMatches) {
+          // Extract all ÕV numbers from the match
+          const allOvNumsInParen = []
+          parenOvMatches.forEach(m => {
+            const nums = [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
+            allOvNumsInParen.push(...nums)
+          })
+          allOvNumsInParen.forEach(ovNum => {
+            outcomesByNumber[ovNum] = `ÕV${ovNum}`
+          })
+        }
+        // Also support plain ÕVn in nameEt
         const ovMatch = entry.nameEt.match(/ÕV(\d+)/i)
         if (ovMatch && ovMatch[1]) {
           outcomesByNumber[ovMatch[1]] = `ÕV${ovMatch[1]}`
@@ -382,10 +396,25 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
         })
       }
-      // SISSEKANNE_I: check for ÕVn in nameEt
+      // SISSEKANNE_I: check for ÕVn in nameEt, including patterns like (ÕV1), (ÕV1, ÕV2)
       else if (entry.entryType === 'SISSEKANNE_I' && entry.journalStudentResults) {
-        // Try to extract ÕV number from nameEt
+        // Try to extract all ÕV numbers from nameEt
+        let ovNums = []
+        // Find all ÕV numbers in parentheses, e.g. (ÕV1), (ÕV2), (ÕV1, ÕV2)
+        const parenOvMatches = entry.nameEt && entry.nameEt.match(/\(\s*ÕV(\d+)(?:,\s*ÕV(\d+))*\s*\)/gi)
+        if (parenOvMatches) {
+          parenOvMatches.forEach(m => {
+            const nums = [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
+            ovNums.push(...nums)
+          })
+        }
+        // Also support plain ÕVn in nameEt
         const ovMatch = entry.nameEt && entry.nameEt.match(/ÕV(\d+)/i)
+        if (ovMatch && ovMatch[1]) {
+          ovNums.push(ovMatch[1])
+        }
+        // Remove duplicates
+        ovNums = [...new Set(ovNums)]
         Object.entries(entry.journalStudentResults).forEach(([journalStudentId, results]) => {
           if (Array.isArray(results)) {
             results.forEach(r => {
@@ -394,17 +423,17 @@ class FinalGradesByOvFeature extends BaseFeature {
                 // Always count toward final grade, even if ÕVn is present
                 if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
                 gradesByStudent[journalStudentId].push(grade)
-                if (ovMatch && ovMatch[1]) {
-                  // Only map to outcome if the ÕV number matches a column
-                  const ovNum = ovMatch[1]
-                  if (!outcomeGradesByStudent[journalStudentId]) outcomeGradesByStudent[journalStudentId] = {}
-                  if (!outcomeGradesByStudent[journalStudentId][ovNum]) outcomeGradesByStudent[journalStudentId][ovNum] = []
-                  outcomeGradesByStudent[journalStudentId][ovNum].push(grade)
-                  Logger.info('✨ FinalGradesByOvFeature: Mapped SISSEKANNE_I grade to ÕV column', {
-                    journalStudentId,
-                    grade,
-                    ovNum,
-                    entryName: entry.nameEt
+                if (ovNums.length > 0) {
+                  ovNums.forEach(ovNum => {
+                    if (!outcomeGradesByStudent[journalStudentId]) outcomeGradesByStudent[journalStudentId] = {}
+                    if (!outcomeGradesByStudent[journalStudentId][ovNum]) outcomeGradesByStudent[journalStudentId][ovNum] = []
+                    outcomeGradesByStudent[journalStudentId][ovNum].push(grade)
+                    Logger.info('✨ FinalGradesByOvFeature: Mapped SISSEKANNE_I grade to ÕV column', {
+                      journalStudentId,
+                      grade,
+                      ovNum,
+                      entryName: entry.nameEt
+                    })
                   })
                 } else {
                   Logger.info('✨ FinalGradesByOvFeature: SISSEKANNE_I grade not mapped to ÕV column', {
