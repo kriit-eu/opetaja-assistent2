@@ -216,28 +216,32 @@ export class DiscrepanciesTable {
         // Only check for highlights and inject banners
         const ovCells = document.querySelectorAll('.highlight-ov-red')
         const ovYellowCells = document.querySelectorAll('.highlight-ov-yellow')
-        Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
-        Logger.info(`✨ [DiscrepanciesTable] Found ${ovYellowCells.length} .highlight-ov-yellow cells after highlight`)
-        ovCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
-        })
-        ovYellowCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}] parent:`, cell.parentNode)
-        })
+        if (Logger.isDebugMode()) {
+          Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
+          Logger.info(`✨ [DiscrepanciesTable] Found ${ovYellowCells.length} .highlight-ov-yellow cells after highlight`)
+          ovCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
+          })
+          ovYellowCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}] parent:`, cell.parentNode)
+          })
+        }
         const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
         const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
-        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeRedCells.length} .highlight-final-grade-red cells after highlight`)
-        Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeYellowCells.length} .highlight-final-grade-yellow cells after highlight`)
-        finalGradeRedCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
-        })
-        finalGradeYellowCells.forEach((cell, idx) => {
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}]:`, cell)
-          Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}] parent:`, cell.parentNode)
-        })
+        if (Logger.isDebugMode()) {
+          Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeRedCells.length} .highlight-final-grade-red cells after highlight`)
+          Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeYellowCells.length} .highlight-final-grade-yellow cells after highlight`)
+          finalGradeRedCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
+          })
+          finalGradeYellowCells.forEach((cell, idx) => {
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}]:`, cell)
+            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}] parent:`, cell.parentNode)
+          })
+        }
         const notifications = document.querySelector('.notifications-section')
         if (notifications) {
           // Remove old banners
@@ -245,7 +249,7 @@ export class DiscrepanciesTable {
           notifications.querySelectorAll('.oa2-banner-final-grade').forEach(b => b.remove())
           // Inject ÕV banner if needed
           if (ovYellowCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV yellow banner under Hinded')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting ÕV yellow banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--yellow oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund (tähtaeg läheneb)!'
@@ -256,7 +260,7 @@ export class DiscrepanciesTable {
               notifications.appendChild(ovBanner)
             }
           } else if (ovCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting ÕV red banner under Hinded')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting ÕV red banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund!'
@@ -267,11 +271,11 @@ export class DiscrepanciesTable {
               notifications.appendChild(ovBanner)
             }
           } else {
-            Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
           }
           // Inject final grade banner if needed
           if (finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0) {
-            Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
             const fgBanner = document.createElement('div')
             fgBanner.className = 'oa2-banner oa2-banner-final-grade'
             if (finalGradeYellowCells.length > 0) {
@@ -292,10 +296,10 @@ export class DiscrepanciesTable {
               notifications.appendChild(fgBanner)
             }
           } else {
-            Logger.info('✨ [DiscrepanciesTable] No final grade highlights found, not injecting banner')
+            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No final grade highlights found, not injecting banner')
           }
         } else {
-          Logger.info('✨ [DiscrepanciesTable] No notifications section found')
+          if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No notifications section found')
         }
       }, 50)
       return true
@@ -522,27 +526,16 @@ export class DiscrepanciesTable {
 
     // Get formatted date for button data
     // Handle null/undefined dates specially since they show as "-" in the main table
-    console.log(`[DiscrepanciesTable] Debug: entry object:`, entry)
-    console.log(`[DiscrepanciesTable] Debug: entry.entryDate:`, entry.entryDate, typeof entry.entryDate)
-    console.log(`[DiscrepanciesTable] Debug: entry.id:`, entry.id)
-
     let safeFormattedDate = 'NO_DATE' // Special identifier for null dates
     if (entry.entryDate) {
       try {
-        console.log(`[DiscrepanciesTable] Debug: Attempting to parse date:`, entry.entryDate)
         const dateObj = new Date(entry.entryDate)
-        console.log(`[DiscrepanciesTable] Debug: Date object created:`, dateObj)
-        console.log(`[DiscrepanciesTable] Debug: Date object time:`, dateObj.getTime())
-        console.log(`[DiscrepanciesTable] Debug: isNaN check:`, isNaN(dateObj.getTime()))
-
         if (!isNaN(dateObj.getTime())) {
           const day = dateObj.getDate().toString().padStart(2, '0')
           const month = (dateObj.getMonth() + 1).toString().padStart(2, '0')
           const year = dateObj.getFullYear()
           safeFormattedDate = `${day}.${month}.${year}`
-          console.log(`[DiscrepanciesTable] Debug: Successfully formatted date:`, safeFormattedDate)
         } else {
-          console.log(`[DiscrepanciesTable] Debug: Date object is invalid, using NO_DATE`)
           safeFormattedDate = 'NO_DATE'
         }
       } catch (error) {
@@ -550,11 +543,8 @@ export class DiscrepanciesTable {
         safeFormattedDate = 'NO_DATE'
       }
     } else {
-      console.log(`[DiscrepanciesTable] Debug: entry.entryDate is falsy, using NO_DATE:`, entry.entryDate)
       safeFormattedDate = 'NO_DATE'
     }
-
-    console.log(`[DiscrepanciesTable] Debug: Final safeFormattedDate:`, safeFormattedDate)
 
     // Calculate duplicate index for entries with same date
     const duplicateIndexInput = {
@@ -562,9 +552,7 @@ export class DiscrepanciesTable {
       date: safeFormattedDate,
       entryType: entry.entryType
     }
-    console.log(`[DiscrepanciesTable] Calculating duplicate index for:`, duplicateIndexInput)
     const duplicateIndex = this.calculateDuplicateIndex(duplicateIndexInput)
-    console.log(`[DiscrepanciesTable] Calculated duplicate index:`, duplicateIndex)
 
     const action =
       entry.validationResult?.errorType === 'no_teacher_selected'

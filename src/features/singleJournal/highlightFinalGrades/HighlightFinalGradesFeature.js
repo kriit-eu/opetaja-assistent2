@@ -93,7 +93,7 @@ class HighlightFinalGradesFeature extends BaseFeature {
         const timetableData = await this.api.tahvel.get(endpoint, {}, { cache: true, cacheExpiration: 864e5 })
         timetable = timetableData?.timetableEvents?.filter(event => event.journalId == journalId) || []
       } catch (e) {
-        Logger.info('✨ [HighlightFinalGradesFeature] Timetable fetch failed, falling back to journal entries', e)
+        if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] Timetable fetch failed, falling back to journal entries', e)
       }
     }
     if (timetable.length > 0) {
@@ -144,16 +144,16 @@ class HighlightFinalGradesFeature extends BaseFeature {
         colIdx += colspan
       })
     })
-    Logger.info('✨ HighlightFinalGrades: header debug:', debugHeaders.join(' | '))
-    Logger.info('✨ HighlightFinalGrades: detected final grade columns:', finalGradeCols)
-    Logger.info('✨ HighlightFinalGrades: detected ÕV columns:', ovCols)
+    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: header debug:', debugHeaders.join(' | '))
+    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: detected final grade columns:', finalGradeCols)
+    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: detected ÕV columns:', ovCols)
     return { finalGradeCols: Array.from(new Set(finalGradeCols)), ovCols: Array.from(new Set(ovCols)) }
   }
 
   onActivate() {
-    Logger.info('✨ [HighlightFinalGradesFeature] onActivate called')
+    if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] onActivate called')
     setTimeout(() => {
-      Logger.info('✨ [HighlightFinalGradesFeature] Calling run() after timeout')
+      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] Calling run() after timeout')
       void this.run()
       this._setupTableObserver()
     }, 1000)
@@ -179,7 +179,7 @@ class HighlightFinalGradesFeature extends BaseFeature {
       if (relevant) {
         if (this._debounceTimeout) clearTimeout(this._debounceTimeout)
         this._debounceTimeout = setTimeout(() => {
-          Logger.info('✨ [HighlightFinalGradesFeature] Table MutationObserver triggered run()')
+          if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] Table MutationObserver triggered run()')
           void this.run()
         }, 50)
       }
@@ -188,16 +188,16 @@ class HighlightFinalGradesFeature extends BaseFeature {
   }
 
   async run() {
-    Logger.info('✨ [HighlightFinalGradesFeature] run() called')
+    if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] run() called')
     this.injectFinalGradeCSS()
     const layoutPadding = document.querySelector('.layout-padding')
     if (!layoutPadding) {
-      Logger.info('✨ [HighlightFinalGradesFeature] .layout-padding not found')
+      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] .layout-padding not found')
       return
     }
     const table = layoutPadding.querySelector('table.journalTable')
     if (!table) {
-      Logger.info('✨ [HighlightFinalGradesFeature] .journalTable not found')
+      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] .journalTable not found')
       return
     }
     // If observer is not set or table changed, re-setup observer
@@ -206,10 +206,10 @@ class HighlightFinalGradesFeature extends BaseFeature {
       this._docObserverTable = table
     }
     const { finalGradeCols, ovCols } = this.findColumnIndices(table)
-    Logger.info('✨ [HighlightFinalGradesFeature] finalGradeCols:', finalGradeCols)
-    Logger.info('✨ [HighlightFinalGradesFeature] ovCols:', ovCols)
+    if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] finalGradeCols:', finalGradeCols)
+    if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] ovCols:', ovCols)
     if (finalGradeCols.length === 0 && ovCols.length === 0) {
-      Logger.info('✨ [HighlightFinalGradesFeature] No final grade or ÕV columns detected')
+      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] No final grade or ÕV columns detected')
       return
     }
     const rows = Array.from(table.querySelectorAll('tbody tr'))
@@ -231,7 +231,7 @@ class HighlightFinalGradesFeature extends BaseFeature {
         const [_, day, month, year] = match
         // Use local time for date comparison
         bannerLessonDate = new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0)
-        Logger.info('✨ [HighlightFinalGradesFeature] Using last lesson date from banner:', bannerLessonDate.toISOString())
+        if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] Using last lesson date from banner:', bannerLessonDate.toISOString())
       }
     }
     let finalLessonDate = bannerLessonDate
@@ -239,10 +239,10 @@ class HighlightFinalGradesFeature extends BaseFeature {
     if (!finalLessonDate && journalId) {
       try {
         const apiDate = await this.getFinalLessonDate(journalId)
-        Logger.info('✨ [HighlightFinalGradesFeature] getFinalLessonDate result:', apiDate)
+        if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] getFinalLessonDate result:', apiDate)
         if (apiDate) finalLessonDate = new Date(apiDate)
       } catch (e) {
-        Logger.warn('✨ [HighlightFinalGradesFeature] Failed to get final lesson date:', e)
+        if (Logger.isDebugMode()) Logger.warn('✨ [HighlightFinalGradesFeature] Failed to get final lesson date:', e)
       }
     }
     if (finalLessonDate) {
@@ -251,18 +251,22 @@ class HighlightFinalGradesFeature extends BaseFeature {
       warningStart.setDate(finalDate.getDate() - 7)
       const warningEnd = new Date(finalDate)
       warningEnd.setDate(finalDate.getDate() - 2)
-      Logger.info(
-        '✨ [HighlightFinalGradesFeature] Today:',
-        now.toISOString(),
-        'Warning window:',
-        warningStart.toISOString(),
-        '-',
-        warningEnd.toISOString(),
-        'Final lesson:',
-        finalDate.toISOString()
-      )
-      inWarningWindow = now >= warningStart && now <= warningEnd
-      Logger.info('✨ [HighlightFinalGradesFeature] inWarningWindow:', inWarningWindow)
+      if (Logger.isDebugMode()) {
+        Logger.info(
+          '✨ [HighlightFinalGradesFeature] Today:',
+          now.toISOString(),
+          'Warning window:',
+          warningStart.toISOString(),
+          '-',
+          warningEnd.toISOString(),
+          'Final lesson:',
+          finalDate.toISOString()
+        )
+        inWarningWindow = now >= warningStart && now <= warningEnd
+        Logger.info('✨ [HighlightFinalGradesFeature] inWarningWindow:', inWarningWindow)
+      } else {
+        inWarningWindow = now >= warningStart && now <= warningEnd
+      }
     }
     // Only highlight if within 7 days of the final lesson date
     const shouldHighlight =
@@ -276,11 +280,12 @@ class HighlightFinalGradesFeature extends BaseFeature {
 
     rows.forEach((row, rowIdx) => {
       const cells = Array.from(row.children).filter(n => n.nodeType === 1)
-      Logger.info(`✨ [HighlightFinalGradesFeature] Row ${rowIdx} has ${cells.length} cells`)
+      if (Logger.isDebugMode()) Logger.info(`✨ [HighlightFinalGradesFeature] Row ${rowIdx} has ${cells.length} cells`)
       finalGradeCols.forEach(colIdx => {
         const cell = cells[colIdx]
         if (cell) {
-          Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting FINAL cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
+          if (Logger.isDebugMode())
+            Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting FINAL cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
           if (!cell.textContent.trim()) {
             if (shouldHighlight) {
               if (inWarningWindow) {
@@ -301,7 +306,8 @@ class HighlightFinalGradesFeature extends BaseFeature {
       ovCols.forEach(colIdx => {
         const cell = cells[colIdx]
         if (cell) {
-          Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting ÕV cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
+          if (Logger.isDebugMode())
+            Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting ÕV cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
           if (!cell.textContent.trim()) {
             if (shouldHighlight) {
               if (inWarningWindow) {

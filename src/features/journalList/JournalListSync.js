@@ -2,7 +2,8 @@
  * Journal List Sync Feature
  *
  * Syncs data between Tahvel and Kriit:
- * - Assignments and their grades
+ * - Assignments and their grades (SISSEKANNE_H, SISSEKANNE_I)
+ * - Curriculum outcomes and their grades (SISSEKANNE_O)
  * - Students and their personal codes
  * - Student statuses (active/inactive)
  *
@@ -10,15 +11,255 @@
  */
 
 import { BaseFeature } from '../../core/BaseFeature.js'
-import { domService } from '../../services/DomService.js'
 import Logger from '../../services/Logger.js'
 import { styleService } from '../../services/StyleService.js'
 import { cacheService } from '../../services/CacheService.js'
 import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
 import { bannerService } from '../../services/BannerService.js'
-import { journalSyncBannerService } from '../../services/JournalSyncBannerService.js'
+import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanner.js'
+
+import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
+  /**
+   * Extract assignment entry date differences from Kriit response
+   */
+  extractEntryDateDifferences() {
+    Logger.debug('✨ [extractEntryDateDifferences] Called')
+    const entryDateDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) return entryDateDiffs
+    this.differences.forEach(subjectDiff => {
+      if (Array.isArray(subjectDiff.assignments)) {
+        subjectDiff.assignments.forEach(assignment => {
+          if (
+            assignment.assignmentEntryDate &&
+            typeof assignment.assignmentEntryDate === 'object' &&
+            assignment.assignmentEntryDate.kriit &&
+            assignment.assignmentEntryDate.Tahvel &&
+            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+          ) {
+            let assignmentName = assignment.assignmentName
+            if (assignmentName && typeof assignmentName === 'object') {
+              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
+            }
+            entryDateDiffs.push({
+              assignmentExternalId: assignment.assignmentExternalId,
+              assignmentName,
+              kriit: assignment.assignmentEntryDate.kriit,
+              Tahvel: assignment.assignmentEntryDate.Tahvel,
+              subjectName: subjectDiff.subjectName || '',
+              subjectExternalId: subjectDiff.subjectExternalId || ''
+            })
+          }
+        })
+      }
+    })
+    Logger.debug(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
+    return entryDateDiffs
+  }
+  /**
+   * Update assignment names in Tahvel to match Kriit
+   */
+  async syncAssignmentNameDifferences() {
+    // Gather all diffs: name, due date, entry date
+    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+    const dueDateDiffs = this.extractDueDateDifferences()
+    const entryDateDiffs = this.extractEntryDateDifferences()
+
+    // Build a map: { journalId, assignmentId } => { name, dueDate, entryDate }
+    const updateMap = new Map()
+
+    // Helper to get key
+    const getKey = (journalId, assignmentId) => `${journalId}::${assignmentId}`
+
+    // Add name diffs
+    assignmentNameDiffs.forEach(subjectDiff => {
+      const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
+      if (!subject || !Array.isArray(subject.assignments)) return;
+      subjectDiff.nameDiffs.forEach(nameDiff => {
+        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId);
+        if (!assignment) return;
+        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId);
+        if (!updateMap.has(key)) {
+          updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId });
+        }
+        updateMap.get(key).nameEt = nameDiff.kriit;
+        Logger.debug(`[UPDATE MAP] Set nameEt for key ${key}: ${nameDiff.kriit}`);
+      });
+    });
+
+    // Add due date diffs
+    dueDateDiffs.forEach(diff => {
+      // Find subject and assignment
+      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
+      if (!subject) return
+      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
+      if (!assignment) return
+      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
+      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
+      updateMap.get(key).homeworkDuedate = diff.kriit
+    })
+
+    // Add entry date diffs
+    entryDateDiffs.forEach(diff => {
+      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
+      if (!subject) return
+      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
+      if (!assignment) return
+      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
+      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
+      updateMap.get(key).entryDate = diff.kriit
+    })
+
+    // For each assignment, send a single PUT to Tahvel
+    for (const update of updateMap.values()) {
+      const { journalId, assignmentId, nameEt, homeworkDuedate, entryDate } = update
+      let currentEntry
+      try {
+        currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
+      } catch (error) {
+        Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
+        continue
+      }
+      if (!currentEntry) {
+        Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
+        continue
+      }
+      // Build the PUT payload by copying all fields, updating changed ones
+      const payload = { ...currentEntry }
+      if (nameEt && typeof nameEt === 'string' && nameEt.trim() !== '' && nameEt !== currentEntry.nameEt) {
+        payload.nameEt = nameEt
+      }
+      // Ensure date fields are strings, extract from object if needed
+      if (homeworkDuedate) {
+        let dateValue = homeworkDuedate
+        if (typeof dateValue === 'object' && dateValue !== null) {
+          // Prefer kriit, fallback to Tahvel, else toString
+          dateValue = dateValue.kriit || dateValue.Tahvel || ''
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          payload.homeworkDuedate = `${dateValue}T00:00:00Z`
+        } else if (typeof dateValue === 'string') {
+          payload.homeworkDuedate = dateValue
+        } else {
+          payload.homeworkDuedate = String(dateValue)
+        }
+      }
+      if (entryDate) {
+        let dateValue = entryDate
+        if (typeof dateValue === 'object' && dateValue !== null) {
+          dateValue = dateValue.kriit || dateValue.Tahvel || ''
+        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          payload.entryDate = `${dateValue}T00:00:00Z`
+        } else if (typeof dateValue === 'string') {
+          payload.entryDate = dateValue
+        } else {
+          payload.entryDate = String(dateValue)
+        }
+      }
+      // Ensure teacher IDs are strings
+      if (Array.isArray(payload.journalEntryTeachers)) {
+        payload.journalEntryTeachers = payload.journalEntryTeachers.map(id => String(id))
+      }
+      payload.journalEntryCapacityTypes = ['MAHT_i']
+      // Optionally add homework field with Kriit link
+      let kriitAssignmentUrl = ''
+      const groupCode = currentEntry.groupName || ''
+      kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+      payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+      Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
+      try {
+        await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
+        Logger.info(`✨ Updated assignment in Tahvel: ${assignmentId} with changes: ${JSON.stringify(update)}`)
+      } catch (error) {
+        Logger.error(`Failed to update assignment for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
+      }
+    }
+  }
+  /**
+   * Extract assignment name differences from Kriit response
+   */
+  extractAssignmentNameDifferences() {
+    Logger.debug('✨ [extractAssignmentNameDifferences] Called')
+    const groupedDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) {
+      Logger.debug('✨ [extractAssignmentNameDifferences] No differences array found.')
+      return groupedDiffs
+    }
+    this.differences.forEach(subject => {
+      if (subject && Array.isArray(subject.assignments)) {
+        const nameDiffs = subject.assignments
+          .filter(a => {
+            if (a.assignmentName && typeof a.assignmentName === 'object') {
+              // Only show difference if both are present and different
+              return a.assignmentName.kriit && a.assignmentName.Tahvel && a.assignmentName.kriit !== a.assignmentName.Tahvel
+            }
+            return false
+          })
+          .map(a => ({
+            kriit: a.assignmentName.kriit,
+            Tahvel: a.assignmentName.Tahvel,
+            assignmentExternalId: a.assignmentExternalId
+          }))
+        if (nameDiffs.length > 0) {
+          groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
+        }
+      }
+    })
+    Logger.debug(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
+    return groupedDiffs
+  }
+
+  extractDueDateDifferences() {
+    const dueDateDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) {
+      return dueDateDiffs
+    }
+    this.differences.forEach(subjectDiff => {
+      if (!Array.isArray(subjectDiff.assignments)) return
+      subjectDiff.assignments.forEach(assignment => {
+        if (assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object') {
+          // Only show difference if both are present and different
+          if (
+            assignment.assignmentDueAt.kriit &&
+            assignment.assignmentDueAt.Tahvel &&
+            assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
+          ) {
+            let assignmentName = assignment.assignmentName
+            if (assignmentName && typeof assignmentName === 'object') {
+              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
+            }
+            dueDateDiffs.push({
+              assignmentExternalId: assignment.assignmentExternalId,
+              assignmentName,
+              kriit: assignment.assignmentDueAt.kriit,
+              Tahvel: assignment.assignmentDueAt.Tahvel,
+              subjectName: subjectDiff.subjectName || '',
+              subjectExternalId: subjectDiff.subjectExternalId || ''
+            })
+          }
+        }
+      })
+    })
+    return dueDateDiffs
+  }
+
+  /**
+   * Send only outcome entries (SISSEKANNE_O) to Kriit API
+   */
+  async sendOutcomeEntriesToKriit() {
+    if (!this.api || !this.api.kriit || !this.api.kriit.authToken) {
+      Logger.error('No Kriit API token set')
+      return
+    }
+    if (!this.journalLinks || this.journalLinks.length === 0) {
+      Logger.warning('No journal links available for outcome sync')
+      return
+    }
+    Logger.debug('Triggering outcome sync (outcome entries only)')
+    await sendOutcomeEntriesToKriit(this.api, this.journalLinks)
+  }
   constructor() {
     // Define selectors for journal links - using the most reliable selector first
     const journalLinkSelectors = [
@@ -67,6 +308,8 @@ class JournalListSyncFeature extends BaseFeature {
     // Log a specific message for this feature's activation
     Logger.feature(this.name, 'Journal List Sync feature initialized')
 
+    if (Logger.isDebugMode()) Logger.debug('[DEBUG] onActivate: elements', elements)
+
     // First check if Kriit support is enabled
     if (!this.api.kriit.enabled) {
       Logger.debug('Kriit support is disabled - JournalListSync feature will not be activated')
@@ -80,6 +323,7 @@ class JournalListSyncFeature extends BaseFeature {
       // If we have journal links from the observer, store them
       if (elements && elements.length > 0) {
         this.journalLinks = elements
+        if (Logger.isDebugMode()) Logger.debug('[DEBUG] onActivate: journalLinks set', this.journalLinks)
         this.fetchJournalData()
       } else {
         // This case should not happen anymore with the fixed observer
@@ -155,6 +399,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async fetchJournalData() {
     try {
+      if (Logger.isDebugMode()) Logger.debug('[DEBUG] fetchJournalData called')
       this.isLoading = true
       this.updateUI()
 
@@ -169,6 +414,8 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Collect data from Tahvel
       const journalData = await this.collectJournalData()
+      // Store Tahvel assignments for due date diff feature
+      if (!window.journalListSync) window.journalListSync = {}
 
       // Validate data before sending
       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
@@ -186,6 +433,9 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Make the API call directly
       await this.proceedWithKriitApiCall(journalData)
+
+      // Automatically sync outcome entries (SISSEKANNE_O) to Kriit
+      await this.sendOutcomeEntriesToKriit()
     } catch (error) {
       Logger.error('Error fetching journal data:', error)
       this.isLoading = false
@@ -247,7 +497,6 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         const name = link.textContent.trim()
-        Logger.debug(`Found journal: ${name} (ID: ${id})`)
 
         try {
           const [journalInfo, journalEntries, journalEntriesWithGrades, journalStudents] = await Promise.all([
@@ -266,7 +515,6 @@ class JournalListSyncFeature extends BaseFeature {
             return null
           }
           if (!Array.isArray(journalStudents)) {
-            Logger.warning(`Could not get students for journal ${id}`)
             return null
           }
 
@@ -276,7 +524,31 @@ class JournalListSyncFeature extends BaseFeature {
 
           const studentDetailsMap = await this.processStudentData(id, journalStudents)
           const studentMap = this.createStudentMap(journalStudents, studentDetailsMap)
-          const assignments = this.extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
+
+          // Merge homeworkDuedate and other missing fields from journalEntries into journalEntriesWithGrades
+          let mergedEntries
+          if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0 && journalEntries && journalEntries.length > 0) {
+            // Create a map of /journalEntry entries by id
+            const entryById = {}
+            journalEntries.forEach(e => {
+              if (e && e.id) entryById[e.id] = e
+            })
+            // For each entry in journalEntriesWithGrades, copy homeworkDuedate if present in /journalEntry
+            mergedEntries = journalEntriesWithGrades.map(e => {
+              if (e && e.id && entryById[e.id]) {
+                // Only copy homeworkDuedate if not present or is undefined/null
+                if (!e.homeworkDuedate && entryById[e.id].homeworkDuedate) {
+                  return { ...e, homeworkDuedate: entryById[e.id].homeworkDuedate }
+                }
+              }
+              return e
+            })
+          } else if (journalEntriesWithGrades && journalEntriesWithGrades.length > 0) {
+            mergedEntries = journalEntriesWithGrades
+          } else {
+            mergedEntries = journalEntries
+          }
+          const assignments = this.extractAssignmentsFromEntries(mergedEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
           let teacherName = ''
           let teacherPersonalCode = ''
@@ -297,8 +569,6 @@ class JournalListSyncFeature extends BaseFeature {
 
                   // Also store in instance cache for backward compatibility
                   this.globalTeacherCache[teacherId] = teacherData
-
-                  Logger.debug(`Got teacher personal code for ${teacherName} (ID: ${teacherId}): ${teacherPersonalCode}`)
                 }
               } catch (error) {
                 Logger.warning(`Failed to get teacher personal code: ${error.message}`)
@@ -331,54 +601,33 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Debug logging for multigroup journals
           if (studentGroups.length > 1) {
-            Logger.debug(`Processing multigroup journal ${journalInfo.nameEt} with groups: ${studentGroups.join(', ')}`)
-            Logger.debug(`Total assignments: ${assignments.length}`)
             if (assignments.length > 0) {
               Logger.debug(`First assignment "${assignments[0].assignmentName}" has ${assignments[0].results.length} students`)
             }
           }
 
           for (const groupName of studentGroups) {
-            Logger.debug(`\n=== Processing group: ${groupName} ===`)
-
             // Filter assignments to include only students from this group
             const filteredAssignments = assignments
               .map(assignment => {
-                Logger.debug(`Processing assignment "${assignment.assignmentName}" with ${assignment.results.length} total students`)
-
                 const filteredResults = assignment.results.filter(result => {
                   // Find the student in journalStudents to get their group
                   const student = journalStudents.find(js => {
                     const studentId = studentMap.journalStudentIdToId[js.id.toString()]
                     const personalCode = studentMap.idToPersonalCode[studentId]
-                    const matches = personalCode === result.studentPersonalCode
-
-                    if (matches) {
-                      Logger.debug(`  Student ${result.studentPersonalCode} (${result.studentName}) belongs to group: ${js.studentGroup}`)
-                    }
-
-                    return matches
+                    // No-op block removed (was empty)
+                    return personalCode === result.studentPersonalCode
                   })
-
                   // Include student if they belong to this group
-                  const belongsToGroup = student && student.studentGroup === groupName
-                  if (student && !belongsToGroup) {
-                    Logger.debug(`  Excluding student ${result.studentPersonalCode} (group: ${student.studentGroup}, expected: ${groupName})`)
-                  }
-
-                  return belongsToGroup
+                  // No-op block removed (was empty)
+                  return student && student.studentGroup === groupName
                 })
-
-                Logger.debug(`  Filtered results for group ${groupName}: ${filteredResults.length} students`)
-
                 return {
                   ...assignment,
                   results: filteredResults
                 }
               })
               .filter(assignment => assignment.results.length > 0) // Only include assignments with students
-
-            Logger.debug(`Group ${groupName} will have ${filteredAssignments.length} assignments`)
 
             groupJournalEntries.push({
               subjectName: journalInfo.nameEt || name,
@@ -420,8 +669,6 @@ class JournalListSyncFeature extends BaseFeature {
 
     // Process each journal student to get their personal code
     if (journalStudents && Array.isArray(journalStudents)) {
-      Logger.debug(`Journal ${journalId}: Processing ${journalStudents.length} students`)
-
       // Initialize pending requests tracker if not exists
       if (!this.pendingStudentRequests) {
         this.pendingStudentRequests = new Map()
@@ -543,18 +790,12 @@ class JournalListSyncFeature extends BaseFeature {
       // Process all students in parallel
       const results = await Promise.all(studentPromises)
 
-      // Count successes for logging
-      let successCount = 0
-
       // Process results and add to studentDetailsMap
       for (const result of results) {
         if (result && result.data) {
           studentDetailsMap[result.studentId] = result.data
-          successCount++
         }
       }
-
-      Logger.debug(`Journal ${journalId}: Successfully processed ${successCount} out of ${journalStudents.length} student records`)
     }
 
     return studentDetailsMap
@@ -602,6 +843,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   updateProgressUI(current, total) {
     if (!this.isActive) return
+    // Show progress banner during sync
     bannerService.updateProgressUI(current, total, 'Sünkroniseerin hindeid Kriidist Tahvlisse...')
   }
 
@@ -611,17 +853,11 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showSuccessBanner(message) {
     if (!this.isActive) return
+    // Show success banner with refresh and close actions
     bannerService.showSuccessBanner(message, {
       onRefresh: () => this.fetchJournalData(),
       onClose: () => bannerService.removeBanner()
     })
-
-    // Force a refresh of the data after 3 seconds
-    Logger.debug('Setting up forced refresh in 3 seconds')
-    setTimeout(() => {
-      Logger.info('Forced refresh triggered')
-      this.fetchJournalData()
-    }, 3000)
   }
 
   /**
@@ -670,11 +906,43 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showDifferencesBanner() {
     const totalDifferences = this.countTotalDifferences()
+
+    // Print each detected grade difference with details only in debug mode
+    if (Logger.isDebugMode() && Array.isArray(this.differences)) {
+      this.differences.forEach(subject => {
+        if (subject && Array.isArray(subject.assignments)) {
+          subject.assignments.forEach(assignment => {
+            if (assignment && Array.isArray(assignment.results)) {
+              assignment.results.forEach(result => {
+                const tahvelGrade = result.currentGrade || '(puudub)'
+                const kriitGrade = result.grade || '(puudub)'
+                // Only log if there is a difference and kriitGrade is not null/empty
+                if (kriitGrade !== '(puudub)' && tahvelGrade !== kriitGrade) {
+                  Logger.debug(
+                    `[GRADE DIFF] Subject: ${subject.subjectName}, Assignment: ${assignment.assignmentName}, Student: ${result.studentName || '(nimi puudub)'}, Tahvel: ${tahvelGrade}, Kriit: ${kriitGrade}`
+                  )
+                }
+              })
+            }
+          })
+        }
+      })
+    }
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
-      () => this.syncWithKriit(),
+      async() => {
+        await this.syncAssignmentNameDifferences()
+        await this.syncWithKriit()
+        await this.fetchJournalData()
+      },
       () => this.fetchJournalData(),
-      container => this.renderDifferences(container)
+      container => {
+        const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+        const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
+        const dueDateDiffs = this.extractDueDateDifferences()
+        const entryDateDiffs = this.extractEntryDateDifferences()
+        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
+      }
     )
   }
 
@@ -804,13 +1072,13 @@ class JournalListSyncFeature extends BaseFeature {
       try {
         // Make the actual API call
         const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
+        // Store Kriit assignments for due date diff feature
+        if (!window.journalListSync) window.journalListSync = {}
 
         // Log the full response for debugging
         Logger.debug('Raw response from Kriit:', JSON.stringify(response))
 
         // Process the response directly
-
-        // Process the response
         if (response && Array.isArray(response)) {
           this.differences = response
           Logger.debug('Response is an array with', response.length, 'items')
@@ -825,12 +1093,20 @@ class JournalListSyncFeature extends BaseFeature {
           // Show a success message to the user
           this.isLoading = false
           this.error = 'Kõik hinded on juba sünkroonis. Pole midagi sünkroniseerida.'
+          // Ensure global differences is cleared
+          if (!window.journalListSync) window.journalListSync = {}
+          window.journalListSync.differences = this.differences
           this.updateUI()
           return
         } else {
+          if (Logger.isDebugMode()) Logger.debug('[DEBUG] Backend response is not an array:', response)
           Logger.warning('Unexpected response format from Kriit:', response)
           this.differences = []
         }
+
+        // Always update global differences after setting this.differences
+        if (!window.journalListSync) window.journalListSync = {}
+        window.journalListSync.differences = this.differences
       } catch (error) {
         Logger.error('Error calling Kriit API:', error)
 
@@ -860,8 +1136,28 @@ class JournalListSyncFeature extends BaseFeature {
                 const matchingAssignment = matchingSubject.assignments.find(a => a.assignmentExternalId === diffAssignment.assignmentExternalId)
 
                 if (matchingAssignment) {
-                  // Add assignment name from our data
-                  diffAssignment.assignmentName = matchingAssignment.assignmentName
+                  const kriitAssignment = diffAssignment
+                  const tahvelAssignment = matchingAssignment
+
+                  const compareAndCreateDiff = fieldName => {
+                    const kriitValue = kriitAssignment[fieldName]
+                    const tahvelValue = tahvelAssignment[fieldName]
+
+                    // Normalize undefined to null for comparison
+                    const normKriit = kriitValue === undefined ? null : kriitValue
+                    const normTahvel = tahvelValue === undefined ? null : tahvelValue
+
+                    if (normKriit !== normTahvel) {
+                      diffAssignment[fieldName] = { kriit: kriitValue, Tahvel: tahvelValue }
+                    } else {
+                      // If they are the same, just make sure the value is set.
+                      diffAssignment[fieldName] = tahvelValue
+                    }
+                  }
+
+                  compareAndCreateDiff('assignmentName')
+                  compareAndCreateDiff('assignmentDueAt')
+                  compareAndCreateDiff('assignmentEntryDate')
 
                   // Process each result
                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
@@ -871,6 +1167,7 @@ class JournalListSyncFeature extends BaseFeature {
 
                       if (matchingResult) {
                         // Add student name and active status from our data
+                        // Kriit response for result has studentName, but we'll trust Tahvel's for consistency.
                         diffResult.studentName = matchingResult.studentName
                         diffResult.studentIsActive = matchingResult.studentIsActive
 
@@ -905,16 +1202,15 @@ class JournalListSyncFeature extends BaseFeature {
 
     if (!this.differences || !Array.isArray(this.differences)) return 0
 
+    // Count grade differences
     this.differences.forEach(subject => {
       if (subject && Array.isArray(subject.assignments)) {
         subject.assignments.forEach(assignment => {
           if (assignment && Array.isArray(assignment.results)) {
-            // Only count results that have different grades
             assignment.results.forEach(result => {
               const tahvelGrade = result.currentGrade || '(puudub)'
               const kriitGrade = result.grade || '(puudub)'
-
-              // Direct comparison since both should now be numeric
+              // Count as difference if either grade is missing or different
               if (tahvelGrade !== kriitGrade) {
                 count++
               }
@@ -924,192 +1220,23 @@ class JournalListSyncFeature extends BaseFeature {
       }
     })
 
-    return count
-  }
-
-  /**
-   * Render differences in the banner
-   * @param {Element} container - Container element to render differences in
-   */
-  renderDifferences(container) {
-    if (!this.differences || !container) return
-
-    const differencesContainer = journalSyncBannerService.createDifferencesContainer(container)
-
-    // Group subjects by category
-    const categories = {}
-
-    // Organize subjects by their names
-    if (Array.isArray(this.differences)) {
-      this.differences.forEach(subject => {
-        if (!subject.subjectName) return
-
-        // Create category if it doesn't exist
-        if (!categories[subject.subjectName]) {
-          categories[subject.subjectName] = []
-        }
-
-        // Add subject to its category
-        categories[subject.subjectName].push(subject)
-      })
-    }
-
-    // If we have no categories, show a message
-    if (Object.keys(categories).length === 0) {
-      journalSyncBannerService.createNoDifferencesMessage(differencesContainer, 'Kõik hinded on juba sünkroonis! Tahvli ja Kriidi vahel pole erinevusi.')
-      return // Exit early if no differences
-    }
-
-    // Process each category to check if it has any differences
-    const categoriesWithDifferences = []
-
-    Object.entries(categories).forEach(([categoryName, subjects]) => {
-      if (subjects.length === 0) return
-
-      // Check if any subject in this category has assignments with differences
-      let categoryHasDifferences = false
-
-      // Create a temporary container to check if any assignments render content
-      const tempContainer = document.createElement('div')
-
-      // Try to render each subject's assignments
-      subjects.forEach(subject => {
-        if (Array.isArray(subject.assignments)) {
-          subject.assignments.forEach(assignment => {
-            // Check if this assignment has any differences by trying to render it
-            const beforeCount = tempContainer.childElementCount
-            this.renderAssignment(assignment, tempContainer)
-            const afterCount = tempContainer.childElementCount
-
-            // If new elements were added, this assignment has differences
-            if (afterCount > beforeCount) {
-              categoryHasDifferences = true
-            }
-          })
-        }
-      })
-
-      // If this category has differences, add it to our list
-      if (categoryHasDifferences) {
-        categoriesWithDifferences.push([categoryName, subjects])
+    // Count assignment name differences
+    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+    assignmentNameDiffs.forEach(subject => {
+      if (subject.nameDiffs && subject.nameDiffs.length > 0) {
+        count += subject.nameDiffs.length
       }
     })
 
-    // If no categories have differences, show a message
-    if (categoriesWithDifferences.length === 0) {
-      journalSyncBannerService.createNoDifferencesMessage(differencesContainer, 'Kõik hinded on juba sünkroonis! Tahvli ja Kriidi vahel pole erinevusi.')
-      return
-    }
+    // Count due date differences
+    const dueDateDiffs = this.extractDueDateDifferences()
+    count += dueDateDiffs.length
 
-    // Render each category that has differences
-    categoriesWithDifferences.forEach(([categoryName, subjects]) => {
-      // Create category section
-      const categorySection = journalSyncBannerService.createCategorySection(differencesContainer, categoryName)
+    // Count entry date differences
+    const entryDateDiffs = this.extractEntryDateDifferences()
+    count += entryDateDiffs.length
 
-      // Render subjects in this category
-      subjects.forEach(subject => {
-        // Render assignments for this subject
-        if (Array.isArray(subject.assignments)) {
-          subject.assignments.forEach(assignment => {
-            this.renderAssignment(assignment, categorySection)
-          })
-        } else {
-          Logger.debug('No assignments found for subject', subject)
-        }
-      })
-    })
-  }
-
-  /**
-   * Render a single assignment with its differences
-   * @param {Object} assignment Assignment data
-   * @param {Element} container Container element
-   */
-  renderAssignment(assignment, container) {
-    // Filter results to only show students with differences
-    const resultsWithDifferences = Array.isArray(assignment.results)
-      ? assignment.results.filter(result => {
-          const tahvelGrade = result.currentGrade || '(puudub)'
-          const kriitGrade = result.grade || '(puudub)'
-
-          // Skip null/empty grades from Kriit entirely
-          if (result.grade === null || result.grade === undefined || result.grade === '') {
-            return false // Don't show in differences
-          }
-
-          // Direct comparison since both should now be numeric
-          return tahvelGrade !== kriitGrade
-        })
-      : []
-
-    // Skip this assignment if there are no differences
-    if (resultsWithDifferences.length === 0) {
-      return
-    }
-
-    // Create assignment section
-    const assignmentSection = domService.createAndInsertElement(
-      'div',
-      {
-        classList: ['ta-sync-assignment-section']
-      },
-      '',
-      container
-    )
-
-    // Add assignment title
-    // Truncate long titles
-    let formattedTitle = assignment.assignmentName || `Assignment ID: ${assignment.assignmentExternalId}`
-    if (formattedTitle.length > 50) {
-      formattedTitle = formattedTitle.substring(0, 47) + '...'
-    }
-
-    domService.createAndInsertElement(
-      'h4',
-      {
-        classList: ['ta-sync-assignment-title']
-      },
-      formattedTitle,
-      assignmentSection
-    )
-
-    // Create results container
-    const resultsContainer = domService.createAndInsertElement(
-      'div',
-      {
-        classList: ['ta-sync-results-container']
-      },
-      '',
-      assignmentSection
-    )
-
-    // Render each result with differences
-    resultsWithDifferences.forEach(result => {
-      const resultRow = domService.createAndInsertElement(
-        'div',
-        {
-          classList: ['ta-sync-result-row']
-        },
-        '',
-        resultsContainer
-      )
-
-      // Student name
-      domService.createAndInsertElement(
-        'span',
-        {
-          classList: ['ta-sync-student-name']
-        },
-        result.studentName,
-        resultRow
-      )
-
-      // Grade difference
-      const tahvelGrade = result.currentGrade || '(puudub)'
-      const kriitGrade = result.grade || '(puudub)'
-
-      journalSyncBannerService.createComparisonDisplay(resultRow, tahvelGrade, kriitGrade, 'Grade in Tahvel', 'Grade in Kriit')
-    })
+    return count
   }
 
   /**
@@ -1135,7 +1262,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntries(journalId) {
     try {
-      Logger.debug(`Fetching journal entries for ${journalId} from API (NO CACHE)`)
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntry`,
         {},
@@ -1148,13 +1274,11 @@ class JournalListSyncFeature extends BaseFeature {
       // The response is paginated with a different structure than journalEntriesByDate
       // Extract the content array which contains the actual entries
       if (response && response.content && Array.isArray(response.content)) {
-        Logger.debug(`Successfully fetched journal entries for ${journalId} (${response.content.length} entries)`)
         return response.content
       }
       Logger.warning(`Unexpected response format from journalEntry endpoint: ${JSON.stringify(response)}`)
       return []
     } catch (error) {
-      Logger.error(`Error fetching journal entries for ${journalId}:`, error)
       return null
     }
   }
@@ -1167,7 +1291,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntriesWithGrades(journalId) {
     try {
-      Logger.debug(`Fetching journal entries with grades for ${journalId} from API (NO CACHE)`)
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntriesByDate`,
         { allStudents: true },
@@ -1178,13 +1301,11 @@ class JournalListSyncFeature extends BaseFeature {
       )
 
       if (Array.isArray(response)) {
-        Logger.debug(`Successfully fetched journal entries with grades for ${journalId} (${response.length} entries)`)
         return response
       }
       Logger.warning(`Unexpected response format from journalEntriesByDate endpoint: ${JSON.stringify(response)}`)
       return []
     } catch (error) {
-      Logger.error(`Error fetching journal entries with grades for ${journalId}:`, error)
       return null
     }
   }
@@ -1196,7 +1317,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalStudents(journalId) {
     try {
-      Logger.debug(`Fetching journal students for ${journalId}`)
       // Use a shorter cache time (1 hour) to ensure data is relatively fresh
       // Use allStudents=true to get all students including their personal codes
       const response = await this.api.tahvel.get(
@@ -1208,8 +1328,6 @@ class JournalListSyncFeature extends BaseFeature {
       )
 
       if (response) {
-        Logger.debug(`Retrieved ${response.length} students for journal ${journalId}`)
-
         // Check if we have personal codes in the response
         const hasPersonalCodes = response.some(student => student.student?.idcode)
         if (hasPersonalCodes) {
@@ -1223,14 +1341,11 @@ class JournalListSyncFeature extends BaseFeature {
               Logger.debug(`Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${journalStudent.student.idcode})`)
             }
           }
-        } else {
-          Logger.warning(`Journal students response does not include personal codes for journal ${journalId}`)
         }
       }
 
       return response
     } catch (error) {
-      Logger.error(`Error fetching journal students for ${journalId}:`, error)
       return null
     }
   }
@@ -1334,25 +1449,49 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Found ${journalEntries.length} entries in journal ${journalId}`)
 
         for (const entry of journalEntries) {
-          // Only process entries that are homework or graded entries
-          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H') {
-            // Get the entry details with allStudents=true to get data for all students
-            const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
+          // Only process entries that are homework, graded entries, or outcomes
+          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_O') {
+            // Handle outcome entries differently since they don't have regular entry IDs
+            if (entry.entryType === 'SISSEKANNE_O') {
+              // For outcome entries, we need to use the journalOutcome endpoint
+              const outcomeDetails = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
 
-            if (entryDetails && entryDetails.journalEntryStudents) {
-              const isInAssignment = entryDetails.journalEntryStudents.some(
-                student => student.journalStudent && String(student.journalStudent) === String(studentId)
-              )
+              if (outcomeDetails && outcomeDetails.outcomeStudents) {
+                const isInOutcome = outcomeDetails.outcomeStudents.some(
+                  student => student.journalStudent && String(student.journalStudent) === String(studentId)
+                )
 
-              if (isInAssignment) {
-                // Get the assignment name
-                const assignmentName = entry.nameEt || entry.name
+                if (isInOutcome) {
+                  // Get the outcome name
+                  const assignmentName = entry.nameEt || outcomeDetails.nameEt || 'Õppetulemus'
+                  Logger.debug(`Student ${studentId} is enrolled in outcome: ${assignmentName}`)
 
-                enrolledAssignments.push({
-                  id: entry.id,
-                  name: assignmentName,
-                  date: entry.homeworkDuedate || entry.entryDate
-                })
+                  enrolledAssignments.push({
+                    id: entry.curriculumModuleOutcomes,
+                    name: assignmentName,
+                    entryType: entry.entryType
+                  })
+                }
+              }
+            } else {
+              // Get the entry details with allStudents=true to get data for all students
+              const entryDetails = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${entry.id}`, { allStudents: true })
+
+              if (entryDetails && entryDetails.journalEntryStudents) {
+                const isInAssignment = entryDetails.journalEntryStudents.some(
+                  student => student.journalStudent && String(student.journalStudent) === String(studentId)
+                )
+
+                if (isInAssignment) {
+                  // Get the assignment name
+                  const assignmentName = entry.nameEt || entry.name
+
+                  enrolledAssignments.push({
+                    id: entry.id,
+                    name: assignmentName,
+                    entryType: entry.entryType
+                  })
+                }
               }
             }
           }
@@ -1381,40 +1520,6 @@ class JournalListSyncFeature extends BaseFeature {
       return { error: error.message }
     }
   }
-
-  /**
-   * Get student group data from API with caching
-   * @param {number} groupId - Student group ID
-   * @returns {Promise<Array>} Student group data
-   */
-  async getStudentGroupData(groupId) {
-    if (!groupId) {
-      Logger.error('Cannot fetch student group data: groupId is undefined or null')
-      return null
-    }
-
-    try {
-      const response = await this.api.tahvel.get(
-        `/studentGroups/${groupId}/students`,
-        {},
-        {
-          cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
-        }
-      )
-
-      if (response && Array.isArray(response)) {
-        Logger.debug(`Retrieved ${response.length} students for group ${groupId}`)
-      } else {
-        Logger.warning(`Unexpected response format for student group ${groupId}:`, response)
-      }
-
-      return response
-    } catch (error) {
-      Logger.error(`Error fetching student group data for ${groupId}:`, error)
-      return null
-    }
-  }
-
   /**
    * Get detailed student information including personal code
    * @param {number} studentId - Student ID
@@ -1468,13 +1573,6 @@ class JournalListSyncFeature extends BaseFeature {
       })
 
       // Log mapping statistics
-      Logger.debug(
-        `Student mapping created: ${Object.keys(studentMap.journalStudentIdToId).length} journal student IDs, ` +
-          `${Object.keys(studentMap.idToPersonalCode).length} personal codes, ` +
-          `${Object.keys(studentMap.personalCodeToName).length} names`
-      )
-    } else {
-      Logger.warning('No journal students provided for mapping')
     }
 
     return studentMap
@@ -1496,45 +1594,83 @@ class JournalListSyncFeature extends BaseFeature {
       return assignments
     }
 
-    // Filter for graded entries only
+    // Filter for graded entries only (exclude outcome entries)
     const gradedEntries = journalEntries.filter(
       entry =>
         entry.entryType === 'SISSEKANNE_H' || // Graded entry
         entry.entryType === 'SISSEKANNE_I' // Independent work
     )
 
+    // Debug: Log count of different entry types
+    const entryCounts = {
+      SISSEKANNE_H: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
+      SISSEKANNE_I: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
+      SISSEKANNE_O: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
+    }
+
+    // Debug: Log outcome entries specifically
+    if (entryCounts['SISSEKANNE_O'] > 0) {
+      const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
+      outcomeEntries.forEach(() => {})
+    }
+
     // Create a map of entry IDs to entries with grades from journalEntriesByDate
     const entriesWithGradesMap = {}
     if (journalEntriesWithGrades && Array.isArray(journalEntriesWithGrades)) {
       journalEntriesWithGrades.forEach(entry => {
+        // Handle regular entries with IDs
         if (entry.id && (entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_I')) {
           entriesWithGradesMap[entry.id] = entry
         }
+        // Handle outcome entries with curriculumModuleOutcomes
+        if (entry.curriculumModuleOutcomes && entry.entryType === 'SISSEKANNE_O') {
+          entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`] = entry
+        }
       })
-      Logger.debug(`Created map of ${Object.keys(entriesWithGradesMap).length} entries with grades`)
     }
 
     gradedEntries.forEach(entry => {
+      // Log when we process an outcome entry
+      if (entry.entryType === 'SISSEKANNE_O') {
+        // No-op block removed (was empty)
+      }
+
       // Extract results for this assignment
       const results = []
 
-      // First check if we have this entry in the entriesWithGradesMap
-      const entryWithGrades = entriesWithGradesMap[entry.id]
+      // Handle different entry types for finding grades
+      let entryWithGrades
+      if (entry.entryType === 'SISSEKANNE_O') {
+        // For outcome entries, look up by curriculumModuleOutcomes
+        entryWithGrades = entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`]
+      } else {
+        // For regular entries, look up by ID
+        entryWithGrades = entriesWithGradesMap[entry.id]
+      }
 
       // Create a map of students who have results for this assignment
       const studentResultsMap = {}
-      if (entryWithGrades && entryWithGrades.journalStudentResults) {
-        Logger.debug(`Using entry with grades for assignment ${entry.id} (${entry.nameEt || 'Unnamed'})`)
-        Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
-          studentResultsMap[journalStudentId] = studentResults
-        })
+      if (entryWithGrades) {
+        if (entry.entryType === 'SISSEKANNE_O' && entryWithGrades.studentOutcomeResults) {
+          // Handle outcome entries with studentOutcomeResults
+          Object.entries(entryWithGrades.studentOutcomeResults).forEach(([journalStudentId, studentResults]) => {
+            studentResultsMap[journalStudentId] = studentResults
+          })
+        } else if (entryWithGrades.journalStudentResults) {
+          // Handle regular entries with journalStudentResults
+          Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
+            studentResultsMap[journalStudentId] = studentResults
+          })
+        }
       } else if (entry.journalStudentResults) {
-        Logger.debug(`Using fallback entry for assignment ${entry.id} (${entry.nameEt || 'Unnamed'})`)
+        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+        Logger.debug(`Using fallback entry for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'})`)
         Object.entries(entry.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
           studentResultsMap[journalStudentId] = studentResults
         })
       } else {
-        Logger.debug(`No grades found for assignment ${entry.id} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
+        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+        Logger.debug(`No grades found for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
       }
 
       // Include ALL journal students for this assignment, not just those with results
@@ -1604,7 +1740,8 @@ class JournalListSyncFeature extends BaseFeature {
           })
         })
       } else {
-        Logger.warning(`No journal students provided for assignment ${entry.id}, cannot include all students`)
+        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+        Logger.warning(`No journal students provided for assignment ${entryIdForLog}, cannot include all students`)
       }
 
       // Get the assignment name
@@ -1612,9 +1749,12 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Always include assignments with valid ID and name, even if they don't have results yet
       // This ensures all assignments are sent to Kriit, not just those with grades
-      if (entry.id && assignmentName) {
+      // Handle both regular entries (with id) and outcome entries (with curriculumModuleOutcomes)
+      const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
+
+      if (assignmentId && assignmentName) {
         assignments.push({
-          assignmentExternalId: entry.id,
+          assignmentExternalId: assignmentId,
           assignmentName: assignmentName,
           assignmentInstructions: entry.content || '',
           assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
@@ -1623,7 +1763,6 @@ class JournalListSyncFeature extends BaseFeature {
         })
 
         // Log whether this assignment has results or not
-        Logger.debug('Added assignment ' + entry.id + ' (' + assignmentName + ') with ' + results.length + ' results')
       }
     })
 
@@ -1687,13 +1826,41 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     // Use a type-specific name if nothing else is available
-    return entry.entryType === 'SISSEKANNE_H' ? 'Hindeline töö' : entry.entryType === 'SISSEKANNE_I' ? 'Iseseisev töö' : 'Päeviku sissekanne'
+    return entry.entryType === 'SISSEKANNE_H'
+      ? 'Hindeline töö'
+      : entry.entryType === 'SISSEKANNE_I'
+        ? 'Iseseisev töö'
+        : entry.entryType === 'SISSEKANNE_O'
+          ? 'Õppetulemus'
+          : 'Päeviku sissekanne'
   }
 
   /**
    * Sync data with Kriit
    */
   async syncWithKriit() {
+    // Debug: Log all journal students and their personal codes before syncing
+    if (Array.isArray(this.differences)) {
+      this.differences.forEach(subject => {
+        if (Array.isArray(subject.assignments)) {
+          subject.assignments.forEach(assignment => {
+            if (Array.isArray(assignment.results)) {
+              assignment.results.forEach(() => {})
+            }
+          })
+        }
+      })
+    }
+    // Debug: Log mapping from journalStudentId to studentId and idToPersonalCode
+    Logger.debug('[SYNC] Mapping journalStudentIdToStudentId:', JSON.stringify(this.journalStudentIdToStudentId))
+    if (this.journalStudentIdToStudentId) {
+      Object.entries(this.journalStudentIdToStudentId).forEach(([journalStudentId, studentId]) => {
+        Logger.debug(`[SYNC] journalStudentId ${journalStudentId} -> studentId ${studentId}`)
+      })
+    }
+    if (this.globalTeacherCache) {
+      Logger.debug('[SYNC] Teacher cache:', JSON.stringify(this.globalTeacherCache))
+    }
     Logger.feature(this.name, 'Syncing with Kriit...')
 
     // Prevent multiple sync operations from running simultaneously
@@ -1744,14 +1911,6 @@ class JournalListSyncFeature extends BaseFeature {
               throw new Error(errorMsg)
             }
 
-            // Enhanced debug logging for every grade being processed
-            Logger.debug('=== PROCESSING GRADE ===')
-            Logger.debug(`Subject: ${subject.subjectName} (${subject.subjectExternalId})`)
-            Logger.debug(`Assignment: ${assignment.assignmentName} (${assignment.assignmentExternalId})`)
-            Logger.debug(`Student: ${result.studentName} (${result.studentPersonalCode})`)
-            Logger.debug(`Raw Tahvel grade: "${result.currentGrade}"`)
-            Logger.debug(`Raw Kriit grade: "${result.grade}"`)
-
             // Only include results where the grade is different
             // Normalize grades for comparison - handle type mismatches and empty values
             const normalizeGrade = grade => {
@@ -1771,9 +1930,6 @@ class JournalListSyncFeature extends BaseFeature {
 
             const tahvelGrade = normalizeGrade(result.currentGrade)
             const kriitGrade = normalizeGrade(result.grade)
-
-            Logger.debug(`Processed Tahvel grade: "${tahvelGrade}"`)
-            Logger.debug(`Kriit grade: "${kriitGrade}"`)
 
             // Skip null grades from Kriit entirely - don't sync them
             if (kriitGrade === null) {
@@ -1818,22 +1974,22 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Original differences count: ${this.differences ? this.differences.length : 0}`)
 
         // Count total assignments and results for debugging
-        let totalAssignments = 0
-        let totalResults = 0
-        let skippedResults = 0
+        let _totalAssignments = 0
+        let _totalResults = 0
+        let _skippedResults = 0
 
         if (this.differences && Array.isArray(this.differences)) {
           this.differences.forEach(subject => {
             if (subject.assignments && Array.isArray(subject.assignments)) {
-              totalAssignments += subject.assignments.length
+              _totalAssignments += subject.assignments.length
               subject.assignments.forEach(assignment => {
                 if (assignment.results && Array.isArray(assignment.results)) {
-                  totalResults += assignment.results.length
+                  _totalResults += assignment.results.length
                   assignment.results.forEach(result => {
                     const tahvelGrade = result.currentGrade || '(empty)'
                     const kriitGrade = result.grade || '(empty)'
                     if (tahvelGrade === kriitGrade) {
-                      skippedResults++
+                      _skippedResults++
                     }
                   })
                 }
@@ -1841,11 +1997,6 @@ class JournalListSyncFeature extends BaseFeature {
             }
           })
         }
-
-        Logger.debug(`Total assignments: ${totalAssignments}`)
-        Logger.debug(`Total results: ${totalResults}`)
-        Logger.debug(`Skipped results (same grade): ${skippedResults}`)
-        Logger.debug(`Expected differences: ${totalResults - skippedResults}`)
 
         // Show a more informative message to the user
         this.isLoading = false
@@ -2378,8 +2529,6 @@ class JournalListSyncFeature extends BaseFeature {
           // Try to create a student entry with the journalStudentId
           // This handles cases where the API doesn't return all enrolled students but they exist in the database
           if (info.journalStudentId) {
-            Logger.info(`Found journalStudentId ${info.journalStudentId} for student ${studentName} (${targetPersonalCode}) - creating entry`)
-
             // Create a new student entry with the correct journalStudentId
             studentEntry = {
               journalStudent: info.journalStudentId,
@@ -2977,27 +3126,6 @@ class JournalListSyncFeature extends BaseFeature {
     Logger.debug(`❌ Student not found in cache for journalStudentId: ${journalStudentId}`)
     return null
   }
-
-  /**
-   * Get all students from cache by iterating through possible keys
-   * @returns {Promise<Object>} Object with studentId as key and student data as value
-   */
-  async getAllStudentsFromCache() {
-    // Since we use the API cache directly, we can return the mapping
-    return this.journalStudentIdToStudentId
-  }
-
-  /**
-   * Clear all student cache entries
-   * @returns {Promise<number>} Number of entries cleared
-   */
-  async clearStudentCache() {
-    // Clear the mapping
-    const count = Object.keys(this.journalStudentIdToStudentId).length
-    this.journalStudentIdToStudentId = {}
-    Logger.debug(`Cleared ${count} student mappings`)
-    return count
-  }
 }
 
 // Cache expiration constants
@@ -3063,21 +3191,17 @@ async function getTeacherPersonalCodeCached(api, teacher) {
 
   // Check global cache first
   if (globalModuleTeacherCache[cacheKey]) {
-    Logger.debug(`Using global teacher cache for ${teacherName} (ID: ${teacherId}) with key: ${cacheKey}`)
     return globalModuleTeacherCache[cacheKey]
   }
 
   // Check if request is already pending to prevent duplicate requests
   if (pendingTeacherRequests.has(cacheKey)) {
-    Logger.debug(`Teacher request already pending for ${teacherName} (ID: ${teacherId}) with key: ${cacheKey}, waiting...`)
     return await pendingTeacherRequests.get(cacheKey)
   }
 
   // Create the fetch promise
   const fetchPromise = (async() => {
     try {
-      Logger.debug(`Fetching teacher personal code for ${teacherName} (ID: ${teacherId}) with endpoint: ${endpoint}`)
-
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
       if (teacherSearchResult?.content && Array.isArray(teacherSearchResult.content) && teacherSearchResult.content.length > 0) {
@@ -3102,7 +3226,6 @@ async function getTeacherPersonalCodeCached(api, teacher) {
 
         // Store in global cache using URL-based key
         globalModuleTeacherCache[cacheKey] = teacherData
-        Logger.debug(`Cached teacher data with key ${cacheKey}: ${teacherId} -> ${teacherData.name} (${teacherData.personalCode})`)
 
         return teacherData
       }
@@ -3307,8 +3430,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
 
 // Expose the fetchCachedData function for testing purposes
 getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
-// Export a singleton instance
-// Add a static property to indicate this feature requires Kriit
+
 JournalListSyncFeature.requiresKriit = true
 
 export const journalListSync = new JournalListSyncFeature()
