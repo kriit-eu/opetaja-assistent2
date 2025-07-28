@@ -146,8 +146,95 @@ class FinalGradesLFeature {
     return { output }
   }
 
-  showResults(results, button, lastEntries) {
+  async showResults(results, button, lastEntries) {
+    Logger.info('✨ FinalGradesLFeature: showResults called with results:', results)
+    Logger.info('✨ FinalGradesLFeature: showResults called with lastEntries:', lastEntries)
     const { output } = results
+    // Step 1: Find current SISSEKANNE_L grades for all students
+    let lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
+    Logger.info('✨ FinalGradesLFeature: SISSEKANNE_L lEntry (full object)', lEntry)
+
+    // If lEntry exists but doesn't have journalEntryStudents, fetch detailed entry from API
+    if (lEntry && (!lEntry.journalEntryStudents || !Array.isArray(lEntry.journalEntryStudents))) {
+      Logger.info('✨ FinalGradesLFeature: lEntry missing journalEntryStudents, fetching detailed entry')
+      try {
+        const journalId = this.extractJournalId()
+        const detailedEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
+        Logger.info('✨ FinalGradesLFeature: Fetched detailed lEntry', detailedEntry)
+        lEntry = detailedEntry
+      } catch (error) {
+        Logger.warning('✨ FinalGradesLFeature: Failed to fetch detailed lEntry', error)
+      }
+    }
+
+    let lGrades = {}
+    if (lEntry) {
+      Logger.info('✨ FinalGradesLFeature: typeof lEntry.journalEntryStudents', typeof lEntry.journalEntryStudents)
+      Logger.info(
+        '✨ FinalGradesLFeature: lEntry.journalEntryStudents length',
+        Array.isArray(lEntry.journalEntryStudents) ? lEntry.journalEntryStudents.length : 'not an array'
+      )
+    }
+    if (lEntry && Array.isArray(lEntry.journalEntryStudents)) {
+      Logger.info('✨ FinalGradesLFeature: SISSEKANNE_L journalEntryStudents', lEntry.journalEntryStudents)
+      lEntry.journalEntryStudents.forEach(js => {
+        if (js && js.journalStudent != null && js.grade && js.grade.code) {
+          // Extract grade from code, e.g. KUTSEHINDAMINE_3 -> 3, KUTSEHINDAMINE_MA -> MA
+          const code = js.grade.code
+          let val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
+          lGrades[String(js.journalStudent)] = val
+        }
+      })
+      // Debug: log all existing grades in SISSEKANNE_L
+      Logger.info(
+        '✨ FinalGradesLFeature: All existing SISSEKANNE_L grades',
+        lEntry.journalEntryStudents.map(js => ({
+          journalStudent: js.journalStudent,
+          code: js.grade && js.grade.code,
+          extracted: js.grade && js.grade.code ? js.grade.code.replace('KUTSEHINDAMINE_', '').toUpperCase() : undefined
+        }))
+      )
+      Logger.info(
+        '✨ FinalGradesLFeature: All SISSEKANNE_L journalStudent IDs',
+        lEntry.journalEntryStudents.map(js => String(js.journalStudent))
+      )
+    }
+    Logger.info(
+      '✨ FinalGradesLFeature: All calculated output journalStudent IDs',
+      output.map(r => String(r.journalStudentId))
+    )
+    // Debug: print all lGrades keys and all output journalStudentIds
+    Logger.info('✨ FinalGradesLFeature: lGrades keys', Object.keys(lGrades))
+    Logger.info(
+      '✨ FinalGradesLFeature: output journalStudentIds',
+      output.map(r => String(r.journalStudentId))
+    )
+
+    // Step 2: Filter output to only students whose calculated grade differs from current SISSEKANNE_L grade (or is missing)
+    // Debug: log calculated and existing grade for each student
+    output.forEach(r => {
+      const key = String(r.journalStudentId).trim()
+      const current = lGrades[key]
+      // Debug: show types and values for ID comparison
+      Logger.info('✨ FinalGradesLFeature: Grade compare', {
+        student: r.name,
+        journalStudentId: r.journalStudentId,
+        key,
+        keyType: typeof key,
+        lGradesKeys: Object.keys(lGrades),
+        lGradesKeyTypes: Object.keys(lGrades).map(k => typeof k),
+        calculated: r.finalGrade,
+        calculatedUpper: r.finalGrade ? String(r.finalGrade).toUpperCase() : '',
+        existing: current !== undefined ? current : '(missing)'
+      })
+    })
+    const filteredOutput = output.filter(r => {
+      const key = String(r.journalStudentId).trim()
+      const current = lGrades[key]
+      if (!current) return r.finalGrade && r.finalGrade !== ''
+      return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
+    })
+
     let html = ''
     html += '<style>'
     html += '.oa-final-grades-table {margin-top:16px;border-collapse:collapse;width:100%;font-size:15px;}'
@@ -162,10 +249,10 @@ class FinalGradesLFeature {
       html += '<th>Õpilane</th><th>Lõpptulemus</th>'
     }
     html += '</tr></thead><tbody>'
-    for (let i = 0; i < output.length; i += 2) {
+    for (let i = 0; i < filteredOutput.length; i += 2) {
       html += '<tr>'
       for (let j = 0; j < 2; j++) {
-        const r = output[i + j]
+        const r = filteredOutput[i + j]
         if (r) {
           html += '<td>' + r.name + '</td>'
         } else {
@@ -173,7 +260,8 @@ class FinalGradesLFeature {
         }
         html += '<td>'
         if (r) {
-          let display = '', tooltip = ''
+          let display = '',
+            tooltip = ''
           const grade = r.finalGrade
           if (/^\d+(\.\d+)?$/.test(grade)) {
             const numGrade = Number(grade)
@@ -223,7 +311,7 @@ class FinalGradesLFeature {
             maxWidth: '100%'
           }
         },
-  'Sünkroniseeri hinded',
+        'Sünkroniseeri hinded',
         container,
         'afterend'
       )
@@ -257,14 +345,33 @@ class FinalGradesLFeature {
         const currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
         Logger.info('✨ FinalGradesLFeature: Current entry from API', currentEntry)
 
-        // Build journalEntryStudents array from our calculated grades
+        // Build journalEntryStudents array from our filtered calculated grades
+        // Use the same filtering as above
+        let lGrades = {}
+        if (currentEntry && Array.isArray(currentEntry.journalEntryStudents)) {
+          currentEntry.journalEntryStudents.forEach(js => {
+            if (js && js.journalStudent != null && js.grade && js.grade.code) {
+              // Extract grade from code, e.g. KUTSEHINDAMINE_3 -> 3, KUTSEHINDAMINE_MA -> MA
+              const code = js.grade.code
+              let val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
+              lGrades[String(js.journalStudent)] = val
+            }
+          })
+        }
+        const filteredOutput = results.output.filter(r => {
+          const key = String(r.journalStudentId).trim()
+          const current = lGrades[key]
+          if (!current) return r.finalGrade && r.finalGrade !== ''
+          return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
+        })
+
         Logger.info('✨ FinalGradesLFeature: Current journalEntryStudents', currentEntry.journalEntryStudents?.map(js => js.journalStudent) || [])
         Logger.info(
-          '✨ FinalGradesLFeature: results.output journalStudentIds',
-          results.output.map(r => r.journalStudentId)
+          '✨ FinalGradesLFeature: filtered results.output journalStudentIds',
+          filteredOutput.map(r => r.journalStudentId)
         )
 
-        const mappedStudents = results.output
+        const mappedStudents = filteredOutput
           .map(r => {
             const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
             let grade = r.finalGrade
