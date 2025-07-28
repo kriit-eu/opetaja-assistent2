@@ -37,7 +37,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             this._lastEntries = entries
             const results = this.#calculateFinalGrades(entries, students)
             Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
-            this.#showResults(results, btn)
+            await this.#showResults(results, btn)
             btn.textContent = 'Valmis!'
             btn.style.background = '#388e3c'
           } catch (e) {
@@ -85,7 +85,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       ])
       const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
       const hasSissekanneL = lFeature.detect(entries)
-      const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : this.#calculateFinalGrades(entries, students)
+      const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
       if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
         Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected, feature will not activate')
         return
@@ -198,7 +198,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           this._lastEntries = entries
           const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
           const hasSissekanneL = lFeature.detect(entries)
-          const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : this.#calculateFinalGrades(entries, students)
+          const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
           if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
             Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected on button click, aborting')
             btn.textContent = 'ÕV-sid või lõpptulemust ei leitud'
@@ -214,7 +214,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           if (hasSissekanneL) {
             lFeature.showResults(results, btn, entries)
           } else {
-            this.#showResults(results, btn)
+            await this.#showResults(results, btn)
           }
           btn.textContent = 'Valmis!'
           btn.style.background = '#388e3c'
@@ -246,7 +246,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     return match ? match[1] : null
   }
 
-  #calculateFinalGrades(entries, students) {
+  async #calculateFinalGrades(entries, students) {
     Logger.info('✨ FinalGradesByOvFeature: DEBUG students structure:', students)
     const studentMap = {}
     const journalStudentIdToStudentId = {}
@@ -300,7 +300,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     // Collect final grades from SISSEKANNE_L entries
     const finalGradesByStudent = {}
 
-    entries.forEach(entry => {
+    for (const entry of entries) {
       // SISSEKANNE_L: final grades (lõpptulemus)
       if (entry.entryType === 'SISSEKANNE_L' && entry.journalEntryStudents) {
         entry.journalEntryStudents.forEach(entryStudent => {
@@ -315,17 +315,57 @@ class FinalGradesByOvFeature extends BaseFeature {
         })
       }
       // SISSEKANNE_O: outcomes (for display, not for calculation)
-      else if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
-        Object.entries(entry.studentOutcomeResults).forEach(([journalStudentId, results]) => {
-          if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
-          if (Array.isArray(results)) {
-            results.forEach(r => {
-              if (r.grade && r.grade.code) gradesByStudent[journalStudentId].push(r.grade.code.replace('KUTSEHINDAMINE_', ''))
+      else if (entry.entryType === 'SISSEKANNE_O') {
+        let studentOutcomeResults = entry.studentOutcomeResults
+        
+        // If studentOutcomeResults is missing, fetch detailed outcome data
+        if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
+          try {
+            const journalId = this.#extractJournalId()
+            const detailedOutcome = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
+            Logger.info('✨ FinalGradesByOvFeature: Fetched detailed SISSEKANNE_O outcome', { 
+              outcomeId: entry.curriculumModuleOutcomes, 
+              detailedOutcome 
             })
-          } else {
-            Logger.warning('✨ FinalGradesByOvFeature: SISSEKANNE_O results is not array', { journalStudentId, results })
+            
+            // Convert outcomeStudents to studentOutcomeResults format
+            if (detailedOutcome.outcomeStudents) {
+              studentOutcomeResults = {}
+              detailedOutcome.outcomeStudents.forEach(outcomeStudent => {
+                // Find journalStudentId by matching studentId
+                const matchingStudent = students.find(s => {
+                  const studentId = s.student ? s.student.id : s.id
+                  return String(studentId) === String(outcomeStudent.studentId)
+                })
+                
+                if (matchingStudent && outcomeStudent.grade) {
+                  const journalStudentId = matchingStudent.id
+                  studentOutcomeResults[journalStudentId] = [{
+                    grade: outcomeStudent.grade
+                  }]
+                }
+              })
+            }
+          } catch (err) {
+            Logger.warning('✨ FinalGradesByOvFeature: Could not fetch detailed SISSEKANNE_O outcome', { 
+              outcomeId: entry.curriculumModuleOutcomes, 
+              err 
+            })
           }
-        })
+        }
+        
+        if (studentOutcomeResults) {
+          Object.entries(studentOutcomeResults).forEach(([journalStudentId, results]) => {
+            if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
+            if (Array.isArray(results)) {
+              results.forEach(r => {
+                if (r.grade && r.grade.code) gradesByStudent[journalStudentId].push(r.grade.code.replace('KUTSEHINDAMINE_', ''))
+              })
+            } else {
+              Logger.warning('✨ FinalGradesByOvFeature: SISSEKANNE_O results is not array', { journalStudentId, results })
+            }
+          })
+        }
       }
       // SISSEKANNE_H: always count toward final grade
       else if (entry.entryType === 'SISSEKANNE_H' && entry.journalStudentResults) {
@@ -378,7 +418,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
         })
       }
-    })
+    }
 
     // Calculate per-ÕV grades for each student
     const allOvNums = Object.keys(outcomesByNumber).sort((a, b) => Number(a) - Number(b))
@@ -448,7 +488,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     return { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId }
   }
 
-  #showResults(results, button) {
+  async #showResults(results, button) {
     Logger.info('✨ FinalGradesByOvFeature: #showResults called', { results, button })
     Logger.info('✨ FinalGradesByOvFeature: button parent:', button && button.parentElement)
     Logger.info("✨ FinalGradesByOvFeature: document.getElementById('oa-final-grades-results'):", document.getElementById('oa-final-grades-results'))
@@ -460,24 +500,114 @@ class FinalGradesByOvFeature extends BaseFeature {
     const existingGradesMap = {}
     Logger.info('✨ FinalGradesByOvFeature: journalStudentIdToStudentId mapping', journalStudentIdToStudentId)
     if (this._lastEntries) {
-      this._lastEntries.forEach(entry => {
-        if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
+      for (const entry of this._lastEntries) {
+        if (entry.entryType === 'SISSEKANNE_O') {
           const match = entry.nameEt && entry.nameEt.match(/^([0-9]+)\)/)
           const ovNum = match && match[1]
           if (ovNum) {
-            Object.entries(entry.studentOutcomeResults).forEach(([journalStudentId, results]) => {
-              const studentId = journalStudentIdToStudentId[journalStudentId]
-              Logger.info('✨ FinalGradesByOvFeature: Mapping SISSEKANNE_O', { journalStudentId, studentId, ovNum, results })
-              if (studentId && Array.isArray(results) && results.length > 0) {
-                // Use the first result (should only be one per student/outcome)
-                existingGradesMap[`${studentId}|${ovNum}`] = results[0]
+            let studentOutcomeResults = entry.studentOutcomeResults
+            
+            // If studentOutcomeResults is missing, fetch detailed outcome data
+            if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
+              try {
+                const journalId = this.#extractJournalId()
+                const detailedOutcome = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
+                Logger.info('✨ FinalGradesByOvFeature: Fetched detailed SISSEKANNE_O outcome for existing grades', { 
+                  outcomeId: entry.curriculumModuleOutcomes, 
+                  detailedOutcome 
+                })
+                
+                // Convert outcomeStudents to the format we need for existingGradesMap
+                if (detailedOutcome.outcomeStudents) {
+                  detailedOutcome.outcomeStudents.forEach(outcomeStudent => {
+                    if (outcomeStudent.studentId && outcomeStudent.grade) {
+                      const key = `${outcomeStudent.studentId}|${ovNum}`
+                      existingGradesMap[key] = outcomeStudent
+                      Logger.info('✨ FinalGradesByOvFeature: Added to existingGradesMap from detailed fetch', {
+                        key,
+                        studentId: outcomeStudent.studentId,
+                        grade: outcomeStudent.grade.code
+                      })
+                    }
+                  })
+                }
+              } catch (err) {
+                Logger.warning('✨ FinalGradesByOvFeature: Could not fetch detailed SISSEKANNE_O outcome for existing grades', { 
+                  outcomeId: entry.curriculumModuleOutcomes, 
+                  err 
+                })
               }
-            })
+            } else if (studentOutcomeResults) {
+              // Use existing studentOutcomeResults if available
+              Object.entries(studentOutcomeResults).forEach(([studentIdFromResults, results]) => {
+                // In SISSEKANNE_O, the key is actually studentId, not journalStudentId
+                const studentId = studentIdFromResults
+                Logger.info('✨ FinalGradesByOvFeature: Mapping SISSEKANNE_O from existing data', { 
+                  studentIdFromResults, 
+                  studentId, 
+                  ovNum, 
+                  results 
+                })
+                if (studentId && results && results.grade) {
+                  // Direct mapping using studentId
+                  const key = `${studentId}|${ovNum}`
+                  existingGradesMap[key] = results
+                  Logger.info('✨ FinalGradesByOvFeature: Added to existingGradesMap from existing data', {
+                    key,
+                    studentId,
+                    grade: results.grade.code
+                  })
+                }
+              })
+            }
           }
         }
-      })
+      }
     }
     Logger.info('✨ FinalGradesByOvFeature: existingGradesMap keys', Object.keys(existingGradesMap))
+    
+    // Filter output to only show students whose calculated grades differ from existing grades
+    const filteredOutput = output.filter(student => {
+      if (allOvNums.length > 0) {
+        // For ÕV grades, check if any calculated ÕV grade differs from existing
+        return allOvNums.some(ovNum => {
+          const calculatedGrade = student.ovGrades[ovNum]
+          const existingGradeKey = `${student.studentId}|${ovNum}`
+          const existingGradeEntry = existingGradesMap[existingGradeKey]
+          let existingGrade = ''
+          if (existingGradeEntry && existingGradeEntry.grade && existingGradeEntry.grade.code) {
+            existingGrade = existingGradeEntry.grade.code.replace('KUTSEHINDAMINE_', '')
+          }
+          // Normalize grades for comparison
+          let normalizedCalculated = String(calculatedGrade || '').trim()
+          let normalizedExisting = String(existingGrade || '').trim()
+          // If both are numeric, compare as rounded integer strings
+          if (/^\d+(\.\d+)?$/.test(normalizedCalculated) && /^\d+$/.test(normalizedExisting)) {
+            normalizedCalculated = String(Math.round(Number(normalizedCalculated)))
+          }
+          const differs = normalizedCalculated !== normalizedExisting
+          Logger.info('✨ FinalGradesByOvFeature: Grade comparison', {
+            student: student.name,
+            ovNum,
+            calculatedGrade: normalizedCalculated,
+            existingGrade: normalizedExisting,
+            differs
+          })
+          return differs
+        })
+      } else {
+        // For final grades, check if calculated differs from existing
+        // This case is less common but included for completeness
+        return true // For now, always show final grades
+      }
+    })
+    
+    Logger.info('✨ FinalGradesByOvFeature: Filtered results', {
+      originalCount: output.length,
+      filteredCount: filteredOutput.length,
+      filtered: filteredOutput.map(s => ({ name: s.name, grades: s.ovGrades }))
+    })
+    
     // If there are ÕV columns, show only the first ÕV as the second column (with its label)
     // If not, show Lõpptulemus as the second column
     let html = ''
@@ -497,17 +627,16 @@ class FinalGradesByOvFeature extends BaseFeature {
       html += 'Lõpptulemus'
     }
     html += '</th></tr></thead><tbody>'
-    output.forEach(function (r) {
+    filteredOutput.forEach(function (r) {
       html += '<tr><td>' + r.name + '</td><td>'
-      let display = '',
-        tooltip = ''
+      let display = '', tooltip = ''
       if (allOvNums.length > 0) {
         var firstOvNum = allOvNums[0]
         const grade = r.ovGrades[firstOvNum]
         if (/^\d+(\.\d+)?$/.test(grade)) {
-          // Numeric: show rounded, tooltip original
+          // Always show rounded integer for numeric grades
           display = String(Math.round(Number(grade)))
-          tooltip = grade
+          tooltip = grade !== display ? grade : ''
         } else {
           display = grade || ''
         }
@@ -516,12 +645,12 @@ class FinalGradesByOvFeature extends BaseFeature {
         const grade = r.finalGrade
         if (/^\d+(\.\d+)?$/.test(grade)) {
           display = String(Math.round(Number(grade)))
-          tooltip = grade
+          tooltip = grade !== display ? grade : ''
         } else {
           display = grade || ''
         }
       }
-      if (tooltip && tooltip !== display) {
+      if (tooltip) {
         html += `<span title="${tooltip}">${display}</span>`
       } else {
         html += display
@@ -640,8 +769,8 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
             Logger.info('✨ FinalGradesByOvFeature: freshGradesMap keys', Object.keys(freshGradesMap))
             Logger.info('✨ FinalGradesByOvFeature: freshGradesMap full', freshGradesMap)
-            // Build payload for this ÕV, always include all students with a grade (overwrite existing)
-            const outcomeStudents = results.output
+            // Build payload for this ÕV, only include students with differing grades (filtered output)
+            const outcomeStudents = filteredOutput
               .map(r => {
                 let grade = r.ovGrades[ovNum]
                 if (!grade) return null
