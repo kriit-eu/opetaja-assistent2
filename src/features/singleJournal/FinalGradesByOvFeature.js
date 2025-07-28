@@ -1,6 +1,7 @@
 import { BaseFeature } from '../../core/BaseFeature.js'
 import Logger from '../../services/Logger.js'
 import { domService } from '../../services/DomService.js'
+import FinalGradesLFeature from './FinalGradesLFeature.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
   constructor() {
@@ -82,9 +83,10 @@ class FinalGradesByOvFeature extends BaseFeature {
         this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
         this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
       ])
-      const results = this.#calculateFinalGrades(entries, students)
-      const hasSissekanneL = entries.some(entry => entry.entryType === 'SISSEKANNE_L')
-      if (!results.allOvNums || (results.allOvNums.length === 0 && !hasSissekanneL)) {
+      const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
+      const hasSissekanneL = lFeature.detect(entries)
+      const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : this.#calculateFinalGrades(entries, students)
+      if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
         Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected, feature will not activate')
         return
       }
@@ -193,9 +195,10 @@ class FinalGradesByOvFeature extends BaseFeature {
           Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
           this._lastEntries = entries
-          const results = this.#calculateFinalGrades(entries, students)
-          const hasSissekanneL = entries.some(entry => entry.entryType === 'SISSEKANNE_L')
-          if (!results.allOvNums || (results.allOvNums.length === 0 && !hasSissekanneL)) {
+          const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
+          const hasSissekanneL = lFeature.detect(entries)
+          const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : this.#calculateFinalGrades(entries, students)
+          if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
             Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected on button click, aborting')
             btn.textContent = 'ÕV-sid või lõpptulemust ei leitud'
             btn.style.background = '#d32f2f'
@@ -207,7 +210,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             return
           }
           Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
-          this.#showResults(results, btn)
+          if (hasSissekanneL) {
+            lFeature.showResults(results, btn, entries)
+          } else {
+            this.#showResults(results, btn)
+          }
           btn.textContent = 'Valmis! (vaata all)'
           btn.style.background = '#388e3c'
         } catch (e) {
