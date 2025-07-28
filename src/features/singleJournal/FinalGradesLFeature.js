@@ -157,29 +157,43 @@ class FinalGradesLFeature {
     html += '.oa-final-grades-table tr:hover {background:#e3f2fd;}'
     html += '</style>'
     html += '<table class="oa-final-grades-table">'
-    html += '<thead><tr><th>Õpilane</th><th>Lõpptulemus</th></tr></thead><tbody>'
-    output.forEach(function (r) {
-      html += '<tr><td>' + r.name + '</td><td>'
-      let display = '',
-        tooltip = ''
-      const grade = r.finalGrade
-      if (/^\d+(\.\d+)?$/.test(grade)) {
-        const numGrade = Number(grade)
-        display = String(Math.round(numGrade))
-        // Show tooltip if the grade is not an integer (e.g., 3.25)
-        if (!Number.isInteger(numGrade)) {
-          tooltip = grade
+    html += '<thead><tr>'
+    for (let i = 0; i < 2; i++) {
+      html += '<th>Õpilane</th><th>Lõpptulemus</th>'
+    }
+    html += '</tr></thead><tbody>'
+    for (let i = 0; i < output.length; i += 2) {
+      html += '<tr>'
+      for (let j = 0; j < 2; j++) {
+        const r = output[i + j]
+        if (r) {
+          html += '<td>' + r.name + '</td>'
+        } else {
+          html += '<td></td>'
         }
-      } else {
-        display = grade || ''
+        html += '<td>'
+        if (r) {
+          let display = '', tooltip = ''
+          const grade = r.finalGrade
+          if (/^\d+(\.\d+)?$/.test(grade)) {
+            const numGrade = Number(grade)
+            display = String(Math.round(numGrade))
+            if (!Number.isInteger(numGrade)) {
+              tooltip = grade
+            }
+          } else {
+            display = grade || ''
+          }
+          if (tooltip) {
+            html += `<span title="${tooltip}">${display}</span>`
+          } else {
+            html += display
+          }
+        }
+        html += '</td>'
       }
-      if (tooltip) {
-        html += `<span title="${tooltip}">${display}</span>`
-      } else {
-        html += display
-      }
-      html += '</td></tr>'
-    })
+      html += '</tr>'
+    }
     html += '</tbody></table>'
     let container = document.getElementById('oa-final-grades-results')
     if (!container) {
@@ -187,16 +201,17 @@ class FinalGradesLFeature {
     }
     container.innerHTML = html
     // Add sync button
-    let syncBtn = document.getElementById('oa-sync-lopp-btn')
+    let syncBtn = document.querySelector('.oa-final-grades-l-btn')
     if (!syncBtn) {
       syncBtn = domService.createAndInsertElement(
         'button',
         {
           id: 'oa-sync-lopp-btn',
+          class: 'oa-final-grades-l-btn',
           style: {
             margin: '16px 0px',
             padding: '8px 16px',
-            background: '#388e3c',
+            background: '#1976d2',
             color: '#fff',
             border: 'none',
             borderRadius: '4px',
@@ -208,7 +223,7 @@ class FinalGradesLFeature {
             maxWidth: '100%'
           }
         },
-        'Sync Lõpptulemus Tahvlisse',
+  'Sünkroniseeri hinded',
         container,
         'afterend'
       )

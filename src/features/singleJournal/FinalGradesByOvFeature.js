@@ -38,7 +38,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             const results = this.#calculateFinalGrades(entries, students)
             Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
             this.#showResults(results, btn)
-            btn.textContent = 'Valmis! (vaata all)'
+            btn.textContent = 'Valmis!'
             btn.style.background = '#388e3c'
           } catch (e) {
             Logger.error('FinalGradesByOvFeature error', e)
@@ -47,7 +47,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           } finally {
             setTimeout(() => {
               btn.disabled = false
-              btn.textContent = 'Näita lõpptulemust ja õpiväljundeid'
+              btn.textContent = 'Näita õpiväljundite hindeid'
               btn.style.background = 'rgb(21, 101, 192)'
             }, 3000)
           }
@@ -101,6 +101,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Use existing button if present, otherwise insert
       let button = document.querySelector('.oa-final-grades-btn')
       Logger.info('✨ FinalGradesByOvFeature: Existing button found:', button)
+      const buttonText = hasSissekanneL ? 'Näita lõpptulemuse hindeid' : 'Näita õpiväljundite hindeid'
       if (!button) {
         if (tableContainer) {
           button = domService.createAndInsertElement(
@@ -123,7 +124,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                 maxWidth: '100%'
               }
             },
-            'Näita lõpptulemust ja õpiväljundeid',
+            buttonText,
             tableContainer,
             'afterend'
           )
@@ -152,7 +153,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                   maxWidth: '100%'
                 }
               },
-              'Näita lõpptulemust ja õpiväljundeid',
+              buttonText,
               mainContent,
               'beforeend'
             )
@@ -204,7 +205,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             btn.style.background = '#d32f2f'
             setTimeout(() => {
               btn.disabled = false
-              btn.textContent = 'Näita lõpptulemust ja õpiväljundeid'
+              btn.textContent = 'Näita õpiväljundite hindeid'
               btn.style.background = 'rgb(21, 101, 192)'
             }, 3000)
             return
@@ -215,7 +216,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           } else {
             this.#showResults(results, btn)
           }
-          btn.textContent = 'Valmis! (vaata all)'
+          btn.textContent = 'Valmis!'
           btn.style.background = '#388e3c'
         } catch (e) {
           Logger.error('FinalGradesByOvFeature error', e)
@@ -224,7 +225,10 @@ class FinalGradesByOvFeature extends BaseFeature {
         } finally {
           setTimeout(() => {
             btn.disabled = false
-            btn.textContent = 'Näita lõpptulemust ja õpiväljundeid'
+            // Set button text based on latest SISSEKANNE_L detection
+            const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
+            const hasL = lFeature.detect(this._lastEntries || [])
+            btn.textContent = hasL ? 'Näita lõpptulemuse hindeid' : 'Näita õpiväljundite hindeid'
             btn.style.background = 'rgb(21, 101, 192)'
           }, 3000)
         }
@@ -542,7 +546,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             style: {
               margin: '16px 0px',
               padding: '8px 16px',
-              background: '#388e3c',
+              background: '#1976d2',
               color: '#fff',
               border: 'none',
               borderRadius: '4px',
@@ -554,7 +558,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               maxWidth: '100%'
             }
           },
-          'Saada ÕV hinded Tahvlisse',
+          'Sünkroniseeri hinded',
           container,
           'afterend'
         )
@@ -745,10 +749,10 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
           }
           if (!anySuccess) statusDiv.textContent = 'Ühtegi hinnet ei saadetud.'
-          sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
+          sendBtn.textContent = 'Sünkroniseeri hinded'
         } catch (err) {
           statusDiv.textContent = 'Viga saatmisel.'
-          sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
+          sendBtn.textContent = 'Sünkroniseeri hinded'
         } finally {
           sendBtn.disabled = false
         }
