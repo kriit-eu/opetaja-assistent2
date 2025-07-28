@@ -33,6 +33,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             ])
             Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
             Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
+            this._lastEntries = entries
             const results = this.#calculateFinalGrades(entries, students)
             Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
             this.#showResults(results, btn)
@@ -73,7 +74,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       const journalId = this.#extractJournalId()
       Logger.info('✨ FinalGradesByOvFeature: Journal ID extracted:', journalId)
       if (!journalId) {
-        Logger.warn('✨ FinalGradesByOvFeature: No journal ID found, feature will not work')
+        Logger.warning('✨ FinalGradesByOvFeature: No journal ID found, feature will not work')
         return
       }
       // Wait for the table container in #main-content
@@ -82,7 +83,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         tableContainer = await domService.waitForElement('.journalTableContainer', 20000, 100)
         Logger.info('✨ FinalGradesByOvFeature: Table container found', tableContainer)
       } catch (e) {
-        Logger.warn('FinalGradesByOvFeature: Table container not found, will try fallback', e)
+        Logger.warning('FinalGradesByOvFeature: Table container not found, will try fallback', e)
       }
       // Use existing button if present, otherwise insert
       let button = document.querySelector('.oa-final-grades-btn')
@@ -180,6 +181,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           ])
           Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
+          this._lastEntries = entries
           const results = this.#calculateFinalGrades(entries, students)
           Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
           this.#showResults(results, btn)
@@ -214,31 +216,39 @@ class FinalGradesByOvFeature extends BaseFeature {
   #calculateFinalGrades(entries, students) {
     Logger.info('✨ FinalGradesByOvFeature: DEBUG students structure:', students)
     const studentMap = {}
+    const journalStudentIdToStudentId = {}
     students.forEach(s => {
       Logger.info('✨ FinalGradesByOvFeature: DEBUG processing student:', s)
       // Check if student data is nested under .student or directly on the object
+      let name, idcode, studentId, journalStudentId
       if (s.student && s.student.idcode) {
-        studentMap[s.id] = {
-          name: s.student.fullname || `${s.student.firstname} ${s.student.lastname}`,
-          idcode: s.student.idcode
-        }
-      } else if (s.idcode || s.fullname || (s.firstname && s.lastname)) {
-        // Student data is directly on the object
-        studentMap[s.id] = {
-          name: s.fullname || `${s.firstname} ${s.lastname}`,
-          idcode: s.idcode || 'N/A'
-        }
+        name = s.student.fullname || `${s.student.firstname} ${s.student.lastname}`
+        idcode = s.student.idcode
+        studentId = s.student.id
+        journalStudentId = s.id
+      } else {
+        name = s.fullname || `${s.firstname} ${s.lastname}`
+        idcode = s.idcode || 'N/A'
+        studentId = s.studentId || s.id
+        journalStudentId = s.id
       }
+      studentMap[journalStudentId] = { name, idcode, studentId }
+      journalStudentIdToStudentId[journalStudentId] = studentId
     })
     Logger.info('✨ FinalGradesByOvFeature: DEBUG studentMap after processing:', studentMap)
 
     // Map outcomes to their leading number (e.g. 7 for "7) ...")
     const outcomesByNumber = {}
+    const ovNumToOutcomeId = {} // Map ÕV number to curriculumModuleOutcomes from SISSEKANNE_O
     entries.forEach(entry => {
       if (entry.entryType === 'SISSEKANNE_O' && entry.nameEt) {
         const match = entry.nameEt.match(/^(\d+)\)/)
         if (match) {
-          outcomesByNumber[match[1]] = entry.nameEt
+          const ovNum = match[1]
+          outcomesByNumber[ovNum] = entry.nameEt
+          if (entry.curriculumModuleOutcomes) {
+            ovNumToOutcomeId[ovNum] = entry.curriculumModuleOutcomes
+          }
         }
       }
       // Also support ÕVn in nameEt for SISSEKANNE_I
@@ -260,18 +270,26 @@ class FinalGradesByOvFeature extends BaseFeature {
       if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
         Object.entries(entry.studentOutcomeResults).forEach(([journalStudentId, results]) => {
           if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
-          results.forEach(r => {
-            if (r.grade && r.grade.code) gradesByStudent[journalStudentId].push(r.grade.code.replace('KUTSEHINDAMINE_', ''))
-          })
+          if (Array.isArray(results)) {
+            results.forEach(r => {
+              if (r.grade && r.grade.code) gradesByStudent[journalStudentId].push(r.grade.code.replace('KUTSEHINDAMINE_', ''))
+            })
+          } else {
+            Logger.warning('✨ FinalGradesByOvFeature: SISSEKANNE_O results is not array', { journalStudentId, results })
+          }
         })
       }
       // SISSEKANNE_H: always count toward final grade
       else if (entry.entryType === 'SISSEKANNE_H' && entry.journalStudentResults) {
         Object.entries(entry.journalStudentResults).forEach(([journalStudentId, results]) => {
           if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
-          results.forEach(r => {
-            if (r.grade && r.grade.code) gradesByStudent[journalStudentId].push(r.grade.code.replace('KUTSEHINDAMINE_', ''))
-          })
+          if (Array.isArray(results)) {
+            results.forEach(r => {
+              if (r.grade && r.grade.code) gradesByStudent[journalStudentId].push(r.grade.code.replace('KUTSEHINDAMINE_', ''))
+            })
+          } else {
+            Logger.warning('✨ FinalGradesByOvFeature: SISSEKANNE_H results is not array', { journalStudentId, results })
+          }
         })
       }
       // SISSEKANNE_I: check for ÕVn in nameEt
@@ -279,29 +297,37 @@ class FinalGradesByOvFeature extends BaseFeature {
         // Try to extract ÕV number from nameEt
         const ovMatch = entry.nameEt && entry.nameEt.match(/ÕV(\d+)/i)
         Object.entries(entry.journalStudentResults).forEach(([journalStudentId, results]) => {
-          results.forEach(r => {
-            if (r.grade && r.grade.code) {
-              const grade = r.grade.code.replace('KUTSEHINDAMINE_', '')
-              // Always count toward final grade, even if ÕVn is present
-              if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
-              gradesByStudent[journalStudentId].push(grade)
-              if (ovMatch && ovMatch[1]) {
-                // Only map to outcome if the ÕV number matches a column
-                const ovNum = ovMatch[1]
-                if (!outcomeGradesByStudent[journalStudentId]) outcomeGradesByStudent[journalStudentId] = {}
-                if (!outcomeGradesByStudent[journalStudentId][ovNum]) outcomeGradesByStudent[journalStudentId][ovNum] = []
-                outcomeGradesByStudent[journalStudentId][ovNum].push(grade)
-                Logger.info('✨ FinalGradesByOvFeature: Mapped SISSEKANNE_I grade to ÕV column', {
-                  journalStudentId,
-                  grade,
-                  ovNum,
-                  entryName: entry.nameEt
-                })
-              } else {
-                Logger.info('✨ FinalGradesByOvFeature: SISSEKANNE_I grade not mapped to ÕV column', { journalStudentId, grade, entryName: entry.nameEt })
+          if (Array.isArray(results)) {
+            results.forEach(r => {
+              if (r.grade && r.grade.code) {
+                const grade = r.grade.code.replace('KUTSEHINDAMINE_', '')
+                // Always count toward final grade, even if ÕVn is present
+                if (!gradesByStudent[journalStudentId]) gradesByStudent[journalStudentId] = []
+                gradesByStudent[journalStudentId].push(grade)
+                if (ovMatch && ovMatch[1]) {
+                  // Only map to outcome if the ÕV number matches a column
+                  const ovNum = ovMatch[1]
+                  if (!outcomeGradesByStudent[journalStudentId]) outcomeGradesByStudent[journalStudentId] = {}
+                  if (!outcomeGradesByStudent[journalStudentId][ovNum]) outcomeGradesByStudent[journalStudentId][ovNum] = []
+                  outcomeGradesByStudent[journalStudentId][ovNum].push(grade)
+                  Logger.info('✨ FinalGradesByOvFeature: Mapped SISSEKANNE_I grade to ÕV column', {
+                    journalStudentId,
+                    grade,
+                    ovNum,
+                    entryName: entry.nameEt
+                  })
+                } else {
+                  Logger.info('✨ FinalGradesByOvFeature: SISSEKANNE_I grade not mapped to ÕV column', {
+                    journalStudentId,
+                    grade,
+                    entryName: entry.nameEt
+                  })
+                }
               }
-            }
-          })
+            })
+          } else {
+            Logger.warning('✨ FinalGradesByOvFeature: SISSEKANNE_I results is not array', { journalStudentId, results })
+          }
         })
       }
     })
@@ -350,17 +376,21 @@ class FinalGradesByOvFeature extends BaseFeature {
         name: student.name,
         idcode: student.idcode,
         finalGrade,
-        ovGrades
+        ovGrades,
+        journalStudentId, // for reference
+        studentId: student.studentId // <-- add correct studentId for payload
       })
       summary.push({
         name: student.name,
         idcode: student.idcode,
         finalGrade,
-        ovGrades
+        ovGrades,
+        journalStudentId,
+        studentId: student.studentId
       })
     })
-    Logger.info('✨ FinalGradesByOvFeature: SUMMARY', summary)
-    return { output, allOvNums, outcomesByNumber }
+  Logger.info('✨ FinalGradesByOvFeature: SUMMARY', summary)
+  return { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId }
   }
 
   #showResults(results, button) {
@@ -368,8 +398,27 @@ class FinalGradesByOvFeature extends BaseFeature {
     Logger.info('✨ FinalGradesByOvFeature: button parent:', button && button.parentElement)
     Logger.info("✨ FinalGradesByOvFeature: document.getElementById('oa-final-grades-results'):", document.getElementById('oa-final-grades-results'))
     Logger.info('✨ FinalGradesByOvFeature: Results to render:', results)
-    // results is now {output, allOvNums, outcomesByNumber}
-    const { output, allOvNums, outcomesByNumber } = results
+    // results is now {output, allOvNums, outcomesByNumber, journalStudentIdToStudentId}
+    const { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId } = results
+
+    // Build a set of (studentId, ovNum) pairs that already have a grade
+    const existingGrades = new Set()
+    if (this._lastEntries) {
+      this._lastEntries.forEach(entry => {
+        if (entry.entryType === 'SISSEKANNE_O' && entry.studentOutcomeResults) {
+          const match = entry.nameEt && entry.nameEt.match(/^([0-9]+)\)/)
+          const ovNum = match && match[1]
+          if (ovNum) {
+            Object.entries(entry.studentOutcomeResults).forEach(([journalStudentId, results]) => {
+              const studentId = journalStudentIdToStudentId[journalStudentId]
+              if (studentId && Array.isArray(results) && results.length > 0) {
+                existingGrades.add(`${studentId}|${ovNum}`)
+              }
+            })
+          }
+        }
+      })
+    }
     // If there are ÕV columns, show only the first ÕV as the second column (with its label)
     // If not, show Lõpptulemus as the second column
     let html = ''
@@ -391,11 +440,30 @@ class FinalGradesByOvFeature extends BaseFeature {
     html += '</th></tr></thead><tbody>'
     output.forEach(function (r) {
       html += '<tr><td>' + r.name + '</td><td>'
+      let display = '', tooltip = ''
       if (allOvNums.length > 0) {
         var firstOvNum = allOvNums[0]
-        html += r.ovGrades[firstOvNum] || ''
+        const grade = r.ovGrades[firstOvNum]
+        if (/^\d+(\.\d+)?$/.test(grade)) {
+          // Numeric: show rounded, tooltip original
+          display = String(Math.round(Number(grade)))
+          tooltip = grade
+        } else {
+          display = grade || ''
+        }
       } else {
-        html += r.finalGrade || ''
+        const grade = r.finalGrade
+        if (/^\d+(\.\d+)?$/.test(grade)) {
+          display = String(Math.round(Number(grade)))
+          tooltip = grade
+        } else {
+          display = grade || ''
+        }
+      }
+      if (tooltip && tooltip !== display) {
+        html += `<span title="${tooltip}">${display}</span>`
+      } else {
+        html += display
       }
       html += '</td></tr>'
     })
@@ -405,6 +473,142 @@ class FinalGradesByOvFeature extends BaseFeature {
       container = domService.createAndInsertElement('div', { id: 'oa-final-grades-results' }, '', button, 'afterend')
     }
     container.innerHTML = html
+
+    // Add send ÕV grades button
+    let sendBtn = document.getElementById('oa-send-ov-grades-btn')
+    if (!sendBtn) {
+      sendBtn = domService.createAndInsertElement(
+        'button',
+        {
+          id: 'oa-send-ov-grades-btn',
+          style: {
+            margin: '16px 0px',
+            padding: '8px 16px',
+            background: '#388e3c',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '16px',
+            zIndex: 1000,
+            display: 'block',
+            width: 'auto',
+            maxWidth: '100%'
+          }
+        },
+        'Saada ÕV hinded Tahvlisse',
+        container,
+        'afterend'
+      )
+    }
+    // Status message
+    let statusDiv = document.getElementById('oa-send-ov-status')
+    if (!statusDiv) {
+      statusDiv = domService.createAndInsertElement(
+        'div',
+        { id: 'oa-send-ov-status', style: { margin: '8px 0', color: '#1976d2', fontWeight: 'bold' } },
+        '',
+        sendBtn,
+        'afterend'
+      )
+    }
+    sendBtn.onclick = async () => {
+      sendBtn.disabled = true
+      sendBtn.textContent = 'Saatmine...'
+      statusDiv.textContent = ''
+      try {
+        const journalId = this.#extractJournalId()
+        // Get current date in Europe/Tallinn as YYYY-MM-DD
+        const estDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Tallinn' })
+        const gradeDate = estDate + 'T00:00:00.000Z'
+        let anySuccess = false
+        let skipped = []
+        for (const ovNum of results.allOvNums) {
+          // Build payload for this ÕV, always include all students with a grade (overwrite existing)
+          const outcomeStudents = results.output
+            .map(r => {
+              let grade = r.ovGrades[ovNum]
+              if (!grade) return null
+              // If grade is a numeric string with decimals, round and convert to string
+              if (/^\d+(\.\d+)?$/.test(grade)) {
+                const rounded = Math.round(Number(grade))
+                if (rounded >= 1 && rounded <= 5) grade = String(rounded)
+              }
+              const studentId = Number(r.studentId)
+              // Only send numeric grades 1-5 or MA/A
+              let code = null,
+                nameEt = '',
+                nameEn = '',
+                value = ''
+              if (['1', '2', '3', '4', '5'].includes(grade)) {
+                code = `KUTSEHINDAMINE_${grade}`
+                value = grade
+                // Map numeric grades to nameEt/nameEn as in Tahvel UI
+                const gradeNames = {
+                  '5': { nameEt: 'Väga hea', nameEn: 'Very good' },
+                  '4': { nameEt: 'Hea', nameEn: 'Good' },
+                  '3': { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
+                  '2': { nameEt: 'Puudulik', nameEn: 'Insufficient' },
+                  '1': { nameEt: 'Nõrk', nameEn: 'Weak' }
+                }
+                nameEt = gradeNames[grade]?.nameEt || ''
+                nameEn = gradeNames[grade]?.nameEn || ''
+              } else if (grade === 'MA') {
+                code = 'KUTSEHINDAMINE_MA'
+                value = 'MA'
+                nameEt = 'Mitte arvestatud'
+                nameEn = 'Fail'
+              } else if (grade === 'A') {
+                code = 'KUTSEHINDAMINE_A'
+                value = 'A'
+                nameEt = 'Arvestatud'
+                nameEn = 'Pass'
+              } else {
+                return null
+              }
+              return {
+                studentId,
+                canEdit: true,
+                isCurriculumOutcome: true,
+                grade: {
+                  code,
+                  gradingSchemaRowId: null,
+                  value,
+                  value2: value,
+                  extraval1: null,
+                  extraval2: null,
+                  nameEt,
+                  nameEn,
+                  valid: true
+                },
+                gradeDate
+              }
+            })
+            .filter(Boolean)
+          if (!outcomeStudents.length) continue
+          // Use the correct journalOutcomeId for this ÕV
+          const journalOutcomeId = ovNumToOutcomeId && ovNumToOutcomeId[ovNum] ? ovNumToOutcomeId[ovNum] : ovNum
+          const url = `/journals/${journalId}/journalOutcome/${journalOutcomeId}`
+          const payload = { outcomeStudents }
+          Logger.info('✨ FinalGradesByOvFeature: Sending payload for ÕV', { ovNum, payload })
+          let resp
+          try {
+            resp = await this.api.tahvel.post(url, payload)
+            statusDiv.textContent += `ÕV ${ovNum}: OK. `
+            anySuccess = true
+          } catch (err) {
+            statusDiv.textContent += `ÕV ${ovNum}: VIGA! `
+          }
+        }
+        if (!anySuccess) statusDiv.textContent = 'Ühtegi hinnet ei saadetud.'
+        sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
+      } catch (err) {
+        statusDiv.textContent = 'Viga saatmisel.'
+        sendBtn.textContent = 'Saada ÕV hinded Tahvlisse'
+      } finally {
+        sendBtn.disabled = false
+      }
+    }
     Logger.info('✨ FinalGradesByOvFeature: Results table rendered and visible')
   }
 }
