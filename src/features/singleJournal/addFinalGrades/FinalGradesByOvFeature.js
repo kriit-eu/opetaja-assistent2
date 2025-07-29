@@ -774,10 +774,16 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Clear the container (no message)
       container.innerHTML = ''
       setTimeout(() => {
-        this.#syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container }).catch(err => {
-          Logger.error('FinalGradesByOvFeature: Fatal error in sync loop', { err })
-          container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga õpiväljundite hinnete saatmisel!</div>'
-        })
+        this.#syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container })
+          .then(success => {
+            if (success) {
+              window.location.reload()
+            }
+          })
+          .catch(err => {
+            Logger.error('FinalGradesByOvFeature: Fatal error in sync loop', { err })
+            container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga õpiväljundite hinnete saatmisel!</div>'
+          })
       }, 0)
       return
     }
