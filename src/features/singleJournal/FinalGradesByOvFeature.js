@@ -47,7 +47,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           } finally {
             setTimeout(() => {
               btn.disabled = false
-              btn.textContent = 'Näita õpiväljundite hindeid'
+              btn.textContent = 'Lisa õpiväljundite hinded'
               btn.style.background = 'rgb(21, 101, 192)'
             }, 3000)
           }
@@ -101,7 +101,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Use existing button if present, otherwise insert
       let button = document.querySelector('.oa-final-grades-btn')
       Logger.info('✨ FinalGradesByOvFeature: Existing button found:', button)
-  const buttonText = hasSissekanneL ? 'Näita lõpptulemuse hindeid' : 'Lisa õpiväljundite hinded'
+      const buttonText = hasSissekanneL ? 'Näita lõpptulemuse hindeid' : 'Lisa õpiväljundite hinded'
       if (!button) {
         if (tableContainer) {
           button = domService.createAndInsertElement(
@@ -205,7 +205,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             btn.style.background = '#d32f2f'
             setTimeout(() => {
               btn.disabled = false
-              btn.textContent = 'Lisa õpiväljundite hinded'
+              btn.textContent = 'Lisa lõpptulemuse hinded'
               btn.style.background = 'rgb(21, 101, 192)'
             }, 3000)
             return
@@ -228,7 +228,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             // Set button text based on latest SISSEKANNE_L detection
             const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
             const hasL = lFeature.detect(this._lastEntries || [])
-            btn.textContent = hasL ? 'Näita lõpptulemuse hindeid' : 'Lisa õpiväljundite hinded'
+            btn.textContent = hasL ? 'Lisa lõpptulemuse hinded' : 'Lisa õpiväljundite hinded'
             btn.style.background = 'rgb(21, 101, 192)'
           }, 3000)
         }
@@ -669,7 +669,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       container.innerHTML = ''
       // Run the sync logic automatically, but do not show status unless error
       setTimeout(() => {
-        (async () => {
+        ;(async () => {
           let allSuccess = true
           try {
             const journalId = this.#extractJournalId()
@@ -700,18 +700,35 @@ class FinalGradesByOvFeature extends BaseFeature {
                   }
                   const studentId = Number(r.studentId)
                   const lookupKey = `${studentId}|${ovNum}`
-                  let code = null, nameEt = '', nameEn = '', value = ''
-                  if (["1","2","3","4","5"].includes(grade)) {
+                  let code = null,
+                    nameEt = '',
+                    nameEn = '',
+                    value = ''
+                  if (['1', '2', '3', '4', '5'].includes(grade)) {
                     code = `KUTSEHINDAMINE_${grade}`
                     value = grade
-                    const gradeNames = {5:{nameEt:'Väga hea',nameEn:'Very good'},4:{nameEt:'Hea',nameEn:'Good'},3:{nameEt:'Rahuldav',nameEn:'Satisfactory'},2:{nameEt:'Puudulik',nameEn:'Insufficient'},1:{nameEt:'Nõrk',nameEn:'Weak'}}
+                    const gradeNames = {
+                      5: { nameEt: 'Väga hea', nameEn: 'Very good' },
+                      4: { nameEt: 'Hea', nameEn: 'Good' },
+                      3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
+                      2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
+                      1: { nameEt: 'Nõrk', nameEn: 'Weak' }
+                    }
                     nameEt = gradeNames[grade]?.nameEt || ''
                     nameEn = gradeNames[grade]?.nameEn || ''
                   } else if (grade === 'MA') {
-                    code = 'KUTSEHINDAMINE_MA'; value = 'MA'; nameEt = 'Mitte arvestatud'; nameEn = 'Fail'
+                    code = 'KUTSEHINDAMINE_MA'
+                    value = 'MA'
+                    nameEt = 'Mitte arvestatud'
+                    nameEn = 'Fail'
                   } else if (grade === 'A') {
-                    code = 'KUTSEHINDAMINE_A'; value = 'A'; nameEt = 'Arvestatud'; nameEn = 'Pass'
-                  } else { return null }
+                    code = 'KUTSEHINDAMINE_A'
+                    value = 'A'
+                    nameEt = 'Arvestatud'
+                    nameEn = 'Pass'
+                  } else {
+                    return null
+                  }
                   const existing = freshGradesMap[lookupKey]
                   if (existing) {
                     return {
@@ -768,7 +785,8 @@ class FinalGradesByOvFeature extends BaseFeature {
     html += '</tr></thead><tbody>'
     filteredOutput.forEach(function (r) {
       html += '<tr><td>' + r.name + '</td>'
-      let display = '', tooltip = ''
+      let display = '',
+        tooltip = ''
       const grade = r.finalGrade
       if (/^\d+(\.\d+)?$/.test(grade)) {
         display = String(Math.round(Number(grade)))

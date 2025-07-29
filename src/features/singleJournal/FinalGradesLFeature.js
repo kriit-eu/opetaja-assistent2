@@ -147,347 +147,161 @@ class FinalGradesLFeature {
   }
 
   async showResults(results, button, lastEntries) {
-    Logger.info('✨ FinalGradesLFeature: showResults called with results:', results)
-    Logger.info('✨ FinalGradesLFeature: showResults called with lastEntries:', lastEntries)
-    const { output } = results
-    // Step 1: Find current SISSEKANNE_L grades for all students
-    let lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
-    Logger.info('✨ FinalGradesLFeature: SISSEKANNE_L lEntry (full object)', lEntry)
-
-    // If lEntry exists but doesn't have journalEntryStudents, fetch detailed entry from API
-    if (lEntry && (!lEntry.journalEntryStudents || !Array.isArray(lEntry.journalEntryStudents))) {
-      Logger.info('✨ FinalGradesLFeature: lEntry missing journalEntryStudents, fetching detailed entry')
-      try {
-        const journalId = this.extractJournalId()
-        const detailedEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
-        Logger.info('✨ FinalGradesLFeature: Fetched detailed lEntry', detailedEntry)
-        lEntry = detailedEntry
-      } catch (error) {
-        Logger.warning('✨ FinalGradesLFeature: Failed to fetch detailed lEntry', error)
-      }
-    }
-
-    let lGrades = {}
-    if (lEntry) {
-      Logger.info('✨ FinalGradesLFeature: typeof lEntry.journalEntryStudents', typeof lEntry.journalEntryStudents)
-      Logger.info(
-        '✨ FinalGradesLFeature: lEntry.journalEntryStudents length',
-        Array.isArray(lEntry.journalEntryStudents) ? lEntry.journalEntryStudents.length : 'not an array'
-      )
-    }
-    if (lEntry && Array.isArray(lEntry.journalEntryStudents)) {
-      Logger.info('✨ FinalGradesLFeature: SISSEKANNE_L journalEntryStudents', lEntry.journalEntryStudents)
-      lEntry.journalEntryStudents.forEach(js => {
-        if (js && js.journalStudent != null && js.grade && js.grade.code) {
-          // Extract grade from code, e.g. KUTSEHINDAMINE_3 -> 3, KUTSEHINDAMINE_MA -> MA
-          const code = js.grade.code
-          let val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
-          lGrades[String(js.journalStudent)] = val
-        }
-      })
-      // Debug: log all existing grades in SISSEKANNE_L
-      Logger.info(
-        '✨ FinalGradesLFeature: All existing SISSEKANNE_L grades',
-        lEntry.journalEntryStudents.map(js => ({
-          journalStudent: js.journalStudent,
-          code: js.grade && js.grade.code,
-          extracted: js.grade && js.grade.code ? js.grade.code.replace('KUTSEHINDAMINE_', '').toUpperCase() : undefined
-        }))
-      )
-      Logger.info(
-        '✨ FinalGradesLFeature: All SISSEKANNE_L journalStudent IDs',
-        lEntry.journalEntryStudents.map(js => String(js.journalStudent))
-      )
-    }
-    Logger.info(
-      '✨ FinalGradesLFeature: All calculated output journalStudent IDs',
-      output.map(r => String(r.journalStudentId))
-    )
-    // Debug: print all lGrades keys and all output journalStudentIds
-    Logger.info('✨ FinalGradesLFeature: lGrades keys', Object.keys(lGrades))
-    Logger.info(
-      '✨ FinalGradesLFeature: output journalStudentIds',
-      output.map(r => String(r.journalStudentId))
-    )
-
-    // Step 2: Filter output to only students whose calculated grade differs from current SISSEKANNE_L grade (or is missing)
-    // Debug: log calculated and existing grade for each student
-    output.forEach(r => {
-      const key = String(r.journalStudentId).trim()
-      const current = lGrades[key]
-      // Debug: show types and values for ID comparison
-      Logger.info('✨ FinalGradesLFeature: Grade compare', {
-        student: r.name,
-        journalStudentId: r.journalStudentId,
-        key,
-        keyType: typeof key,
-        lGradesKeys: Object.keys(lGrades),
-        lGradesKeyTypes: Object.keys(lGrades).map(k => typeof k),
-        calculated: r.finalGrade,
-        calculatedUpper: r.finalGrade ? String(r.finalGrade).toUpperCase() : '',
-        existing: current !== undefined ? current : '(missing)'
-      })
-    })
-    const filteredOutput = output.filter(r => {
-      const key = String(r.journalStudentId).trim()
-      const current = lGrades[key]
-      if (!current) return r.finalGrade && r.finalGrade !== ''
-      return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
-    })
-
-    let html = ''
-    html += '<style>'
-    html += '.oa-final-grades-table {margin-top:16px;border-collapse:collapse;width:100%;font-size:15px;}'
-    html += '.oa-final-grades-table th {background:#1976d2;color:#fff;padding:8px 12px;border:1px solid #1976d2;text-align:left;}'
-    html += '.oa-final-grades-table td {padding:8px 12px;border:1px solid #e0e0e0;}'
-    html += '.oa-final-grades-table tr:nth-child(even) {background:#f5f7fa;}'
-    html += '.oa-final-grades-table tr:hover {background:#e3f2fd;}'
-    html += '</style>'
-    html += '<table class="oa-final-grades-table">'
-    html += '<thead><tr>'
-    for (let i = 0; i < 2; i++) {
-      html += '<th>Õpilane</th><th>Lõpptulemus</th>'
-    }
-    html += '</tr></thead><tbody>'
-    for (let i = 0; i < filteredOutput.length; i += 2) {
-      html += '<tr>'
-      for (let j = 0; j < 2; j++) {
-        const r = filteredOutput[i + j]
-        if (r) {
-          html += '<td>' + r.name + '</td>'
-        } else {
-          html += '<td></td>'
-        }
-        html += '<td>'
-        if (r) {
-          let display = '',
-            tooltip = ''
-          const grade = r.finalGrade
-          if (/^\d+(\.\d+)?$/.test(grade)) {
-            const numGrade = Number(grade)
-            display = String(Math.round(numGrade))
-            if (!Number.isInteger(numGrade)) {
-              tooltip = grade
-            }
-          } else {
-            display = grade || ''
-          }
-          if (tooltip) {
-            html += `<span title="${tooltip}">${display}</span>`
-          } else {
-            html += display
-          }
-        }
-        html += '</td>'
-      }
-      html += '</tr>'
-    }
-    html += '</tbody></table>'
+    // Only sync grades and show a status message, do not render a table
     let container = document.getElementById('oa-final-grades-results')
     if (!container) {
       container = domService.createAndInsertElement('div', { id: 'oa-final-grades-results' }, '', button, 'afterend')
     }
-    container.innerHTML = html
-    // Add sync button
-    let syncBtn = document.querySelector('.oa-final-grades-l-btn')
-    if (!syncBtn) {
-      syncBtn = domService.createAndInsertElement(
-        'button',
-        {
-          id: 'oa-sync-lopp-btn',
-          class: 'oa-final-grades-l-btn',
-          style: {
-            margin: '16px 0px',
-            padding: '8px 16px',
-            background: '#1976d2',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '16px',
-            zIndex: 1000,
-            display: 'block',
-            width: 'auto',
-            maxWidth: '100%'
-          }
-        },
-        'Sünkroniseeri hinded',
-        container,
-        'afterend'
-      )
-    }
+    container.innerHTML = ''
     let statusDiv = document.getElementById('oa-sync-lopp-status')
     if (!statusDiv) {
       statusDiv = domService.createAndInsertElement(
         'div',
         { id: 'oa-sync-lopp-status', style: { margin: '8px 0', color: '#1976d2', fontWeight: 'bold' } },
         '',
-        syncBtn,
+        container,
         'afterend'
       )
     }
-    syncBtn.onclick = async () => {
-      syncBtn.disabled = true
-      syncBtn.textContent = 'Saatmine...'
-      statusDiv.textContent = ''
-      try {
-        const journalId = this.extractJournalId()
-        // Find the SISSEKANNE_L entry
-        const lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
-        if (!lEntry) {
-          statusDiv.textContent = 'Lõpptulemus puudub.'
-          syncBtn.textContent = 'Sync Lõpptulemus Tahvlisse'
-          return
-        }
-
-        // Fetch current state from API first
-        statusDiv.textContent = 'Laen praegust seisu...'
-        const currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
-        Logger.info('✨ FinalGradesLFeature: Current entry from API', currentEntry)
-
-        // Build journalEntryStudents array from our filtered calculated grades
-        // Use the same filtering as above
-        let lGrades = {}
-        if (currentEntry && Array.isArray(currentEntry.journalEntryStudents)) {
-          currentEntry.journalEntryStudents.forEach(js => {
-            if (js && js.journalStudent != null && js.grade && js.grade.code) {
-              // Extract grade from code, e.g. KUTSEHINDAMINE_3 -> 3, KUTSEHINDAMINE_MA -> MA
-              const code = js.grade.code
-              let val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
-              lGrades[String(js.journalStudent)] = val
-            }
-          })
-        }
-        const filteredOutput = results.output.filter(r => {
-          const key = String(r.journalStudentId).trim()
-          const current = lGrades[key]
-          if (!current) return r.finalGrade && r.finalGrade !== ''
-          return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
-        })
-
-        Logger.info('✨ FinalGradesLFeature: Current journalEntryStudents', currentEntry.journalEntryStudents?.map(js => js.journalStudent) || [])
-        Logger.info(
-          '✨ FinalGradesLFeature: filtered results.output journalStudentIds',
-          filteredOutput.map(r => r.journalStudentId)
-        )
-
-        const mappedStudents = filteredOutput
-          .map(r => {
-            const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
-            let grade = r.finalGrade
-            let code = null,
-              value = '',
-              value2 = '',
-              nameEt = '',
-              nameEn = '',
-              valid = true
-            if (['1', '2', '3', '4', '5'].includes(grade)) {
-              code = `KUTSEHINDAMINE_${grade}`
-              value = grade
-              value2 = grade
-              const gradeNames = {
-                5: { nameEt: 'Väga hea', nameEn: 'Very good' },
-                4: { nameEt: 'Hea', nameEn: 'Good' },
-                3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
-                2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
-                1: { nameEt: 'Nõrk', nameEn: 'Weak' }
-              }
-              nameEt = gradeNames[grade]?.nameEt || ''
-              nameEn = gradeNames[grade]?.nameEn || ''
-            } else if (grade === 'MA') {
-              code = 'KUTSEHINDAMINE_MA'
-              value = 'MA'
-              value2 = 'ma'
-              nameEt = 'Mittearvestatud'
-              nameEn = 'Failed'
-            } else if (grade === 'A') {
-              code = 'KUTSEHINDAMINE_A'
-              value = 'A'
-              value2 = 'a'
-              nameEt = 'Arvestatud'
-              nameEn = 'Passed'
-            } else {
-              return null
-            }
-            // If updating, preserve all fields from existing, only update grade
-            if (existing) {
-              return {
-                ...existing,
-                journalStudent: String(r.journalStudentId), // Ensure string format
-                grade: {
-                  code,
-                  gradingSchemaRowId: null,
-                  value,
-                  value2,
-                  extraval1: null,
-                  extraval2: null,
-                  nameEt,
-                  nameEn,
-                  valid
-                }
-              }
-            } else {
-              // Add new with full structure
-              return {
-                id: undefined,
-                journalStudent: String(r.journalStudentId), // Ensure string format
-                absence: null,
-                grade: {
-                  code,
-                  gradingSchemaRowId: null,
-                  value,
-                  value2,
-                  extraval1: null,
-                  extraval2: null,
-                  nameEt,
-                  nameEn,
-                  valid
-                },
-                verbalGrade: null,
-                removeStudentHistory: false,
-                addInfo: null,
-                isLessonAbsence: false,
-                hasOverlappingLessonAbsence: false,
-                isPraise: false,
-                isRemark: false,
-                lessonAbsences: {},
-                studentName: null,
-                studentGroup: null,
-                journalEntryStudentHistories: [],
-                hasWholeDayAcceptedAbsence: false,
-                wholeDayAbsenceCode: null
-              }
-            }
-          })
-          .filter(Boolean)
-
-        // Deduplicate by journalStudent (last one wins), filter out null/undefined journalStudent
-        const seen = new Map()
-        mappedStudents.forEach(js => {
-          if (js && js.journalStudent != null) {
-            seen.set(String(js.journalStudent), js) // Use string key for deduplication
+    statusDiv.textContent = ''
+    try {
+      const journalId = this.extractJournalId()
+      // Find the SISSEKANNE_L entry
+      let lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
+      if (!lEntry) {
+        statusDiv.textContent = 'Lõpptulemus puudub.'
+        return
+      }
+      // Fetch current state from API first
+      const currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
+      Logger.info('✨ FinalGradesLFeature: Current entry from API', currentEntry)
+      // Build journalEntryStudents array from our filtered calculated grades
+      let lGrades = {}
+      if (currentEntry && Array.isArray(currentEntry.journalEntryStudents)) {
+        currentEntry.journalEntryStudents.forEach(js => {
+          if (js && js.journalStudent != null && js.grade && js.grade.code) {
+            const code = js.grade.code
+            let val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
+            lGrades[String(js.journalStudent)] = val
           }
         })
-        const journalEntryStudents = Array.from(seen.values()).filter(js => js && js.journalStudent != null)
-
-        // Debug log for outgoing array
-        Logger.info('✨ FinalGradesLFeature: journalEntryStudents to send', journalEntryStudents)
-
-        // Build payload using the current entry from API
-        const payload = {
-          ...currentEntry,
-          journalEntryStudents
-        }
-        Logger.info('✨ FinalGradesLFeature: Sending SISSEKANNE_L PUT', { url: `/journals/${journalId}/journalEntry/${lEntry.id}`, payload })
-        await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${lEntry.id}`, payload)
-        statusDiv.textContent = 'Lõpptulemus sünkroonitud!'
-        syncBtn.textContent = 'Sync Lõpptulemus Tahvlisse'
-      } catch (err) {
-        statusDiv.textContent = 'Viga saatmisel.'
-        syncBtn.textContent = 'Sync Lõpptulemus Tahvlisse'
-      } finally {
-        syncBtn.disabled = false
       }
+      const filteredOutput = results.output.filter(r => {
+        const key = String(r.journalStudentId).trim()
+        const current = lGrades[key]
+        if (!current) return r.finalGrade && r.finalGrade !== ''
+        return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
+      })
+      Logger.info(
+        '✨ FinalGradesLFeature: filtered results.output journalStudentIds',
+        filteredOutput.map(r => r.journalStudentId)
+      )
+      const mappedStudents = filteredOutput
+        .map(r => {
+          const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
+          let grade = r.finalGrade
+          let code = null,
+            value = '',
+            value2 = '',
+            nameEt = '',
+            nameEn = '',
+            valid = true
+          if (['1', '2', '3', '4', '5'].includes(grade)) {
+            code = `KUTSEHINDAMINE_${grade}`
+            value = grade
+            value2 = grade
+            const gradeNames = {
+              5: { nameEt: 'Väga hea', nameEn: 'Very good' },
+              4: { nameEt: 'Hea', nameEn: 'Good' },
+              3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
+              2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
+              1: { nameEt: 'Nõrk', nameEn: 'Weak' }
+            }
+            nameEt = gradeNames[grade]?.nameEt || ''
+            nameEn = gradeNames[grade]?.nameEn || ''
+          } else if (grade === 'MA') {
+            code = 'KUTSEHINDAMINE_MA'
+            value = 'MA'
+            value2 = 'ma'
+            nameEt = 'Mittearvestatud'
+            nameEn = 'Failed'
+          } else if (grade === 'A') {
+            code = 'KUTSEHINDAMINE_A'
+            value = 'A'
+            value2 = 'a'
+            nameEt = 'Arvestatud'
+            nameEn = 'Passed'
+          } else {
+            return null
+          }
+          if (existing) {
+            return {
+              ...existing,
+              journalStudent: String(r.journalStudentId),
+              grade: {
+                code,
+                gradingSchemaRowId: null,
+                value,
+                value2,
+                extraval1: null,
+                extraval2: null,
+                nameEt,
+                nameEn,
+                valid
+              }
+            }
+          } else {
+            return {
+              id: undefined,
+              journalStudent: String(r.journalStudentId),
+              absence: null,
+              grade: {
+                code,
+                gradingSchemaRowId: null,
+                value,
+                value2,
+                extraval1: null,
+                extraval2: null,
+                nameEt,
+                nameEn,
+                valid: true
+              },
+              verbalGrade: null,
+              removeStudentHistory: false,
+              addInfo: null,
+              isLessonAbsence: false,
+              hasOverlappingLessonAbsence: false,
+              isPraise: false,
+              isRemark: false,
+              lessonAbsences: {},
+              studentName: null,
+              studentGroup: null,
+              journalEntryStudentHistories: [],
+              hasWholeDayAcceptedAbsence: false,
+              wholeDayAbsenceCode: null
+            }
+          }
+        })
+        .filter(Boolean)
+      // Deduplicate by journalStudent (last one wins), filter out null/undefined journalStudent
+      const seen = new Map()
+      mappedStudents.forEach(js => {
+        if (js && js.journalStudent != null) {
+          seen.set(String(js.journalStudent), js)
+        }
+      })
+      const journalEntryStudents = Array.from(seen.values()).filter(js => js && js.journalStudent != null)
+      Logger.info('✨ FinalGradesLFeature: journalEntryStudents to send', journalEntryStudents)
+      // Build payload using the current entry from API
+      const payload = {
+        ...currentEntry,
+        journalEntryStudents
+      }
+      Logger.info('✨ FinalGradesLFeature: Sending SISSEKANNE_L PUT', { url: `/journals/${journalId}/journalEntry/${lEntry.id}`, payload })
+      await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${lEntry.id}`, payload)
+      setTimeout(() => window.location.reload(), 1000)
+    } catch (err) {
+      statusDiv.textContent = 'Viga saatmisel.'
     }
   }
 }
