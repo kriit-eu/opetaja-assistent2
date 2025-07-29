@@ -271,18 +271,16 @@ class FinalGradesByOvFeature extends BaseFeature {
     })
     Logger.info('✨ FinalGradesByOvFeature: DEBUG studentMap after processing:', studentMap)
 
-    // Map outcomes to their leading number (e.g. 7 for "7) ...")
+    // Map ÕV number using outcomeOrderNr+1 for SISSEKANNE_O (robust to all nameEt formats)
+    // This ensures correct mapping regardless of how ÕV is tagged in nameEt
     const outcomesByNumber = {}
-    const ovNumToOutcomeId = {} // Map ÕV number to curriculumModuleOutcomes from SISSEKANNE_O
+    const ovNumToOutcomeId = {} // Map ÕV number (as string) to curriculumModuleOutcomes from SISSEKANNE_O
     entries.forEach(entry => {
-      if (entry.entryType === 'SISSEKANNE_O' && entry.nameEt) {
-        const match = entry.nameEt.match(/^(\d+)\)/)
-        if (match) {
-          const ovNum = match[1]
-          outcomesByNumber[ovNum] = entry.nameEt
-          if (entry.curriculumModuleOutcomes) {
-            ovNumToOutcomeId[ovNum] = entry.curriculumModuleOutcomes
-          }
+      if (entry.entryType === 'SISSEKANNE_O' && typeof entry.outcomeOrderNr === 'number') {
+        const ovNum = String(entry.outcomeOrderNr + 1)
+        outcomesByNumber[ovNum] = entry.nameEt
+        if (entry.curriculumModuleOutcomes) {
+          ovNumToOutcomeId[ovNum] = entry.curriculumModuleOutcomes
         }
       }
       // Support ÕVn in nameEt for SISSEKANNE_I, including patterns like (ÕV1) or (ÕV1, ÕV2)
@@ -298,17 +296,18 @@ class FinalGradesByOvFeature extends BaseFeature {
             allOvNumsInParen.push(...nums)
           })
           allOvNumsInParen.forEach(ovNum => {
-            outcomesByNumber[ovNum] = `ÕV${ovNum}`
+            outcomesByNumber[ovNum.replace(/^0+/, '')] = `ÕV${ovNum.replace(/^0+/, '')}`
           })
         }
         // Also support plain ÕVn in nameEt
         const ovMatch = entry.nameEt.match(/ÕV(\d+)/i)
         if (ovMatch && ovMatch[1]) {
           hasOvSissekanneI = true
-          outcomesByNumber[ovMatch[1]] = `ÕV${ovMatch[1]}`
+          outcomesByNumber[ovMatch[1].replace(/^0+/, '')] = `ÕV${ovMatch[1].replace(/^0+/, '')}`
         }
       }
     })
+    Logger.info('✨ FinalGradesByOvFeature: ovNumToOutcomeId mapping for this journal', ovNumToOutcomeId)
 
     // Collect grades for each student
     const gradesByStudent = {}
@@ -676,11 +675,22 @@ class FinalGradesByOvFeature extends BaseFeature {
             const estDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Tallinn' })
             const gradeDate = estDate + 'T00:00:00.000Z'
             for (const ovNum of results.allOvNums) {
-              const journalOutcomeId = ovNumToOutcomeId && ovNumToOutcomeId[ovNum] ? ovNumToOutcomeId[ovNum] : ovNum
+              if (!ovNumToOutcomeId || !ovNumToOutcomeId[ovNum]) {
+                Logger.error('FinalGradesByOvFeature: No outcomeId mapping for ÕV', { ovNum, ovNumToOutcomeId })
+                container.innerHTML = `<div style=\"margin:16px 0;color:#d32f2f;font-weight:bold;\">Viga: ei leitud ÕV ${ovNum} outcomeId vastendust selles päevikus!</div>`
+                allSuccess = false
+                continue
+              }
+              const journalOutcomeId = ovNumToOutcomeId[ovNum]
               let latestOutcomeEntry = null
               try {
                 latestOutcomeEntry = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${journalOutcomeId}`)
-              } catch (err) {}
+              } catch (err) {
+                Logger.error('FinalGradesByOvFeature: Error fetching journalOutcome', { journalId, journalOutcomeId, err })
+                container.innerHTML = `<div style=\"margin:16px 0;color:#d32f2f;font-weight:bold;\">Viga: ei saanud kätte ÕV ${ovNum} outcome andmeid!</div>`
+                allSuccess = false
+                continue
+              }
               const freshGradesMap = {}
               if (latestOutcomeEntry && latestOutcomeEntry.outcomeStudents && Array.isArray(latestOutcomeEntry.outcomeStudents)) {
                 latestOutcomeEntry.outcomeStudents.forEach(outcomeStudent => {
@@ -763,6 +773,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                 await this.api.tahvel.post(url, payload)
                 // No status message for OK
               } catch (err) {
+                Logger.error('FinalGradesByOvFeature: Error posting grades', { url, payload, err })
                 // Only show error if something goes wrong
                 allSuccess = false
                 container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga õpiväljundite hinnete saatmisel!</div>'
@@ -772,6 +783,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               window.location.reload()
             }
           } catch (err) {
+            Logger.error('FinalGradesByOvFeature: Fatal error in sync loop', { err })
             container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga õpiväljundite hinnete saatmisel!</div>'
           }
         })()
