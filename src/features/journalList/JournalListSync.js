@@ -168,6 +168,36 @@ class JournalListSyncFeature extends BaseFeature {
       const groupCode = currentEntry.groupName || ''
       kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
       payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+
+      // Filter out students with OPPURSTAATUS_K (studentIsDeleted: true) from journalEntryStudents if present
+      if (Array.isArray(payload.journalEntryStudents)) {
+        const studentPromises = payload.journalEntryStudents.map(async student => {
+          const journalStudentId = student.journalStudent
+          if (!journalStudentId) return student // Keep if no ID
+
+          const studentId = this.journalStudentIdToStudentId[journalStudentId]
+          if (!studentId) {
+            Logger.warning(`[syncAssignmentNameDifferences] No studentId mapping for journalStudentId: ${journalStudentId}`)
+            return student // Keep if no mapping
+          }
+
+          try {
+            const studentDetails = await this.getStudentDetails(studentId)
+            if (studentDetails && studentDetails.status === 'OPPURSTAATUS_K') {
+              Logger.info(`[syncAssignmentNameDifferences] Filtering out student ${studentDetails.person.lastname} (journalStudentId: ${journalStudentId}) with status OPPURSTAATUS_K`)
+              return null // Filter out
+            }
+          } catch (error) {
+            Logger.error(`[syncAssignmentNameDifferences] Failed to get details for studentId ${studentId}, keeping in payload to be safe.`, error)
+          }
+
+          return student // Keep by default
+        })
+
+        const filteredStudents = (await Promise.all(studentPromises)).filter(Boolean)
+        payload.journalEntryStudents = filteredStudents
+      }
+
       Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
       try {
         await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
@@ -1222,6 +1252,7 @@ class JournalListSyncFeature extends BaseFeature {
                         // Kriit response for result has studentName, but we'll trust Tahvel's for consistency.
                         diffResult.studentName = matchingResult.studentName
                         diffResult.studentIsActive = matchingResult.studentIsActive
+                        diffResult.studentIsDeleted = matchingResult.studentIsDeleted
 
                         // Add the Tahvel grade as currentGrade for UI display
                         diffResult.currentGrade = matchingResult.grade
