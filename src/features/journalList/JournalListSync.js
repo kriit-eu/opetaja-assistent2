@@ -293,11 +293,52 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
+   * Add a manual sync button to the page
+   */
+  addManualSyncButton() {
+    const buttonId = 'manual-sync-button'
+    if (document.getElementById(buttonId)) {
+      return
+    }
+
+    const container = document.querySelector('#main-content .layout-padding > div')
+    if (!container) {
+      Logger.warning('Could not find container for manual sync button')
+      return
+    }
+
+    const button = document.createElement('button')
+    button.id = buttonId
+    button.textContent = 'Käivita andmete uuesti laadimine'
+    button.className = 'md-button md-raised'
+    button.style.marginBottom = '10px'
+    button.addEventListener('click', () => this.fetchJournalData())
+
+    const tableContainer = container.querySelector('md-table-container')
+    if (tableContainer) {
+      container.insertBefore(button, tableContainer)
+    } else {
+      container.prepend(button)
+    }
+  }
+
+  /**
+   * Remove the manual sync button from the page
+   */
+  removeManualSyncButton() {
+    const button = document.getElementById('manual-sync-button')
+    if (button) {
+      button.remove()
+    }
+  }
+
+  /**
    * Called when the feature is activated
    * @param {NodeList} elements - The found elements (journal links)
    */
   onActivate(elements) {
     this.isActive = true
+    this.addManualSyncButton()
     // Only activate if the URL is exactly 'journals?_menu'
     const url = window.location.hash.replace(/^#\/?/, '').split('&')[0]
     if (url !== 'journals?_menu') {
@@ -344,6 +385,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   onDeactivate() {
     this.isActive = false
+    this.removeManualSyncButton()
     // Call parent method to clean up observers
     super.onDeactivate()
 
@@ -402,6 +444,16 @@ class JournalListSyncFeature extends BaseFeature {
       if (Logger.isDebugMode()) Logger.debug('[DEBUG] fetchJournalData called')
       this.isLoading = true
       this.updateUI()
+
+      // Always get the latest journal links from the DOM to handle filtering/sorting
+      const journalLinkSelectors = [
+        '#main-content md-table-container td:nth-child(2) > a',
+        '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
+        '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
+        'a[href^="/#/journal/"]'
+      ]
+      this.journalLinks = document.querySelectorAll(journalLinkSelectors.join(', '))
+      Logger.debug(`Re-scanned for journal links, found ${this.journalLinks.length}`)
 
       // Verify that we have journal links
       if (!this.journalLinks || this.journalLinks.length === 0) {
