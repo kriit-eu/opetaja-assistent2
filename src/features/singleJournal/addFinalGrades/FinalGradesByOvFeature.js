@@ -29,8 +29,10 @@ class FinalGradesByOvFeature extends BaseFeature {
           try {
             Logger.info('✨ FinalGradesByOvFeature: Button click handler start (direct)')
             const [entries, students] = await Promise.all([
+              // eslint-disable-next-line no-undef
               this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+              // eslint-disable-next-line no-undef
+              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
             ])
             Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
             Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
@@ -81,7 +83,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Fetch entries and students to check for ÕV columns or SISSEKANNE_L
       const [entries, students] = await Promise.all([
         this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
       ])
       const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
       const hasSissekanneL = lFeature.detect(entries)
@@ -101,7 +103,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Use existing button if present, otherwise insert
       let button = document.querySelector('.oa-final-grades-btn')
       Logger.info('✨ FinalGradesByOvFeature: Existing button found:', button)
-      const buttonText = hasSissekanneL ? 'Näita lõpptulemuse hindeid' : 'Lisa õpiväljundite hinded'
+      const buttonText = hasSissekanneL ? 'Lisa lõpptulemuse hinded' : 'Lisa õpiväljundite hinded'
       if (!button) {
         if (tableContainer) {
           button = domService.createAndInsertElement(
@@ -191,7 +193,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           Logger.info('✨ FinalGradesByOvFeature: Button click handler start (delegated)')
           const [entries, students] = await Promise.all([
             this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
           ])
           Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
@@ -677,7 +679,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             for (const ovNum of results.allOvNums) {
               if (!ovNumToOutcomeId || !ovNumToOutcomeId[ovNum]) {
                 Logger.error('FinalGradesByOvFeature: No outcomeId mapping for ÕV', { ovNum, ovNumToOutcomeId })
-                container.innerHTML = `<div style=\"margin:16px 0;color:#d32f2f;font-weight:bold;\">Viga: ei leitud ÕV ${ovNum} outcomeId vastendust selles päevikus!</div>`
+                container.innerHTML = `<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga: ei leitud ÕV ${ovNum} outcomeId vastendust selles päevikus!</div>`
                 allSuccess = false
                 continue
               }
@@ -687,7 +689,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                 latestOutcomeEntry = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${journalOutcomeId}`)
               } catch (err) {
                 Logger.error('FinalGradesByOvFeature: Error fetching journalOutcome', { journalId, journalOutcomeId, err })
-                container.innerHTML = `<div style=\"margin:16px 0;color:#d32f2f;font-weight:bold;\">Viga: ei saanud kätte ÕV ${ovNum} outcome andmeid!</div>`
+                container.innerHTML = `<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga: ei saanud kätte ÕV ${ovNum} outcome andmeid!</div>`
                 allSuccess = false
                 continue
               }
