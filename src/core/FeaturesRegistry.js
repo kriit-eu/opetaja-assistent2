@@ -83,7 +83,7 @@ export async function loadFeatures() {
 
   // Load final grades by outcomes feature (always enabled)
   try {
-    const FinalGradesByOvFeature = (await import('../features/singleJournal/FinalGradesByOvFeature.js')).default
+    const FinalGradesByOvFeature = (await import('../features/singleJournal/addFinalGrades/FinalGradesByOvFeature.js')).default
     const finalGradesByOvFeature = new FinalGradesByOvFeature()
     allAvailableFeatures.singleJournal.push(finalGradesByOvFeature)
     Logger.debug('Feature "FinalGradesByOvFeature" created')

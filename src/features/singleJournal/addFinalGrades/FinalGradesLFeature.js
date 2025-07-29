@@ -1,5 +1,5 @@
-import Logger from '../../services/Logger.js'
-import { domService } from '../../services/DomService.js'
+import Logger from '../../../services/Logger.js'
+import { domService } from '../../../services/DomService.js'
 
 class FinalGradesLFeature {
   constructor(api, extractJournalId) {

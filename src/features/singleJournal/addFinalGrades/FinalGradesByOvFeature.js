@@ -1,6 +1,6 @@
-import { BaseFeature } from '../../core/BaseFeature.js'
-import Logger from '../../services/Logger.js'
-import { domService } from '../../services/DomService.js'
+import { BaseFeature } from '../../../core/BaseFeature.js'
+import Logger from '../../../services/Logger.js'
+import { domService } from '../../../services/DomService.js'
 import FinalGradesLFeature from './FinalGradesLFeature.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
