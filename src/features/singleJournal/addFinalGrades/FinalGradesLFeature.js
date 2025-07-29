@@ -5,7 +5,6 @@ class FinalGradesLFeature {
   constructor(api, extractJournalId) {
     this.api = api
     this.extractJournalId = extractJournalId
-    this._lastEntries = null
   }
 
   detect(entries) {
@@ -181,8 +180,7 @@ class FinalGradesLFeature {
         currentEntry.journalEntryStudents.forEach(js => {
           if (js && js.journalStudent != null && js.grade && js.grade.code) {
             const code = js.grade.code
-            const val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
-            lGrades[String(js.journalStudent)] = val
+            lGrades[String(js.journalStudent)] = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
           }
         })
       }
@@ -204,8 +202,8 @@ class FinalGradesLFeature {
             value = '',
             value2 = '',
             nameEt = '',
-            nameEn = '',
-            valid = true
+            nameEn = ''
+          const valid = true
           if (['1', '2', '3', '4', '5'].includes(grade)) {
             code = `KUTSEHINDAMINE_${grade}`
             value = grade
@@ -248,7 +246,8 @@ class FinalGradesLFeature {
                 nameEt,
                 nameEn,
                 valid
-              }
+              },
+              removeStudentHistory: true
             }
           } else {
             return {
@@ -267,7 +266,7 @@ class FinalGradesLFeature {
                 valid: true
               },
               verbalGrade: null,
-              removeStudentHistory: false,
+              removeStudentHistory: true,
               addInfo: null,
               isLessonAbsence: false,
               hasOverlappingLessonAbsence: false,
