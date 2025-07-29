@@ -4,6 +4,43 @@ import { domService } from '../../../services/DomService.js'
 import FinalGradesLFeature from './FinalGradesLFeature.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
+  // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
+  async #fetchDetailedOutcomeStudents(journalId, outcomeId, students, opts = {}) {
+    // opts: { output: 'studentOutcomeResults' | 'existingGradesMap', ovNum }
+    try {
+      const detailedOutcome = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${outcomeId}`)
+      if (!detailedOutcome.outcomeStudents) return opts.output === 'studentOutcomeResults' ? {} : {}
+      if (opts.output === 'studentOutcomeResults') {
+        // Map to { [journalStudentId]: [ { grade } ] }
+        const result = {}
+        detailedOutcome.outcomeStudents.forEach(outcomeStudent => {
+          const matchingStudent = students.find(s => {
+            const studentId = s.student ? s.student.id : s.id
+            return String(studentId) === String(outcomeStudent.studentId)
+          })
+          if (matchingStudent && outcomeStudent.grade) {
+            const journalStudentId = matchingStudent.id
+            result[journalStudentId] = [{ grade: outcomeStudent.grade }]
+          }
+        })
+        return result
+      } else if (opts.output === 'existingGradesMap' && opts.ovNum) {
+        // Map to { `${studentId}|${ovNum}`: outcomeStudent }
+        const result = {}
+        detailedOutcome.outcomeStudents.forEach(outcomeStudent => {
+          if (outcomeStudent.studentId && outcomeStudent.grade) {
+            const key = `${outcomeStudent.studentId}|${opts.ovNum}`
+            result[key] = outcomeStudent
+          }
+        })
+        return result
+      }
+      return {}
+    } catch (err) {
+      // Logging is handled by caller
+      return opts.output === 'studentOutcomeResults' ? {} : {}
+    }
+  }
   static OA_BTN_STYLE = {
     margin: '16px 0px',
     padding: '8px 16px',
@@ -176,7 +213,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       const btn = document.querySelector('.oa-final-grades-btn')
       if (!btn) return
       if (!btn._oaHandlerAttached) {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', async() => {
           Logger.info('✨ FinalGradesByOvFeature: Direct button click detected')
           btn.disabled = true
           btn.textContent = 'Laen...'
@@ -343,7 +380,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
           Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
           if (hasSissekanneL) {
-            lFeature.showResults(results, btn, entries)
+            await lFeature.showResults(results, btn, entries)
           } else {
             await this.#showResults(results, btn)
           }
@@ -421,7 +458,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           // (allOvNumsInParen removed as it was never used)
           parenOvMatches.forEach(m => {
             // just trigger hasOvSissekanneI, no need to collect
-            ;[...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
+            [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
           })
         }
         // Also support plain ÕVn in nameEt
@@ -460,40 +497,10 @@ class FinalGradesByOvFeature extends BaseFeature {
 
         // If studentOutcomeResults is missing, fetch detailed outcome data
         if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
-          try {
-            const journalId = this.#extractJournalId()
-            const detailedOutcome = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
-            Logger.info('✨ FinalGradesByOvFeature: Fetched detailed SISSEKANNE_O outcome', {
-              outcomeId: entry.curriculumModuleOutcomes,
-              detailedOutcome
-            })
-
-            // Convert outcomeStudents to studentOutcomeResults format
-            if (detailedOutcome.outcomeStudents) {
-              studentOutcomeResults = {}
-              detailedOutcome.outcomeStudents.forEach(outcomeStudent => {
-                // Find journalStudentId by matching studentId
-                const matchingStudent = students.find(s => {
-                  const studentId = s.student ? s.student.id : s.id
-                  return String(studentId) === String(outcomeStudent.studentId)
-                })
-
-                if (matchingStudent && outcomeStudent.grade) {
-                  const journalStudentId = matchingStudent.id
-                  studentOutcomeResults[journalStudentId] = [
-                    {
-                      grade: outcomeStudent.grade
-                    }
-                  ]
-                }
-              })
-            }
-          } catch (err) {
-            Logger.warning('✨ FinalGradesByOvFeature: Could not fetch detailed SISSEKANNE_O outcome', {
-              outcomeId: entry.curriculumModuleOutcomes,
-              err
-            })
-          }
+          const journalId = this.#extractJournalId()
+          studentOutcomeResults = await this.#fetchDetailedOutcomeStudents(journalId, entry.curriculumModuleOutcomes, students, {
+            output: 'studentOutcomeResults'
+          })
         }
 
         if (studentOutcomeResults) {
@@ -669,34 +676,9 @@ class FinalGradesByOvFeature extends BaseFeature {
 
             // If studentOutcomeResults is missing, fetch detailed outcome data
             if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
-              try {
-                const journalId = this.#extractJournalId()
-                const detailedOutcome = await this.api.tahvel.get(`/journals/${journalId}/journalOutcome/${entry.curriculumModuleOutcomes}`)
-                Logger.info('✨ FinalGradesByOvFeature: Fetched detailed SISSEKANNE_O outcome for existing grades', {
-                  outcomeId: entry.curriculumModuleOutcomes,
-                  detailedOutcome
-                })
-
-                // Convert outcomeStudents to the format we need for existingGradesMap
-                if (detailedOutcome.outcomeStudents) {
-                  detailedOutcome.outcomeStudents.forEach(outcomeStudent => {
-                    if (outcomeStudent.studentId && outcomeStudent.grade) {
-                      const key = `${outcomeStudent.studentId}|${ovNum}`
-                      existingGradesMap[key] = outcomeStudent
-                      Logger.info('✨ FinalGradesByOvFeature: Added to existingGradesMap from detailed fetch', {
-                        key,
-                        studentId: outcomeStudent.studentId,
-                        grade: outcomeStudent.grade.code
-                      })
-                    }
-                  })
-                }
-              } catch (err) {
-                Logger.warning('✨ FinalGradesByOvFeature: Could not fetch detailed SISSEKANNE_O outcome for existing grades', {
-                  outcomeId: entry.curriculumModuleOutcomes,
-                  err
-                })
-              }
+              const journalId = this.#extractJournalId()
+              const map = await this.#fetchDetailedOutcomeStudents(journalId, entry.curriculumModuleOutcomes, [], { output: 'existingGradesMap', ovNum })
+              Object.assign(existingGradesMap, map)
             } else if (studentOutcomeResults) {
               // Use existing studentOutcomeResults if available
               Object.entries(studentOutcomeResults).forEach(([studentIdFromResults, results]) => {
@@ -804,7 +786,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     html += '<thead><tr><th>Õpilane</th>'
     html += '<th>Lõpptulemus</th>'
     html += '</tr></thead><tbody>'
-    filteredOutput.forEach(function (r) {
+    filteredOutput.forEach(function(r) {
       html += '<tr><td>' + r.name + '</td>'
       let display,
         tooltip = ''
@@ -851,7 +833,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           'afterend'
         )
       }
-      sendBtn.onclick = async () => {
+      sendBtn.onclick = async() => {
         sendBtn.disabled = true
         sendBtn.textContent = 'Saatmine...'
         statusDiv.textContent = ''
