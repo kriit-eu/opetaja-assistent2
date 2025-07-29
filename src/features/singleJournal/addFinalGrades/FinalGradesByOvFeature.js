@@ -21,7 +21,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       const btn = document.querySelector('.oa-final-grades-btn')
       if (!btn) return
       if (!btn._oaHandlerAttached) {
-        btn.addEventListener('click', async e => {
+  btn.addEventListener('click', async() => {
           Logger.info('✨ FinalGradesByOvFeature: Direct button click detected')
           btn.disabled = true
           btn.textContent = 'Laen...'
