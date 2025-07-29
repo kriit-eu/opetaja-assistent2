@@ -275,12 +275,10 @@ class FinalGradesByOvFeature extends BaseFeature {
 
     // Map ÕV number using outcomeOrderNr+1 for SISSEKANNE_O (robust to all nameEt formats)
     // This ensures correct mapping regardless of how ÕV is tagged in nameEt
-    const outcomesByNumber = {}
     const ovNumToOutcomeId = {} // Map ÕV number (as string) to curriculumModuleOutcomes from SISSEKANNE_O
     entries.forEach(entry => {
       if (entry.entryType === 'SISSEKANNE_O' && typeof entry.outcomeOrderNr === 'number') {
         const ovNum = String(entry.outcomeOrderNr + 1)
-        outcomesByNumber[ovNum] = entry.nameEt
         if (entry.curriculumModuleOutcomes) {
           ovNumToOutcomeId[ovNum] = entry.curriculumModuleOutcomes
         }
@@ -297,15 +295,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             const nums = [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
             allOvNumsInParen.push(...nums)
           })
-          allOvNumsInParen.forEach(ovNum => {
-            outcomesByNumber[ovNum.replace(/^0+/, '')] = `ÕV${ovNum.replace(/^0+/, '')}`
-          })
         }
         // Also support plain ÕVn in nameEt
         const ovMatch = entry.nameEt.match(/ÕV(\d+)/i)
         if (ovMatch && ovMatch[1]) {
           hasOvSissekanneI = true
-          outcomesByNumber[ovMatch[1].replace(/^0+/, '')] = `ÕV${ovMatch[1].replace(/^0+/, '')}`
         }
       }
     })
@@ -457,9 +451,10 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
     }
 
-    // Calculate per-ÕV grades for each student
-    const allOvNums = Object.keys(outcomesByNumber).sort((a, b) => Number(a) - Number(b))
-    Logger.info('✨ FinalGradesByOvFeature: All ÕV numbers:', allOvNums)
+  // Calculate per-ÕV grades for each student
+  // Use ovNumToOutcomeId keys for allOvNums
+  const allOvNums = Object.keys(ovNumToOutcomeId).sort((a, b) => Number(a) - Number(b))
+  Logger.info('✨ FinalGradesByOvFeature: All ÕV numbers:', allOvNums)
 
     const output = []
     const summary = []
@@ -522,7 +517,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       })
     })
     Logger.info('✨ FinalGradesByOvFeature: SUMMARY', summary)
-    return { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI }
+  return { output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI }
   }
 
   async #showResults(results, button) {
@@ -530,8 +525,8 @@ class FinalGradesByOvFeature extends BaseFeature {
     Logger.info('✨ FinalGradesByOvFeature: button parent:', button && button.parentElement)
     Logger.info("✨ FinalGradesByOvFeature: document.getElementById('oa-final-grades-results'):", document.getElementById('oa-final-grades-results'))
     Logger.info('✨ FinalGradesByOvFeature: Results to render:', results)
-    // results is now {output, allOvNums, outcomesByNumber, journalStudentIdToStudentId, hasOvSissekanneI}
-    const { output, allOvNums, outcomesByNumber, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI } = results
+  // results is now {output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI}
+  const { output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI } = results
 
     // Build a map of (studentId|ovNum) => existing grade object for updating
     const existingGradesMap = {}
