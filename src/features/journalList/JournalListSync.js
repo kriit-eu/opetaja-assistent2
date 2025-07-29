@@ -75,18 +75,18 @@ class JournalListSyncFeature extends BaseFeature {
     // Add name diffs
     assignmentNameDiffs.forEach(subjectDiff => {
       const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
-      if (!subject || !Array.isArray(subject.assignments)) return;
+      if (!subject || !Array.isArray(subject.assignments)) return
       subjectDiff.nameDiffs.forEach(nameDiff => {
-        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId);
-        if (!assignment) return;
-        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId);
+        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
+        if (!assignment) return
+        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
         if (!updateMap.has(key)) {
-          updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId });
+          updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
         }
-        updateMap.get(key).nameEt = nameDiff.kriit;
-        Logger.debug(`[UPDATE MAP] Set nameEt for key ${key}: ${nameDiff.kriit}`);
-      });
-    });
+        updateMap.get(key).nameEt = nameDiff.kriit
+        Logger.debug(`[UPDATE MAP] Set nameEt for key ${key}: ${nameDiff.kriit}`)
+      })
+    })
 
     // Add due date diffs
     dueDateDiffs.forEach(diff => {
@@ -166,7 +166,9 @@ class JournalListSyncFeature extends BaseFeature {
       // Optionally add homework field with Kriit link
       let kriitAssignmentUrl = ''
       const groupCode = currentEntry.groupName || ''
-      kriitAssignmentUrl = `http://localhost:8000/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+      // Use the Kriit API base URL from the API service, trimming any trailing slash
+      const kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
+      kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
       payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
 
       // Filter out students with OPPURSTAATUS_K (studentIsDeleted: true) from journalEntryStudents if present
@@ -184,7 +186,9 @@ class JournalListSyncFeature extends BaseFeature {
           try {
             const studentDetails = await this.getStudentDetails(studentId)
             if (studentDetails && studentDetails.status === 'OPPURSTAATUS_K') {
-              Logger.info(`[syncAssignmentNameDifferences] Filtering out student ${studentDetails.person.lastname} (journalStudentId: ${journalStudentId}) with status OPPURSTAATUS_K`)
+              Logger.info(
+                `[syncAssignmentNameDifferences] Filtering out student ${studentDetails.person.lastname} (journalStudentId: ${journalStudentId}) with status OPPURSTAATUS_K`
+              )
               return null // Filter out
             }
           } catch (error) {
@@ -803,7 +807,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async() => {
+        const fetchStudentDetails = async () => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -830,7 +834,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async() => {
+        const fetchPromise = (async () => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -1012,7 +1016,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
-      async() => {
+      async () => {
         await this.syncAssignmentNameDifferences()
         await this.syncWithKriit()
         await this.fetchJournalData()
@@ -3237,7 +3241,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   try {
     return await cacheService.getOrFetch(
       cacheKey,
-      async() => {
+      async () => {
         try {
           return await api.tahvel.get(endpoint)
         } catch (error) {
@@ -3283,7 +3287,7 @@ async function getTeacherPersonalCodeCached(api, teacher) {
   }
 
   // Create the fetch promise
-  const fetchPromise = (async() => {
+  const fetchPromise = (async () => {
     try {
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
