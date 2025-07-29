@@ -188,7 +188,7 @@ class ApiService {
 
         return cacheService.getOrFetch(
           cacheKey,
-          async () => {
+          async() => {
             const response = await fetch(urlString, requestOptions)
 
             if (!response.ok) {

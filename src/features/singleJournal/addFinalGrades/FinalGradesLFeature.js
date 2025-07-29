@@ -167,7 +167,7 @@ class FinalGradesLFeature {
     try {
       const journalId = this.extractJournalId()
       // Find the SISSEKANNE_L entry
-      let lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
+      const lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
       if (!lEntry) {
         statusDiv.textContent = 'Lõpptulemus puudub.'
         return
@@ -176,12 +176,12 @@ class FinalGradesLFeature {
       const currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
       Logger.info('✨ FinalGradesLFeature: Current entry from API', currentEntry)
       // Build journalEntryStudents array from our filtered calculated grades
-      let lGrades = {}
+      const lGrades = {}
       if (currentEntry && Array.isArray(currentEntry.journalEntryStudents)) {
         currentEntry.journalEntryStudents.forEach(js => {
           if (js && js.journalStudent != null && js.grade && js.grade.code) {
             const code = js.grade.code
-            let val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
+            const val = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
             lGrades[String(js.journalStudent)] = val
           }
         })
@@ -199,7 +199,7 @@ class FinalGradesLFeature {
       const mappedStudents = filteredOutput
         .map(r => {
           const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
-          let grade = r.finalGrade
+          const grade = r.finalGrade
           let code = null,
             value = '',
             value2 = '',

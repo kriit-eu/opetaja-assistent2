@@ -540,7 +540,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           const match = entry.nameEt && entry.nameEt.match(/^([0-9]+)\)/)
           const ovNum = match && match[1]
           if (ovNum) {
-            let studentOutcomeResults = entry.studentOutcomeResults
+            const studentOutcomeResults = entry.studentOutcomeResults
 
             // If studentOutcomeResults is missing, fetch detailed outcome data
             if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
@@ -615,7 +615,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
           // Normalize grades for comparison
           let normalizedCalculated = String(calculatedGrade || '').trim()
-          let normalizedExisting = String(existingGrade || '').trim()
+          const normalizedExisting = String(existingGrade || '').trim()
           // If both are numeric, compare as rounded integer strings
           if (/^\d+(\.\d+)?$/.test(normalizedCalculated) && /^\d+$/.test(normalizedExisting)) {
             normalizedCalculated = String(Math.round(Number(normalizedCalculated)))
@@ -668,7 +668,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       container.innerHTML = ''
       // Run the sync logic automatically, but do not show status unless error
       setTimeout(() => {
-        ;(async () => {
+        (async() => {
           let allSuccess = true
           try {
             const journalId = this.#extractJournalId()
@@ -795,7 +795,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     html += '<thead><tr><th>Õpilane</th>'
     html += '<th>Lõpptulemus</th>'
     html += '</tr></thead><tbody>'
-    filteredOutput.forEach(function (r) {
+    filteredOutput.forEach(function(r) {
       html += '<tr><td>' + r.name + '</td>'
       let display = '',
         tooltip = ''
@@ -855,7 +855,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           'afterend'
         )
       }
-      sendBtn.onclick = async () => {
+      sendBtn.onclick = async() => {
         sendBtn.disabled = true
         sendBtn.textContent = 'Saatmine...'
         statusDiv.textContent = ''
