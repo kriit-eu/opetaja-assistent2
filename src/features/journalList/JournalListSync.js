@@ -35,9 +35,7 @@ class JournalListSyncFeature extends BaseFeature {
           // assignment.assignmentEntryDateTahvel is the value from Tahvel (must be present in assignment object)
           const kriitEntryDate = assignment.assignmentEntryDate
           const tahvelEntryDate = assignment.assignmentEntryDateTahvel || assignment.assignmentEntryDate_Tahvel || assignment.entryDate || null
-          if (
-            kriitEntryDate && tahvelEntryDate && kriitEntryDate !== tahvelEntryDate
-          ) {
+          if (kriitEntryDate !== tahvelEntryDate) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
               assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
@@ -1195,9 +1193,21 @@ class JournalListSyncFeature extends BaseFeature {
                   const kriitAssignment = diffAssignment
                   const tahvelAssignment = matchingAssignment
 
+                  const normalizeDate = val => {
+                    if (!val) return null
+                    if (typeof val === 'string' && val.length >= 10) return val.slice(0, 10)
+                    return val
+                  }
+
                   const compareAndCreateDiff = fieldName => {
-                    const kriitValue = kriitAssignment[fieldName]
-                    const tahvelValue = tahvelAssignment[fieldName]
+                    let kriitValue = kriitAssignment[fieldName]
+                    let tahvelValue = tahvelAssignment[fieldName]
+
+                    // For date fields, normalize to YYYY-MM-DD
+                    if (fieldName === 'assignmentEntryDate' || fieldName === 'assignmentDueAt') {
+                      kriitValue = normalizeDate(kriitValue)
+                      tahvelValue = normalizeDate(tahvelValue)
+                    }
 
                     // Normalize undefined to null for comparison
                     const normKriit = kriitValue === undefined ? null : kriitValue
