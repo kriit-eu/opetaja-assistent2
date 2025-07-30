@@ -31,12 +31,12 @@ class JournalListSyncFeature extends BaseFeature {
     this.differences.forEach(subjectDiff => {
       if (Array.isArray(subjectDiff.assignments)) {
         subjectDiff.assignments.forEach(assignment => {
+          // assignment.assignmentEntryDate is a string from Kriit
+          // assignment.assignmentEntryDateTahvel is the value from Tahvel (must be present in assignment object)
+          const kriitEntryDate = assignment.assignmentEntryDate
+          const tahvelEntryDate = assignment.assignmentEntryDateTahvel || assignment.assignmentEntryDate_Tahvel || assignment.entryDate || null
           if (
-            assignment.assignmentEntryDate &&
-            typeof assignment.assignmentEntryDate === 'object' &&
-            assignment.assignmentEntryDate.kriit &&
-            assignment.assignmentEntryDate.Tahvel &&
-            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+            kriitEntryDate && tahvelEntryDate && kriitEntryDate !== tahvelEntryDate
           ) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
@@ -45,8 +45,8 @@ class JournalListSyncFeature extends BaseFeature {
             entryDateDiffs.push({
               assignmentExternalId: assignment.assignmentExternalId,
               assignmentName,
-              kriit: assignment.assignmentEntryDate.kriit,
-              Tahvel: assignment.assignmentEntryDate.Tahvel,
+              kriit: kriitEntryDate,
+              Tahvel: tahvelEntryDate,
               subjectName: subjectDiff.subjectName || '',
               subjectExternalId: subjectDiff.subjectExternalId || ''
             })
@@ -134,16 +134,25 @@ class JournalListSyncFeature extends BaseFeature {
       if (homeworkDuedate) {
         let dateValue = homeworkDuedate
         if (typeof dateValue === 'object' && dateValue !== null) {
-          // Prefer kriit, fallback to Tahvel, else toString
-          dateValue = dateValue.kriit || dateValue.Tahvel || ''
+          // If it's a Date object, convert to ISO string
+          dateValue = dateValue.toISOString()
         }
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-          payload.homeworkDuedate = `${dateValue}T00:00:00Z`
-        } else if (typeof dateValue === 'string') {
-          payload.homeworkDuedate = dateValue
-        } else {
-          payload.homeworkDuedate = String(dateValue)
+        if (typeof dateValue === 'string') {
+          // If format is 'YYYY-MM-DD HH:MM:SS', convert to ISO 8601
+          let match = dateValue.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/)
+          if (match) {
+            // Convert to 'YYYY-MM-DDTHH:MM:SS.000Z'
+            dateValue = `${match[1]}T${match[2]}.000Z`
+          } else {
+            // If format is 'YYYY-MM-DD', append T23:59:59.000Z
+            match = dateValue.match(/^(\d{4}-\d{2}-\d{2})$/)
+            if (match) {
+              dateValue = `${match[1]}T23:59:59.000Z`
+            }
+            // If already ISO, leave as is
+          }
         }
+        payload.homeworkDuedate = dateValue
       }
       if (entryDate) {
         let dateValue = entryDate
