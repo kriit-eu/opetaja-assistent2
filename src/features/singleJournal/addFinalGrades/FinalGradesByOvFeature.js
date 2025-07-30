@@ -223,7 +223,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       if (!btn) return
       if (!btn._oaHandlerAttached) {
         Logger.info('[DEBUG] Attaching direct click handler to button')
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', async() => {
           Logger.info('✨ FinalGradesByOvFeature: Direct button click detected')
           btn.disabled = true
           btn.textContent = 'Laen...'
@@ -509,7 +509,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           // (allOvNumsInParen removed as it was never used)
           parenOvMatches.forEach(m => {
             // just trigger hasOvSissekanneI, no need to collect
-            ;[...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
+            [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
           })
         }
         // Also support plain ÕVn in nameEt

@@ -247,26 +247,26 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   extractDueDateDifferences() {
-    const dueDateDiffs = [];
+    const dueDateDiffs = []
     if (!this.differences || !Array.isArray(this.differences)) {
-      return dueDateDiffs;
+      return dueDateDiffs
     }
     this.differences.forEach(subjectDiff => {
-      if (!Array.isArray(subjectDiff.assignments)) return;
+      if (!Array.isArray(subjectDiff.assignments)) return
       subjectDiff.assignments.forEach(assignment => {
         if (
           assignment.assignmentDueAt &&
           typeof assignment.assignmentDueAt === 'object'
         ) {
-          const kriitDue = assignment.assignmentDueAt.kriit;
-          const tahvelDue = assignment.assignmentDueAt.Tahvel;
+          const kriitDue = assignment.assignmentDueAt.kriit
+          const tahvelDue = assignment.assignmentDueAt.Tahvel
           if (
             (kriitDue !== tahvelDue) &&
             !(kriitDue == null && tahvelDue == null)
           ) {
-            let assignmentName = assignment.assignmentName;
+            let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
-              assignmentName = assignmentName.kriit || assignmentName.Tahvel || '';
+              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
             }
             dueDateDiffs.push({
               assignmentExternalId: assignment.assignmentExternalId,
@@ -275,12 +275,12 @@ class JournalListSyncFeature extends BaseFeature {
               Tahvel: tahvelDue,
               subjectName: subjectDiff.subjectName || '',
               subjectExternalId: subjectDiff.subjectExternalId || ''
-            });
+            })
           }
         }
-      });
-    });
-    return dueDateDiffs;
+      })
+    })
+    return dueDateDiffs
   }
 
   /**
