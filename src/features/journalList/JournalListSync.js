@@ -1,3 +1,13 @@
+// Utility: Calculate earliest deadline at least 48h from now, after 17:00 rolls to next day
+function earliestDeadline48h(now = new Date(), cutoff = 17, DAY = 864e5) {
+  let d = new Date(now);
+  if (d.getHours() >= cutoff) d.setDate(d.getDate() + 1);
+  d.setHours(0, 0, 0, 0);
+  d = new Date(d.getTime() + 2 * DAY);        // base +48 h
+  d.setHours(23, 59, 59, 0);
+  while (d - now < 2 * DAY) d = new Date(d.getTime() + DAY);
+  return d;
+}
 /**
  * Journal List Sync Feature
  *
@@ -170,6 +180,17 @@ class JournalListSyncFeature extends BaseFeature {
       const kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
       kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
       payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+
+      // Fallback: If homework is a Kriit link and due date is missing, set fallback due date
+      if (payload.homework && payload.homework.startsWith('Link ülesandele:') && (!payload.homeworkDuedate || payload.homeworkDuedate === '')) {
+  const fallbackDate = earliestDeadline48h()
+  // Format as YYYY-MM-DDT23:59:59Z
+  const yyyy = fallbackDate.getFullYear()
+  const mm = String(fallbackDate.getMonth() + 1).padStart(2, '0')
+  const dd = String(fallbackDate.getDate()).padStart(2, '0')
+  payload.homeworkDuedate = `${yyyy}-${mm}-${dd}T23:59:59Z`
+  Logger.info(`✨ [syncAssignmentNameDifferences] Set fallback due date for assignment ${assignmentId}: ${payload.homeworkDuedate}`)
+      }
 
       // Filter out students with OPPURSTAATUS_K (studentIsDeleted: true) from journalEntryStudents if present
       if (Array.isArray(payload.journalEntryStudents)) {
