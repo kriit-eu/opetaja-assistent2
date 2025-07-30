@@ -44,6 +44,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   #originalFetch = null
   #problematicEntriesCache = null
   #dialogCloseObserver = null
+  #refreshDebounceTimer = null
+  #lastRefreshTs = 0
+  #refreshInProgress = false
+  #refreshPending = false
 
   static SCHOOL_ID_FALLBACK = 9
   static JOURNAL_ENTRY_LESSON_TYPE = 'SISSEKANNE_T'
@@ -68,7 +72,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     this.reset()
     await this.#clearStaleCache()
     await this.#delay(1000)
-    await this.#createLessonDiscrepanciesTable()
+    await this.#createLessonDiscrepanciesTable(false, 'activate')
     this.#setupJournalSaveMonitoring()
     this.#setupDialogObserver()
   }
@@ -153,10 +157,38 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     }
   }
 
-  async #createLessonDiscrepanciesTable(forceRefresh = false) {
+  async #createLessonDiscrepanciesTable(forceRefresh = false, trigger = 'unknown') {
+    // Lock: only one refresh at a time, queue one extra if needed
+    if (this.#refreshInProgress) {
+      Logger.info(`[${this.name}] Refresh requested (trigger: ${trigger}, forceRefresh: ${forceRefresh}) but refresh is already in progress. Queueing one more.`)
+      this.#refreshPending = true
+      return
+    }
+    this.#refreshInProgress = true
+    this.#refreshPending = false
+    Logger.info(`[${this.name}] Starting refresh (trigger: ${trigger}, forceRefresh: ${forceRefresh})`)
+
+    // Debounce: only allow one refresh per 750ms window
+    const now = Date.now()
+    if (this.#refreshDebounceTimer) {
+      clearTimeout(this.#refreshDebounceTimer)
+    }
+    if (now - this.#lastRefreshTs < 750 && !forceRefresh) {
+      Logger.info(`[${this.name}] Debouncing refresh (trigger: ${trigger})`)
+      // Schedule a single refresh after debounce window
+      this.#refreshDebounceTimer = setTimeout(() => {
+        this.#createLessonDiscrepanciesTable(forceRefresh, 'debounce')
+      }, 750 - (now - this.#lastRefreshTs))
+      this.#refreshInProgress = false
+      return
+    }
+    this.#lastRefreshTs = now
     try {
       const journalId = this.#extractJournalId()
-      if (!journalId) return
+      if (!journalId) {
+        this.#refreshInProgress = false
+        return
+      }
 
       const { journalData, timetableData } = await this.#fetchJournalAndTimetableData(journalId, forceRefresh)
       this.#lastJournalData = journalData
@@ -177,6 +209,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
     } catch (error) {
       Logger.error(`[${this.name}] table error`, error)
+    } finally {
+      this.#refreshInProgress = false
+      if (this.#refreshPending) {
+        this.#refreshPending = false
+        Logger.info(`[${this.name}] Running queued refresh after previous finished`)
+        this.#createLessonDiscrepanciesTable(true, 'queued')
+      }
     }
   }
 
@@ -1550,33 +1589,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #refreshTableWithRetry(maxRetries = 3) {
-    if (this.#isRefreshing) return
-
-    this.#isRefreshing = true
-
-    try {
-      const journalId = this.#currentJournalId ?? this.#extractJournalId()
-      if (!journalId) return
-
-      const currentCount = this.#getCurrentDiscrepancyCount()
-
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        await this.#performRefreshAttempt(journalId)
-        const newCount = this.#getCurrentDiscrepancyCount()
-
-        if (this.#isRefreshSuccessful(currentCount, newCount, attempt, maxRetries)) {
-          break
-        }
-
-        if (attempt < maxRetries) {
-          await this.#delay(attempt * 1000)
-        }
-      }
-    } catch (error) {
-      Logger.error(`[${this.name}] refresh retry`, error)
-    } finally {
-      this.#isRefreshing = false
-    }
+    Logger.info(`[${this.name}] #refreshTableWithRetry called`)
+    await this.#createLessonDiscrepanciesTable(true, 'refreshTableWithRetry')
   }
 
   #getCurrentDiscrepancyCount() {
@@ -1585,12 +1599,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #performRefreshAttempt(journalId) {
+    Logger.info(`[${this.name}] #performRefreshAttempt called`)
     await cacheService.clearJournalCache(journalId)
     await cacheService.clearCache()
     this.#tableCreated = false
     this.#currentJournalId = null
     await this.#delay(300)
-    await this.#createLessonDiscrepanciesTable(true)
+    await this.#createLessonDiscrepanciesTable(true, 'performRefreshAttempt')
   }
 
   #isRefreshSuccessful(oldCount, newCount, attempt, maxAttempts) {
