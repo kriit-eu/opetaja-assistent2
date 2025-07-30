@@ -208,4 +208,10 @@ export class BaseFeature {
       })
     }
   }
+  /**
+   * No-op for features that do not use final grade banners
+   */
+  removeFinalGradeBanner() {
+    // No-op: override in features that use banners
+  }
 }
