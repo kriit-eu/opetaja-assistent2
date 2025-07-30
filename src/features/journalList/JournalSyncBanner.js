@@ -67,7 +67,7 @@ class DifferenceRenderer {
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
         // Update latest name for this assignment
         latestNames[nameDiff.assignmentExternalId] = nameDiff.kriit || nameDiff.Tahvel
         // Always show both old and new name in the badge
@@ -102,7 +102,7 @@ class DifferenceRenderer {
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
-      (subject.assignments || []).forEach(assignment => {
+      ;(subject.assignments || []).forEach(assignment => {
         // Always use the new name if a name change exists, fallback to latest name, then all possible sources, and normalize
         let assignmentName = getNewNameIfChanged(assignment.assignmentExternalId)
         if (!assignmentName)
@@ -136,12 +136,13 @@ class DifferenceRenderer {
     ;(dueDateDiffs || []).forEach(diff => {
       // assignmentName should always be the assignment's name, not a date
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(
-        diff.assignmentExternalId,
-        typeof diff.assignmentName === 'object' && diff.assignmentName !== null
-          ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
-          : diff.assignmentName
-      )
+      if (!assignmentName)
+        assignmentName = getAssignmentName(
+          diff.assignmentExternalId,
+          typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+            ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+            : diff.assignmentName
+        )
       if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
@@ -158,12 +159,13 @@ class DifferenceRenderer {
     ;(entryDateDiffs || []).forEach(diff => {
       // assignmentName should always be the assignment's name, not a date
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(
-        diff.assignmentExternalId,
-        typeof diff.assignmentName === 'object' && diff.assignmentName !== null
-          ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
-          : diff.assignmentName
-      )
+      if (!assignmentName)
+        assignmentName = getAssignmentName(
+          diff.assignmentExternalId,
+          typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+            ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+            : diff.assignmentName
+        )
       if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
@@ -171,8 +173,8 @@ class DifferenceRenderer {
         typeName: 'Sissekande kuupäev',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: formatDate(normalize(diff.kriit)) || 'puudub',
-        newValue: formatDate(normalize(diff.Tahvel)) || 'puudub'
+        oldValue: formatDate(normalize(diff.Tahvel)) || 'puudub',
+        newValue: formatDate(normalize(diff.kriit)) || 'puudub'
       })
     })
 
