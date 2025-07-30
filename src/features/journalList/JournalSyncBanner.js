@@ -134,9 +134,14 @@ class DifferenceRenderer {
 
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
-      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
+      // assignmentName should always be the assignment's name, not a date
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
+      if (!assignmentName) assignmentName = getAssignmentName(
+        diff.assignmentExternalId,
+        typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+          ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+          : diff.assignmentName
+      )
       if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
@@ -151,9 +156,14 @@ class DifferenceRenderer {
 
     // Entry Date Diffs
     ;(entryDateDiffs || []).forEach(diff => {
-      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
+      // assignmentName should always be the assignment's name, not a date
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
+      if (!assignmentName) assignmentName = getAssignmentName(
+        diff.assignmentExternalId,
+        typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+          ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+          : diff.assignmentName
+      )
       if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
