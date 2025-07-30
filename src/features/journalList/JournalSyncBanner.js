@@ -171,8 +171,8 @@ class DifferenceRenderer {
         typeName: 'Sissekande kuupäev',
         assignmentName: assignmentName,
         studentName: '',
-        oldValue: formatDate(normalize(diff.Tahvel)) || 'puudub',
-        newValue: formatDate(normalize(diff.kriit)) || 'puudub'
+        oldValue: formatDate(normalize(diff.kriit)) || 'puudub',
+        newValue: formatDate(normalize(diff.Tahvel)) || 'puudub'
       })
     })
 

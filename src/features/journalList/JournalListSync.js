@@ -27,15 +27,22 @@ class JournalListSyncFeature extends BaseFeature {
   extractEntryDateDifferences() {
     Logger.debug('✨ [extractEntryDateDifferences] Called')
     const entryDateDiffs = []
-    if (!this.differences || !Array.isArray(this.differences)) return entryDateDiffs
+    if (!this.differences || !Array.isArray(this.differences)) {
+      return entryDateDiffs
+    }
     this.differences.forEach(subjectDiff => {
-      if (Array.isArray(subjectDiff.assignments)) {
-        subjectDiff.assignments.forEach(assignment => {
-          // assignment.assignmentEntryDate is a string from Kriit
-          // assignment.assignmentEntryDateTahvel is the value from Tahvel (must be present in assignment object)
-          const kriitEntryDate = assignment.assignmentEntryDate
-          const tahvelEntryDate = assignment.assignmentEntryDateTahvel || assignment.assignmentEntryDate_Tahvel || assignment.entryDate || null
-          if (kriitEntryDate !== tahvelEntryDate) {
+      if (!Array.isArray(subjectDiff.assignments)) return
+      subjectDiff.assignments.forEach(assignment => {
+        if (
+          assignment.assignmentEntryDate &&
+          typeof assignment.assignmentEntryDate === 'object'
+        ) {
+          const kriitEntryDate = assignment.assignmentEntryDate.kriit
+          const tahvelEntryDate = assignment.assignmentEntryDate.Tahvel
+          if (
+            (kriitEntryDate !== tahvelEntryDate) &&
+            !(kriitEntryDate == null && tahvelEntryDate == null)
+          ) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
               assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
@@ -49,8 +56,8 @@ class JournalListSyncFeature extends BaseFeature {
               subjectExternalId: subjectDiff.subjectExternalId || ''
             })
           }
-        })
-      }
+        }
+      })
     })
     Logger.debug(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
     return entryDateDiffs
@@ -1213,10 +1220,11 @@ class JournalListSyncFeature extends BaseFeature {
                     const normKriit = kriitValue === undefined ? null : kriitValue
                     const normTahvel = tahvelValue === undefined ? null : tahvelValue
 
-                    if (normKriit !== normTahvel) {
+                    // Only show a difference if Kriit has a value and it's different from Tahvel's
+                    if (normKriit !== null && normKriit !== normTahvel) {
                       diffAssignment[fieldName] = { kriit: kriitValue, Tahvel: tahvelValue }
                     } else {
-                      // If they are the same, just make sure the value is set.
+                      // If they are the same or Kriit is null, just use Tahvel's value.
                       diffAssignment[fieldName] = tahvelValue
                     }
                   }
