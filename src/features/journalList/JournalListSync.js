@@ -34,9 +34,11 @@ class JournalListSyncFeature extends BaseFeature {
           if (
             assignment.assignmentEntryDate &&
             typeof assignment.assignmentEntryDate === 'object' &&
-            assignment.assignmentEntryDate.kriit &&
-            assignment.assignmentEntryDate.Tahvel &&
-            assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+            (
+              assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel ||
+              (!assignment.assignmentEntryDate.kriit && assignment.assignmentEntryDate.Tahvel) ||
+              (assignment.assignmentEntryDate.kriit && !assignment.assignmentEntryDate.Tahvel)
+            )
           ) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {

@@ -134,10 +134,9 @@ class DifferenceRenderer {
 
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
-      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
-      if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
+      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.assignmentName)
+      if (!assignmentName) assignmentName = diff.assignmentName
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
         type: 'duedate',
@@ -151,10 +150,9 @@ class DifferenceRenderer {
 
     // Entry Date Diffs
     ;(entryDateDiffs || []).forEach(diff => {
-      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
-      if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
+      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.assignmentName)
+      if (!assignmentName) assignmentName = diff.assignmentName
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
         type: 'entrydate',
