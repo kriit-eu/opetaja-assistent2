@@ -202,40 +202,56 @@ class FinalGradesByOvFeature extends BaseFeature {
   }
 
   shouldActivate(url) {
-    const result = super.shouldActivate(url)
+    // Only activate on /journal/<id>/edit URLs
+    const match = url.match(/\/journal\/(\d+)\/edit/)
+    const result = !!match && super.shouldActivate(url)
     Logger.info('✨ FinalGradesByOvFeature: shouldActivate called', { url, result })
+    if (!result && url.match(/\/journal\/(\d+)/)) {
+      Logger.info('[DEBUG] Not activating: journal page but not /edit subpage', { url })
+    }
     return result
   }
 
   async onActivate() {
+    Logger.info('✨ FinalGradesByOvFeature: onActivate called')
+    Logger.info('✨ FinalGradesByOvFeature: Current URL:', window.location.href)
+
     // Mutation observer to re-attach the real async handler if button is replaced
     const attachAsyncHandler = () => {
       const btn = document.querySelector('.oa-final-grades-btn')
+      Logger.info('[DEBUG] attachAsyncHandler called. Button found:', btn)
       if (!btn) return
       if (!btn._oaHandlerAttached) {
-        btn.addEventListener('click', async() => {
+        Logger.info('[DEBUG] Attaching direct click handler to button')
+        btn.addEventListener('click', async () => {
           Logger.info('✨ FinalGradesByOvFeature: Direct button click detected')
           btn.disabled = true
           btn.textContent = 'Laen...'
           btn.style.background = '#ff9800'
           try {
             Logger.info('✨ FinalGradesByOvFeature: Button click handler start (direct)')
+            const journalId = this.#extractJournalId()
+            Logger.info('[DEBUG] Direct click: journalId:', journalId)
+            if (!journalId) {
+              Logger.error('[DEBUG] Direct click: No journalId found!')
+              btn.textContent = 'Viga!'
+              btn.style.background = '#d32f2f'
+              return
+            }
             const [entries, students] = await Promise.all([
-              // eslint-disable-next-line no-undef
               this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-              // eslint-disable-next-line no-undef
               this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
             ])
             Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
             Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
             this._lastEntries = entries
-            const results = this.#calculateFinalGrades(entries, students)
+            const results = await this.#calculateFinalGrades(entries, students)
             Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
             await this.#showResults(results, btn)
             btn.textContent = 'Valmis!'
             btn.style.background = '#388e3c'
           } catch (e) {
-            Logger.error('FinalGradesByOvFeature error', e)
+            Logger.error('FinalGradesByOvFeature error', e && (e.stack || e.message || e))
             btn.textContent = 'Viga!'
             btn.style.background = '#d32f2f'
           } finally {
@@ -249,54 +265,73 @@ class FinalGradesByOvFeature extends BaseFeature {
         btn._oaHandlerAttached = true
       }
     }
+
     // Observe changes to #main-content
     const mainContent = document.querySelector('#main-content')
+    Logger.info('[DEBUG] mainContent found:', mainContent)
     if (mainContent) {
       const observer = new MutationObserver(() => {
+        Logger.info('[DEBUG] MutationObserver triggered')
         attachAsyncHandler()
       })
       observer.observe(mainContent, { childList: true, subtree: true })
       // Initial attach
+      Logger.info('[DEBUG] Initial attachAsyncHandler call')
       attachAsyncHandler()
+    } else {
+      Logger.warning('[DEBUG] #main-content not found on page load')
     }
-    Logger.info('✨ FinalGradesByOvFeature: onActivate called')
-    Logger.info('✨ FinalGradesByOvFeature: Current URL:', window.location.href)
 
-    // For testing, create a simple button anywhere on the page
     Logger.info('✨ FinalGradesByOvFeature: Test button logic start')
 
     try {
-      const journalId = this.#extractJournalId()
-      Logger.info('✨ FinalGradesByOvFeature: Journal ID extracted:', journalId)
+      // Only proceed if URL matches /journal/<id>/edit
+      const url = window.location.href
+      const match = url.match(/\/journal\/(\d+)\/edit/)
+      if (!match) {
+        Logger.info('[DEBUG] Not on /journal/<id>/edit, skipping button logic', { url })
+        return
+      }
+      const journalId = match[1]
+      Logger.info('[DEBUG] Journal ID extracted:', journalId)
       if (!journalId) {
         Logger.warning('✨ FinalGradesByOvFeature: No journal ID found, feature will not work')
         return
       }
       // Fetch entries and students to check for ÕV columns or SISSEKANNE_L
+      Logger.info('[DEBUG] Fetching entries and students for journalId:', journalId)
       const [entries, students] = await Promise.all([
         this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
         this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
       ])
+      Logger.info('[DEBUG] Entries fetched:', entries)
+      Logger.info('[DEBUG] Students fetched:', students)
       const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
       const hasSissekanneL = lFeature.detect(entries)
+      Logger.info('[DEBUG] hasSissekanneL:', hasSissekanneL)
       const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
+      Logger.info('[DEBUG] Results:', results)
       if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
         Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected, feature will not activate')
+        Logger.info('[DEBUG] Not activating: hasSissekanneL:', hasSissekanneL, 'allOvNums:', results.allOvNums)
         return
       }
       // Wait for the table container in #main-content
       let tableContainer = null
       try {
+        Logger.info('[DEBUG] Waiting for .journalTableContainer')
         tableContainer = await domService.waitForElement('.journalTableContainer', 20000, 100)
         Logger.info('✨ FinalGradesByOvFeature: Table container found', tableContainer)
       } catch (e) {
         Logger.warning('FinalGradesByOvFeature: Table container not found, will try fallback', e)
+        Logger.info('[DEBUG] Table container not found, fallback to #main-content')
       }
       // Use existing button if present, otherwise insert
       let button = document.querySelector('.oa-final-grades-btn')
-      Logger.info('✨ FinalGradesByOvFeature: Existing button found:', button)
+      Logger.info('[DEBUG] Existing button found:', button)
       const buttonText = hasSissekanneL ? 'Lisa lõpptulemuse hinded' : 'Lisa õpiväljundite hinded'
       if (!button) {
+        Logger.info('[DEBUG] No existing button, will insert new button')
         if (tableContainer) {
           button = domService.createAndInsertElement(
             'button',
@@ -313,6 +348,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         } else {
           // Fallback: insert at end of #main-content
           const mainContent = document.querySelector('#main-content')
+          Logger.info('[DEBUG] Fallback mainContent:', mainContent)
           if (mainContent) {
             button = domService.createAndInsertElement(
               'button',
@@ -328,6 +364,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             Logger.info('✨ FinalGradesByOvFeature: Button inserted at end of #main-content', button)
           } else {
             Logger.error('FinalGradesByOvFeature: #main-content not found, cannot insert button')
+            Logger.info('[DEBUG] Could not insert button: #main-content missing')
             return
           }
         }
@@ -345,6 +382,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
       // Remove any old event delegation to avoid duplicates
       if (window._oaFinalGradesDelegation) {
+        Logger.info('[DEBUG] Removing old event delegation')
         document.removeEventListener('click', window._oaFinalGradesDelegation, true)
       }
       // Use event delegation for robustness
@@ -357,6 +395,14 @@ class FinalGradesByOvFeature extends BaseFeature {
         btn.style.background = '#ff9800'
         try {
           Logger.info('✨ FinalGradesByOvFeature: Button click handler start (delegated)')
+          const journalId = this.#extractJournalId()
+          Logger.info('[DEBUG] Delegated click: journalId:', journalId)
+          if (!journalId) {
+            Logger.error('[DEBUG] Delegated click: No journalId found!')
+            btn.textContent = 'Viga!'
+            btn.style.background = '#d32f2f'
+            return
+          }
           const [entries, students] = await Promise.all([
             this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
             this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
@@ -366,9 +412,12 @@ class FinalGradesByOvFeature extends BaseFeature {
           this._lastEntries = entries
           const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
           const hasSissekanneL = lFeature.detect(entries)
+          Logger.info('[DEBUG] Delegated click: hasSissekanneL:', hasSissekanneL)
           const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
+          Logger.info('[DEBUG] Delegated click: results:', results)
           if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
             Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected on button click, aborting')
+            Logger.info('[DEBUG] Delegated click: Not activating: hasSissekanneL:', hasSissekanneL, 'allOvNums:', results.allOvNums)
             btn.textContent = 'ÕV-sid või lõpptulemust ei leitud'
             btn.style.background = '#d32f2f'
             setTimeout(() => {
@@ -402,10 +451,12 @@ class FinalGradesByOvFeature extends BaseFeature {
         }
       }
       window._oaFinalGradesDelegation = delegatedHandler
+      Logger.info('[DEBUG] Adding event delegation for .oa-final-grades-btn')
       document.addEventListener('click', delegatedHandler, true)
       // No need to add a direct event listener here; handled by mutation observer logic above
     } catch (e) {
       Logger.error('FinalGradesByOvFeature init error', e)
+      Logger.info('[DEBUG] Exception in onActivate:', e)
     }
   }
 
@@ -458,7 +509,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           // (allOvNumsInParen removed as it was never used)
           parenOvMatches.forEach(m => {
             // just trigger hasOvSissekanneI, no need to collect
-            [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
+            ;[...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
           })
         }
         // Also support plain ÕVn in nameEt
@@ -792,7 +843,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     html += '<thead><tr><th>Õpilane</th>'
     html += '<th>Lõpptulemus</th>'
     html += '</tr></thead><tbody>'
-    filteredOutput.forEach(function(r) {
+    filteredOutput.forEach(function (r) {
       html += '<tr><td>' + r.name + '</td>'
       let display,
         tooltip = ''
@@ -839,7 +890,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           'afterend'
         )
       }
-      sendBtn.onclick = async() => {
+      sendBtn.onclick = async () => {
         sendBtn.disabled = true
         sendBtn.textContent = 'Saatmine...'
         statusDiv.textContent = ''
