@@ -166,10 +166,11 @@ class JournalListSyncFeature extends BaseFeature {
       // Optionally add homework field with Kriit link
       let kriitAssignmentUrl = ''
       const groupCode = currentEntry.groupName || ''
-      // Use the Kriit API base URL from the API service, trimming any trailing slash
-      const kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
-      kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
-      payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+  // Use the Kriit API base URL from the API service, trimming any trailing slash and removing '/api' if present
+  let kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
+  kriitBaseUrl = kriitBaseUrl.replace(/\/api$/, '')
+  kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+  payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
 
       // Filter out students with OPPURSTAATUS_K (studentIsDeleted: true) from journalEntryStudents if present
       if (Array.isArray(payload.journalEntryStudents)) {
