@@ -708,15 +708,10 @@ class FinalGradesByOvFeature extends BaseFeature {
 
   async #showResults(results, button) {
     Logger.info('✨ FinalGradesByOvFeature: #showResults called', { results, button })
-    Logger.info('✨ FinalGradesByOvFeature: button parent:', button && button.parentElement)
-    Logger.info("✨ FinalGradesByOvFeature: document.getElementById('oa-final-grades-results'):", document.getElementById('oa-final-grades-results'))
-    Logger.info('✨ FinalGradesByOvFeature: Results to render:', results)
-    // results is now {output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI}
-    const { output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI } = results
-
+    // Only perform sync logic, do not render a table
+    const { allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI, output } = results
     // Build a map of (studentId|ovNum) => existing grade object for updating
     const existingGradesMap = {}
-    Logger.info('✨ FinalGradesByOvFeature: journalStudentIdToStudentId mapping', journalStudentIdToStudentId)
     if (this._lastEntries) {
       for (const entry of this._lastEntries) {
         if (entry.entryType === 'SISSEKANNE_O') {
@@ -724,32 +719,16 @@ class FinalGradesByOvFeature extends BaseFeature {
           const ovNum = match && match[1]
           if (ovNum) {
             const studentOutcomeResults = entry.studentOutcomeResults
-
-            // If studentOutcomeResults is missing, fetch detailed outcome data
             if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
               const journalId = this.#extractJournalId()
               const map = await this.#fetchDetailedOutcomeStudents(journalId, entry.curriculumModuleOutcomes, [], { output: 'existingGradesMap', ovNum })
               Object.assign(existingGradesMap, map)
             } else if (studentOutcomeResults) {
-              // Use existing studentOutcomeResults if available
               Object.entries(studentOutcomeResults).forEach(([studentIdFromResults, results]) => {
-                // In SISSEKANNE_O, the key is actually studentId, not journalStudentId
                 const studentId = studentIdFromResults
-                Logger.info('✨ FinalGradesByOvFeature: Mapping SISSEKANNE_O from existing data', {
-                  studentIdFromResults,
-                  studentId,
-                  ovNum,
-                  results
-                })
                 if (studentId && results && results.grade) {
-                  // Direct mapping using studentId
                   const key = `${studentId}|${ovNum}`
                   existingGradesMap[key] = results
-                  Logger.info('✨ FinalGradesByOvFeature: Added to existingGradesMap from existing data', {
-                    key,
-                    studentId,
-                    grade: results.grade.code
-                  })
                 }
               })
             }
@@ -757,12 +736,9 @@ class FinalGradesByOvFeature extends BaseFeature {
         }
       }
     }
-    Logger.info('✨ FinalGradesByOvFeature: existingGradesMap keys', Object.keys(existingGradesMap))
-
     // Filter output to only show students whose calculated grades differ from existing grades
     const filteredOutput = output.filter(student => {
       if (allOvNums.length > 0) {
-        // For ÕV grades, check if any calculated ÕV grade differs from existing
         return allOvNums.some(ovNum => {
           const calculatedGrade = student.ovGrades[ovNum]
           const existingGradeKey = `${student.studentId}|${ovNum}`
@@ -771,46 +747,17 @@ class FinalGradesByOvFeature extends BaseFeature {
           if (existingGradeEntry && existingGradeEntry.grade && existingGradeEntry.grade.code) {
             existingGrade = existingGradeEntry.grade.code.replace('KUTSEHINDAMINE_', '')
           }
-          // Normalize grades for comparison
           let normalizedCalculated = String(calculatedGrade || '').trim()
           const normalizedExisting = String(existingGrade || '').trim()
-          // If both are numeric, compare as rounded integer strings
           if (/^\d+(\.\d+)?$/.test(normalizedCalculated) && /^\d+$/.test(normalizedExisting)) {
             normalizedCalculated = String(Math.round(Number(normalizedCalculated)))
           }
-          const differs = normalizedCalculated !== normalizedExisting
-          Logger.info('✨ FinalGradesByOvFeature: Grade comparison', {
-            student: student.name,
-            ovNum,
-            calculatedGrade: normalizedCalculated,
-            existingGrade: normalizedExisting,
-            differs
-          })
-          return differs
+          return normalizedCalculated !== normalizedExisting
         })
       } else {
-        // For final grades, check if calculated differs from existing
-        // This case is less common but included for completeness
-        return true // For now, always show final grades
+        return true
       }
     })
-
-    Logger.info('✨ FinalGradesByOvFeature: Filtered results', {
-      originalCount: output.length,
-      filteredCount: filteredOutput.length,
-      filtered: filteredOutput.map(s => ({ name: s.name, grades: s.ovGrades }))
-    })
-
-    // Render all ÕV columns (or final grade if none)
-    let html = ''
-    html += '<style>'
-    html += '.oa-final-grades-table {margin-top:16px;border-collapse:collapse;width:100%;font-size:15px;}'
-    html += '.oa-final-grades-table th {background:#1976d2;color:#fff;padding:8px 12px;border:1px solid #1976d2;text-align:left;}'
-    html += '.oa-final-grades-table td {padding:8px 12px;border:1px solid #e0e0e0;}'
-    html += '.oa-final-grades-table tr:nth-child(even) {background:#f5f7fa;}'
-    html += '.oa-final-grades-table tr:hover {background:#e3f2fd;}'
-    html += '</style>'
-
     // If ÕV columns exist but there are no SISSEKANNE_I with ÕV, show message
     let container = document.getElementById('oa-final-grades-results')
     if (!container) {
@@ -822,7 +769,6 @@ class FinalGradesByOvFeature extends BaseFeature {
     }
     // If ÕV columns exist, automatically sync grades silently (no status message unless error)
     if (allOvNums.length > 0) {
-      // Clear the container (no message)
       container.innerHTML = ''
       setTimeout(() => {
         this.#syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container })
@@ -838,86 +784,16 @@ class FinalGradesByOvFeature extends BaseFeature {
       }, 0)
       return
     }
-    // ...existing code for rendering table for final grades only...
-    html += '<table class="oa-final-grades-table">'
-    html += '<thead><tr><th>Õpilane</th>'
-    html += '<th>Lõpptulemus</th>'
-    html += '</tr></thead><tbody>'
-    filteredOutput.forEach(function (r) {
-      html += '<tr><td>' + r.name + '</td>'
-      let display,
-        tooltip = ''
-      const grade = r.finalGrade
-      if (/^\d+(\.\d+)?$/.test(grade)) {
-        display = String(Math.round(Number(grade)))
-        tooltip = grade !== display ? grade : ''
-      } else {
-        display = grade || ''
-      }
-      if (tooltip) {
-        html += `<td><span title="${tooltip}">${display}</span></td>`
-      } else {
-        html += `<td>${display}</td>`
-      }
-      html += '</tr>'
-    })
-    html += '</tbody></table>'
-    container.innerHTML = html
-
-    // Add send ÕV grades button only if there are ÕV columns
-    if (allOvNums.length > 0) {
-      let sendBtn = document.getElementById('oa-send-ov-grades-btn')
-      if (!sendBtn) {
-        sendBtn = domService.createAndInsertElement(
-          'button',
-          {
-            id: 'oa-send-ov-grades-btn',
-            style: FinalGradesByOvFeature.OA_BTN_STYLE
-          },
-          'Sünkroniseeri hinded',
-          container,
-          'afterend'
-        )
-      }
-      // Status message
-      let statusDiv = document.getElementById('oa-send-ov-status')
-      if (!statusDiv) {
-        statusDiv = domService.createAndInsertElement(
-          'div',
-          { id: 'oa-send-ov-status', style: { margin: '8px 0', color: '#1976d2', fontWeight: 'bold' } },
-          '',
-          sendBtn,
-          'afterend'
-        )
-      }
-      sendBtn.onclick = async () => {
-        sendBtn.disabled = true
-        sendBtn.textContent = 'Saatmine...'
-        statusDiv.textContent = ''
-        this.#syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container: null, statusDiv })
-          .then(() => {
-            sendBtn.textContent = 'Sünkroniseeri hinded'
-          })
-          .catch(() => {
-            statusDiv.textContent = 'Viga saatmisel.'
-            sendBtn.textContent = 'Sünkroniseeri hinded'
-          })
-          .finally(() => {
-            sendBtn.disabled = false
-          })
-      }
-    } else {
-      // Remove send button if it exists (for SISSEKANNE_L case)
-      const existingSendBtn = document.getElementById('oa-send-ov-grades-btn')
-      if (existingSendBtn) {
-        existingSendBtn.remove()
-      }
-      const existingStatusDiv = document.getElementById('oa-send-ov-status')
-      if (existingStatusDiv) {
-        existingStatusDiv.remove()
-      }
+    // If no ÕV columns, do not render a table, just remove any old send button/status
+    const existingSendBtn = document.getElementById('oa-send-ov-grades-btn')
+    if (existingSendBtn) {
+      existingSendBtn.remove()
     }
-    Logger.info('✨ FinalGradesByOvFeature: Results table rendered and visible')
+    const existingStatusDiv = document.getElementById('oa-send-ov-status')
+    if (existingStatusDiv) {
+      existingStatusDiv.remove()
+    }
+    Logger.info('✨ FinalGradesByOvFeature: Table rendering skipped as requested')
   }
 }
 export default FinalGradesByOvFeature
