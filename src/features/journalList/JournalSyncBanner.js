@@ -67,7 +67,7 @@ class DifferenceRenderer {
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-      (subject.nameDiffs || []).forEach(nameDiff => {
+      ;(subject.nameDiffs || []).forEach(nameDiff => {
         // Update latest name for this assignment
         latestNames[nameDiff.assignmentExternalId] = nameDiff.kriit || nameDiff.Tahvel
         // Always show both old and new name in the badge
@@ -102,7 +102,7 @@ class DifferenceRenderer {
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
-      (subject.assignments || []).forEach(assignment => {
+      ;(subject.assignments || []).forEach(assignment => {
         // Always use the new name if a name change exists, fallback to latest name, then all possible sources, and normalize
         let assignmentName = getNewNameIfChanged(assignment.assignmentExternalId)
         if (!assignmentName)
@@ -245,14 +245,24 @@ export class JournalSyncBannerService {
 
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
         classList: ['container']
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add title
@@ -283,7 +293,7 @@ export class JournalSyncBannerService {
     )
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('Missing API key banner created and displayed')
   }
@@ -298,6 +308,17 @@ export class JournalSyncBannerService {
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
@@ -305,8 +326,7 @@ export class JournalSyncBannerService {
         style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px;'
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add success icon
@@ -358,7 +378,7 @@ export class JournalSyncBannerService {
     }
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('All in sync banner created and displayed')
   }
@@ -375,14 +395,24 @@ export class JournalSyncBannerService {
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
         classList: ['container']
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add title
@@ -423,7 +453,7 @@ export class JournalSyncBannerService {
     }
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('Differences banner created and displayed')
   }
@@ -448,14 +478,24 @@ export class JournalSyncBannerService {
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
         classList: ['container', 'ta-sync-error']
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add error icon
@@ -494,7 +534,7 @@ export class JournalSyncBannerService {
     this._addSyncErrorActions(banner, error, options)
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('Sync error banner created and displayed')
   }
