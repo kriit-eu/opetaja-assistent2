@@ -199,8 +199,7 @@ class JournalListSyncFeature extends BaseFeature {
           return student // Keep by default
         })
 
-        const filteredStudents = (await Promise.all(studentPromises)).filter(Boolean)
-        payload.journalEntryStudents = filteredStudents
+        payload.journalEntryStudents = (await Promise.all(studentPromises)).filter(Boolean)
       }
 
       Logger.info(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)

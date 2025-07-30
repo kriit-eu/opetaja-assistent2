@@ -730,12 +730,6 @@ export class JournalSyncBannerService {
       }
     }
   }
-  /**
-   * Clean up sync-specific resources
-   */
-  destroy() {
-    styleService.removeCSS('journal-sync-banner-styles')
-  }
 }
 
 // Export a singleton instance

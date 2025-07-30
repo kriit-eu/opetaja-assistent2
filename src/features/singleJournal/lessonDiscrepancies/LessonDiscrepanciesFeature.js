@@ -214,7 +214,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (this.#refreshPending) {
         this.#refreshPending = false
         Logger.info(`[${this.name}] Running queued refresh after previous finished`)
-        this.#createLessonDiscrepanciesTable(true, 'queued')
+        await this.#createLessonDiscrepanciesTable(true, 'queued')
       }
     }
   }
@@ -1589,29 +1589,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #refreshTableWithRetry(maxRetries = 3) {
+    this.maxRetries = maxRetries
     Logger.info(`[${this.name}] #refreshTableWithRetry called`)
     await this.#createLessonDiscrepanciesTable(true, 'refreshTableWithRetry')
   }
-
-  #getCurrentDiscrepancyCount() {
-    const table = document.querySelector('[data-discrepancies-table]')
-    return table ? table.querySelectorAll('tbody tr').length : 0
-  }
-
-  async #performRefreshAttempt(journalId) {
-    Logger.info(`[${this.name}] #performRefreshAttempt called`)
-    await cacheService.clearJournalCache(journalId)
-    await cacheService.clearCache()
-    this.#tableCreated = false
-    this.#currentJournalId = null
-    await this.#delay(300)
-    await this.#createLessonDiscrepanciesTable(true, 'performRefreshAttempt')
-  }
-
-  #isRefreshSuccessful(oldCount, newCount, attempt, maxAttempts) {
-    return newCount < oldCount || !document.querySelector('[data-discrepancies-table]') || attempt === maxAttempts
-  }
-
   #setupJournalSaveMonitoring() {
     if (this.#saveMonitoringSetup) return
 

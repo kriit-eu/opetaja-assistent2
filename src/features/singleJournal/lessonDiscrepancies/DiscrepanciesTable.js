@@ -526,7 +526,7 @@ export class DiscrepanciesTable {
 
     // Get formatted date for button data
     // Handle null/undefined dates specially since they show as "-" in the main table
-    let safeFormattedDate = 'NO_DATE' // Special identifier for null dates
+    let safeFormattedDate // Special identifier for null dates
     if (entry.entryDate) {
       try {
         const dateObj = new Date(entry.entryDate)

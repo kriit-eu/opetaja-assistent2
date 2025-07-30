@@ -709,7 +709,9 @@ class FinalGradesByOvFeature extends BaseFeature {
   async #showResults(results, button) {
     Logger.info('✨ FinalGradesByOvFeature: #showResults called', { results, button })
     // Only perform sync logic, do not render a table
-    const { allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI, output } = results
+    // eslint-disable-next-line no-unused-vars
+    const { allOvNums, ovNumToOutcomeId,
+      hasOvSissekanneI, output } = results
     // Build a map of (studentId|ovNum) => existing grade object for updating
     const existingGradesMap = {}
     if (this._lastEntries) {
