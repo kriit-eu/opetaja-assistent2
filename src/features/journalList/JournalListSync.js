@@ -1392,6 +1392,8 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalStudents(journalId) {
     try {
+      Logger.info(`🔍 Fetching journal students for journal ${journalId}`)
+      
       // Use a shorter cache time (1 hour) to ensure data is relatively fresh
       // Use allStudents=true to get all students including their personal codes
       const response = await this.api.tahvel.get(
@@ -1403,8 +1405,28 @@ class JournalListSyncFeature extends BaseFeature {
       )
 
       if (response) {
-        // Check if we have personal codes in the response
+        Logger.info(`✅ Retrieved ${response.length} journal students from API`)
+        
+        // === ENHANCED DEBUG: LOG JOURNAL STUDENTS API RESPONSE ===
+        if (response.length > 0) {
+          Logger.debug('=== JOURNAL STUDENTS API RESPONSE SAMPLE ===')
+          const sampleStudent = response[0]
+          Logger.debug(`Sample student structure: ${JSON.stringify(Object.keys(sampleStudent))}`)
+          Logger.debug(`Sample student data: ${JSON.stringify(sampleStudent)}`)
+          
+          // Check for personal codes structure - handle new API format
+          const hasStudentObject = sampleStudent.student ? 'YES' : 'NO'
+          const hasPersonalCodeInStudent = sampleStudent.student?.idcode ? 'YES' : 'NO'
+          const hasDirectPersonalCode = sampleStudent.idcode ? 'YES' : 'NO'
+          
+          Logger.debug(`Has student object: ${hasStudentObject}, Has personal code in student: ${hasPersonalCodeInStudent}, Has direct personal code: ${hasDirectPersonalCode}`)
+          Logger.debug('=== END JOURNAL STUDENTS API RESPONSE SAMPLE ===')
+        }
+        
+        // Check if we have personal codes in the response (old format)
         const hasPersonalCodes = response.some(student => student.student?.idcode)
+        Logger.info(`Personal codes available in response (old format): ${hasPersonalCodes}`)
+        
         if (hasPersonalCodes) {
           Logger.debug('Journal students response includes personal codes, updating mapping')
 
@@ -1416,11 +1438,52 @@ class JournalListSyncFeature extends BaseFeature {
               Logger.debug(`Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${journalStudent.student.idcode})`)
             }
           }
+        } else {
+          Logger.warning('⚠️ Journal students response does NOT include personal codes in old format')
+          Logger.info('🔧 Attempting to fetch personal codes for each student individually...')
+          
+          // New approach: For each journal student, fetch their personal code from the student details API
+          for (const journalStudent of response) {
+            if (journalStudent.studentId) {
+              try {
+                Logger.debug(`📡 Fetching personal code for studentId ${journalStudent.studentId}`)
+                
+                // Get student details to find personal code
+                const studentDetails = await this.getStudentDetails(journalStudent.studentId)
+                
+                if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
+                  // Store the mapping
+                  this.journalStudentIdToStudentId[journalStudent.id] = journalStudent.studentId
+                  
+                  Logger.debug(`✅ Found personal code for studentId ${journalStudent.studentId}: ${studentDetails.person.idcode}`)
+                  Logger.debug(`Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId} (${studentDetails.person.idcode})`)
+                  
+                  // Create a compatible structure for the rest of the code
+                  journalStudent.student = {
+                    idcode: studentDetails.person.idcode,
+                    fullname: studentDetails.person.firstname + ' ' + studentDetails.person.lastname,
+                    status: studentDetails.status
+                  }
+                } else {
+                  Logger.warning(`❌ Could not fetch personal code for studentId ${journalStudent.studentId}`)
+                }
+              } catch (error) {
+                Logger.warning(`❌ Error fetching personal code for studentId ${journalStudent.studentId}: ${error.message}`)
+              }
+            }
+          }
+          
+          // Check how many personal codes we successfully retrieved
+          const studentsWithPersonalCodes = response.filter(student => student.student?.idcode).length
+          Logger.info(`📊 Successfully retrieved personal codes for ${studentsWithPersonalCodes}/${response.length} students`)
         }
+      } else {
+        Logger.error(`❌ No response received from journal students API for journal ${journalId}`)
       }
 
       return response
     } catch (error) {
+      Logger.error(`❌ Error fetching journal students for journal ${journalId}: ${error.message}`)
       return null
     }
   }
@@ -1618,6 +1681,10 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {Object} Student map
    */
   createStudentMap(journalStudents, studentDetailsMap = {}) {
+    Logger.info('=== CREATING STUDENT MAP ===')
+    Logger.info(`Journal students count: ${journalStudents ? journalStudents.length : 0}`)
+    Logger.info(`Student details map count: ${Object.keys(studentDetailsMap).length}`)
+    
     const studentMap = {
       idToPersonalCode: {},
       personalCodeToName: {},
@@ -1626,29 +1693,66 @@ class JournalListSyncFeature extends BaseFeature {
 
     // First, map journal student IDs to student IDs
     if (journalStudents && Array.isArray(journalStudents)) {
-      // Only log once per journal, not for every student
+      Logger.info(`Processing ${journalStudents.length} journal students...`)
 
-      journalStudents.forEach(journalStudent => {
+      journalStudents.forEach((journalStudent, index) => {
+        Logger.debug(`Processing journal student ${index + 1}/${journalStudents.length}`)
+        
         if (journalStudent?.id && journalStudent?.studentId) {
           studentMap.journalStudentIdToId[journalStudent.id] = journalStudent.studentId
+          Logger.debug(`Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId}`)
 
           // If we have details for this student from our direct API calls
           if (studentDetailsMap[journalStudent.studentId]) {
             const details = studentDetailsMap[journalStudent.studentId]
             studentMap.idToPersonalCode[journalStudent.studentId] = details.personalCode
             studentMap.personalCodeToName[details.personalCode] = details.name
+            Logger.debug(`Added personal code mapping: studentId ${journalStudent.studentId} -> "${details.personalCode}" (${details.name})`)
           }
-          // If we don't have details, throw an error to stop execution
+          // If we don't have details, log the issue but don't necessarily throw an error
           else {
-            const errorMsg = `No personal code found for student ID ${journalStudent.studentId} in student details map - cannot proceed`
-            Logger.error(errorMsg)
-            throw new Error(errorMsg)
+            Logger.warning(`❌ No personal code found for student ID ${journalStudent.studentId} in student details map`)
+            Logger.debug(`Available student detail IDs: ${Object.keys(studentDetailsMap).join(', ')}`)
+            Logger.debug(`Journal student data: ${JSON.stringify(journalStudent)}`)
+            
+            // Instead of throwing an error immediately, let's try to get the data from the journal student itself
+            if (journalStudent.student && journalStudent.student.idcode) {
+              Logger.info(`✅ Found personal code in journal student data: ${journalStudent.student.idcode}`)
+              studentMap.idToPersonalCode[journalStudent.studentId] = journalStudent.student.idcode
+              const studentName = journalStudent.student.fullname || journalStudent.studentName || 'Unknown'
+              studentMap.personalCodeToName[journalStudent.student.idcode] = studentName
+              Logger.debug(`Added personal code mapping from journal data: studentId ${journalStudent.studentId} -> "${journalStudent.student.idcode}" (${studentName})`)
+            } else {
+              Logger.error(`🚫 Cannot find personal code for student ID ${journalStudent.studentId} anywhere`)
+              const errorMsg = `No personal code found for student ID ${journalStudent.studentId} in student details map - cannot proceed`
+              Logger.error(errorMsg)
+              throw new Error(errorMsg)
+            }
           }
+        } else {
+          Logger.warning(`⚠️ Journal student ${index + 1} missing id or studentId: ${JSON.stringify(journalStudent)}`)
         }
       })
-
-      // Log mapping statistics
+    } else {
+      Logger.warning('⚠️ No valid journal students array provided')
     }
+
+    // Log final mapping statistics
+    const personalCodeCount = Object.keys(studentMap.idToPersonalCode).length
+    const nameCount = Object.keys(studentMap.personalCodeToName).length
+    const journalMappingCount = Object.keys(studentMap.journalStudentIdToId).length
+    
+    Logger.info(`Final mapping statistics:`)
+    Logger.info(`- Personal code mappings: ${personalCodeCount}`)
+    Logger.info(`- Name mappings: ${nameCount}`)
+    Logger.info(`- Journal student mappings: ${journalMappingCount}`)
+    
+    if (personalCodeCount > 0) {
+      const samplePersonalCodes = Object.values(studentMap.idToPersonalCode).slice(0, 3)
+      Logger.debug(`Sample personal codes: ${samplePersonalCodes.join(', ')}`)
+    }
+    
+    Logger.info('=== END CREATING STUDENT MAP ===')
 
     return studentMap
   }
@@ -1952,16 +2056,33 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Prepare data for sync
       const syncData = []
+      Logger.info('=== COLLECTING SYNC DATA ===')
+      Logger.info(`Processing ${this.differences ? this.differences.length : 0} subjects with differences`)
 
-      this.differences.forEach(subject => {
-        if (!subject.assignments || !Array.isArray(subject.assignments)) return
+      this.differences.forEach((subject, subjectIndex) => {
+        Logger.info(`Subject ${subjectIndex + 1}: ${subject.subjectName} (ID: ${subject.subjectExternalId})`)
+        
+        if (!subject.assignments || !Array.isArray(subject.assignments)) {
+          Logger.warning(`⚠️ Subject ${subjectIndex + 1}: No assignments array`)
+          return
+        }
 
-        subject.assignments.forEach(assignment => {
-          if (!assignment.results || !Array.isArray(assignment.results)) return
+        Logger.info(`  - Has ${subject.assignments.length} assignments`)
+        subject.assignments.forEach((assignment, assignmentIndex) => {
+          Logger.info(`  Assignment ${assignmentIndex + 1}: ${assignment.assignmentName} (ID: ${assignment.assignmentExternalId})`)
+          
+          if (!assignment.results || !Array.isArray(assignment.results)) {
+            Logger.warning(`⚠️ Assignment ${assignmentIndex + 1}: No results array`)
+            return
+          }
 
-          assignment.results.forEach(result => {
+          Logger.info(`    - Has ${assignment.results.length} results`)
+          assignment.results.forEach((result, resultIndex) => {
+            Logger.debug(`    Result ${resultIndex + 1}: ${result.studentName} | PersonalCode: "${result.studentPersonalCode}" | CurrentGrade: "${result.currentGrade}" | NewGrade: "${result.grade}"`)
+            
             // Throw error if any results have missing personal codes
             if (!result.studentPersonalCode) {
+              Logger.error(`❌ Result ${resultIndex + 1}: Missing personal code - cannot proceed with sync`)
               const errorMsg = 'Found missing personal code for a student - cannot proceed with sync'
               Logger.error(errorMsg)
               this.error = errorMsg
@@ -1970,11 +2091,11 @@ class JournalListSyncFeature extends BaseFeature {
 
             // Skip syncing grades for deleted or inactive students
             if (result.studentIsDeleted === true) {
-              Logger.info(`Skipping grade sync for deleted student: ${result.studentName} (${result.studentPersonalCode})`)
+              Logger.info(`⏭️ Result ${resultIndex + 1}: Skipping grade sync for deleted student: ${result.studentName} (${result.studentPersonalCode})`)
               return // Do not sync this student's grade
             }
             if (result.studentIsActive === false) {
-              Logger.info(`Skipping grade sync for inactive student: ${result.studentName} (${result.studentPersonalCode})`)
+              Logger.info(`⏭️ Result ${resultIndex + 1}: Skipping grade sync for inactive student: ${result.studentName} (${result.studentPersonalCode})`)
               return // Do not sync this student's grade
             }
 
@@ -2006,17 +2127,20 @@ class JournalListSyncFeature extends BaseFeature {
             const tahvelGrade = normalizeGrade(result.currentGrade)
             const kriitGrade = normalizeGrade(result.grade)
 
+            Logger.debug(`    Grade comparison: Tahvel="${tahvelGrade}" vs Kriit="${kriitGrade}"`)
+
             // Skip null grades from Kriit entirely - don't sync them
             if (kriitGrade === null) {
-              Logger.debug('Skipping null/empty grade from Kriit - not syncing')
+              Logger.debug(`⏭️ Result ${resultIndex + 1}: Skipping null/empty grade from Kriit - not syncing`)
               return // Skip this result entirely
             }
 
             // Only sync if grades are actually different
             if (tahvelGrade !== kriitGrade) {
               // Log the types we're getting for debugging
-              Logger.debug(`Student personal code type: ${typeof result.studentPersonalCode}, value: ${result.studentPersonalCode}`)
-              Logger.debug(`Grade type: ${typeof result.grade}, value: ${result.grade}`)
+              Logger.info(`✅ Result ${resultIndex + 1}: Grade sync needed`)
+              Logger.debug(`Student personal code type: ${typeof result.studentPersonalCode}, value: "${result.studentPersonalCode}"`)
+              Logger.debug(`Grade type: ${typeof result.grade}, value: "${result.grade}"`)
               Logger.debug(`Will sync: Tahvel="${tahvelGrade}" -> Kriit="${kriitGrade}"`)
 
               // Convert studentPersonalCode and grade to strings to ensure they're the correct type
@@ -2025,22 +2149,27 @@ class JournalListSyncFeature extends BaseFeature {
 
               // Double-check that we have valid data before adding to sync list
               if (!personalCode || !gradeStr) {
-                Logger.warning(`Skipping sync item due to missing data: personalCode="${personalCode}", grade="${gradeStr}"`)
+                Logger.warning(`⚠️ Result ${resultIndex + 1}: Skipping sync item due to missing data: personalCode="${personalCode}", grade="${gradeStr}"`)
                 return
               }
 
-              syncData.push({
+              const syncItem = {
                 journalId: subject.subjectExternalId,
                 assignmentId: assignment.assignmentExternalId,
                 studentPersonalCode: personalCode,
                 grade: gradeStr
-              })
+              }
+              
+              syncData.push(syncItem)
+              Logger.info(`📤 Added to sync queue: ${result.studentName} (${personalCode}) -> Grade ${gradeStr}`)
             } else {
-              Logger.debug(`Grades are the same, skipping: Tahvel="${tahvelGrade}", Kriit="${kriitGrade}"`)
+              Logger.debug(`⏭️ Result ${resultIndex + 1}: Grades are the same, skipping: Tahvel="${tahvelGrade}", Kriit="${kriitGrade}"`)
             }
           })
         })
       })
+
+      Logger.info(`=== SYNC DATA COLLECTION COMPLETE: ${syncData.length} items to sync ===`)
 
       if (syncData.length === 0) {
         Logger.warning('No data to sync after processing')
@@ -2178,7 +2307,14 @@ class JournalListSyncFeature extends BaseFeature {
             }
 
             // Call the sync method with validated data
-            Logger.info(`Calling syncGradeToTahvel for student ${item.studentPersonalCode}...`)
+            Logger.info(`🚀 Calling syncGradeToTahvel for student ${item.studentPersonalCode}...`)
+            Logger.info('=== SYNC PARAMETERS ===')
+            Logger.info(`Journal ID: ${item.journalId} (type: ${typeof item.journalId})`)
+            Logger.info(`Assignment ID: ${item.assignmentId} (type: ${typeof item.assignmentId})`)
+            Logger.info(`Student Personal Code: "${item.studentPersonalCode}" (type: ${typeof item.studentPersonalCode})`)
+            Logger.info(`Grade: "${item.grade}" (type: ${typeof item.grade})`)
+            Logger.info('=== END SYNC PARAMETERS ===')
+            
             await this.syncGradeToTahvel(item.journalId, item.assignmentId, item.studentPersonalCode, item.grade)
 
             Logger.info(`Successfully synced grade for student ${item.studentPersonalCode}`)
@@ -2550,8 +2686,107 @@ class JournalListSyncFeature extends BaseFeature {
       // Log the number of students in the entry for debugging
       Logger.info(`Assignment ${assignmentId} has ${entryData.journalEntryStudents.length} students`)
 
+      // === ENHANCED DEBUG: LOG ALL STUDENTS IN ASSIGNMENT ===
+      Logger.info('=== ALL STUDENTS IN ASSIGNMENT ===')
+      for (let i = 0; i < entryData.journalEntryStudents.length; i++) {
+        const student = entryData.journalEntryStudents[i]
+        const studentId = student.journalStudent
+        
+        if (studentId) {
+          const cachedStudent = await this.getCachedStudent(studentId)
+          const personalCode = cachedStudent ? cachedStudent.personalCode : 'UNKNOWN_PERSONAL_CODE'
+          const name = cachedStudent ? cachedStudent.name : student.studentName || 'UNKNOWN_NAME'
+          const isActive = cachedStudent ? cachedStudent.isActive : 'UNKNOWN_STATUS'
+          const currentGrade = student.grade?.code || 'NO_GRADE'
+          
+          Logger.info(`Assignment Student ${i + 1}: "${name}" | PersonalCode: "${personalCode}" | Active: ${isActive} | Grade: ${currentGrade} | JournalStudentId: ${studentId} | EntryId: ${student.id}`)
+        } else {
+          Logger.warning(`Assignment Student ${i + 1}: NO journalStudent ID | EntryId: ${student.id}`)
+        }
+      }
+      Logger.info('=== END ALL STUDENTS IN ASSIGNMENT ===')
+
+      // Check if target student is in assignment
+      let targetStudentInAssignment = null
+      for (const student of entryData.journalEntryStudents) {
+        if (student.journalStudent) {
+          const cachedStudent = await this.getCachedStudent(student.journalStudent)
+          if (cachedStudent && String(cachedStudent.personalCode) === String(studentPersonalCode)) {
+            targetStudentInAssignment = student
+            Logger.info(`✅ Target student FOUND in assignment: ${cachedStudent.name} (${cachedStudent.personalCode})`)
+            break
+          }
+        }
+      }
+      
+      if (!targetStudentInAssignment) {
+        Logger.warning(`❌ Target student with personal code "${studentPersonalCode}" NOT FOUND in assignment ${assignmentId}`)
+      }
+
       // Log the target personal code we're looking for
       Logger.info(`Looking for student with personal code: ${studentPersonalCode}`)
+
+      // === ENHANCED DEBUG: LOG ALL JOURNAL STUDENTS ===
+      Logger.info('=== FETCHING JOURNAL STUDENTS FOR DEBUGGING ===')
+      const journalStudentsForMatching = await this.getJournalStudents(journalId)
+      
+      if (journalStudentsForMatching && journalStudentsForMatching.length > 0) {
+        Logger.info(`Found ${journalStudentsForMatching.length} students in journal ${journalId}`)
+        
+        // Log all students with their personal codes for debugging
+        Logger.info('=== ALL STUDENTS IN JOURNAL ===')
+        journalStudentsForMatching.forEach((js, index) => {
+          const studentData = js.student || {}
+          const personalCode = studentData.idcode || 'NO_PERSONAL_CODE'
+          const fullName = studentData.fullname || js.studentName || 'NO_NAME'
+          const status = studentData.status || 'NO_STATUS'
+          const isActive = status === 'OPPURSTAATUS_O'
+          
+          Logger.info(`Student ${index + 1}: "${fullName}" | PersonalCode: "${personalCode}" | Status: "${status}" | Active: ${isActive} | StudentId: ${js.studentId} | JournalStudentId: ${js.id}`)
+        })
+        Logger.info('=== END ALL STUDENTS IN JOURNAL ===')
+        
+        // Check for exact matches
+        const exactMatches = journalStudentsForMatching.filter(js => 
+          js.student && String(js.student.idcode) === String(studentPersonalCode)
+        )
+        
+        if (exactMatches.length > 0) {
+          Logger.info(`✅ Found ${exactMatches.length} exact match(es) for personal code ${studentPersonalCode}`)
+          exactMatches.forEach((match, index) => {
+            Logger.info(`Exact match ${index + 1}: ${match.student.fullname} | Status: ${match.student.status} | Active: ${match.student.status === 'OPPURSTAATUS_O'}`)
+          })
+        } else {
+          Logger.warning(`❌ NO exact matches found for personal code "${studentPersonalCode}"`)
+          
+          // Look for partial matches
+          const partialMatches = journalStudentsForMatching.filter(js => {
+            if (!js.student || !js.student.idcode) return false
+            const studentCode = String(js.student.idcode)
+            return studentCode.includes(String(studentPersonalCode)) || String(studentPersonalCode).includes(studentCode)
+          })
+          
+          if (partialMatches.length > 0) {
+            Logger.warning(`Found ${partialMatches.length} partial match(es):`)
+            partialMatches.forEach((match, index) => {
+              Logger.warning(`Partial match ${index + 1}: ${match.student.fullname} | PersonalCode: "${match.student.idcode}"`)
+            })
+          } else {
+            Logger.error(`🔍 NO partial matches found either. Target: "${studentPersonalCode}"`)
+            
+            // Show first few students for comparison
+            const firstFewStudents = journalStudentsForMatching.slice(0, 3)
+            Logger.error('Sample students for comparison:')
+            firstFewStudents.forEach((js, index) => {
+              const personalCode = js.student?.idcode || 'NO_CODE'
+              Logger.error(`Sample ${index + 1}: PersonalCode="${personalCode}" | Type: ${typeof personalCode}`)
+            })
+          }
+        }
+      } else {
+        Logger.error(`❌ NO journal students found for journal ${journalId}`)
+      }
+      Logger.info('=== END JOURNAL STUDENTS DEBUGGING ===')
 
       // Ensure we have journal students data (this will use caching)
       await this.getJournalStudents(journalId)
@@ -2562,9 +2797,6 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Convert target personal code to string for comparison
       const targetPersonalCode = String(studentPersonalCode)
-
-      // Get journal students to find the matching student
-      const journalStudentsForMatching = await this.getJournalStudents(journalId)
 
       if (journalStudentsForMatching) {
         for (const journalStudent of journalStudentsForMatching) {
@@ -2645,14 +2877,24 @@ class JournalListSyncFeature extends BaseFeature {
       if (!studentEntry) {
         Logger.debug(`Falling back to searching through entry data for student with personal code ${studentPersonalCode}`)
 
+        // === ENHANCED DEBUG: DETAILED FALLBACK SEARCH ===
+        Logger.info('=== STARTING FALLBACK SEARCH IN ASSIGNMENT DATA ===')
+        Logger.info(`Looking for student with personal code: "${studentPersonalCode}" (type: ${typeof studentPersonalCode})`)
+
         // First, log all students in the entry data for debugging
-        Logger.debug('All students in entry data:')
-        for (const student of entryData.journalEntryStudents) {
+        Logger.debug('All students in entry data with cached info:')
+        for (let i = 0; i < entryData.journalEntryStudents.length; i++) {
+          const student = entryData.journalEntryStudents[i]
           const studentId = student.journalStudent
-          const cachedStudent = await this.getCachedStudent(studentId)
-          const personalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
-          const name = cachedStudent ? cachedStudent.name : 'Unknown'
-          Logger.debug(`- ID: ${student.id}, journalStudent: ${studentId}, personalCode: ${personalCode}, name: ${name}, addInfo: ${student.addInfo}`)
+          
+          if (studentId) {
+            const cachedStudent = await this.getCachedStudent(studentId)
+            const personalCode = cachedStudent ? cachedStudent.personalCode : 'Unknown'
+            const name = cachedStudent ? cachedStudent.name : 'Unknown'
+            Logger.debug(`- Student ${i + 1}: ID: ${student.id}, journalStudent: ${studentId}, personalCode: "${personalCode}" (type: ${typeof personalCode}), name: "${name}", addInfo: ${student.addInfo}`)
+          } else {
+            Logger.debug(`- Student ${i + 1}: ID: ${student.id}, NO journalStudent ID, addInfo: ${student.addInfo}`)
+          }
         }
 
         // Find student by iterating through entry data and checking cache
@@ -2680,7 +2922,7 @@ class JournalListSyncFeature extends BaseFeature {
             const matches = cachedPersonalCode === targetPersonalCode
 
             if (matches) {
-              Logger.debug(`Found matching student in entry data: ${cachedStudent.name} (${cachedPersonalCode})`)
+              Logger.info(`✅ Found exact matching student in entry data: ${cachedStudent.name} (${cachedPersonalCode})`)
               Logger.debug(`Student entry details: ID=${student.id}, journalStudent=${student.journalStudent}, addInfo=${student.addInfo}`)
               studentEntry = student
               break
@@ -2691,11 +2933,15 @@ class JournalListSyncFeature extends BaseFeature {
         // If we couldn't find the student by personal code, try to find by similar personal code
         // but DO NOT substitute with a completely different student
         if (!studentEntry) {
-          Logger.debug(`Could not find student with personal code ${studentPersonalCode}, trying to find similar personal codes...`)
+          Logger.warning(`❌ Could not find student with exact personal code ${studentPersonalCode}, trying to find similar personal codes...`)
 
+          // === ENHANCED DEBUG: SIMILARITY MATCHING ===
+          Logger.info('=== TRYING SIMILARITY MATCHING ===')
+          
           // Try to find a student with a similar personal code
           // This is useful if the personal code formats are different (e.g., with/without leading zeros)
           const targetPersonalCode = String(studentPersonalCode)
+          Logger.info(`Target personal code for similarity matching: "${targetPersonalCode}"`)
 
           // First, try to find a student with a similar personal code
           for (const student of entryData.journalEntryStudents) {
@@ -2705,10 +2951,11 @@ class JournalListSyncFeature extends BaseFeature {
             if (!cachedStudent || !cachedStudent.personalCode) continue
 
             const cachedPersonalCode = String(cachedStudent.personalCode)
+            Logger.debug(`Comparing "${targetPersonalCode}" with "${cachedPersonalCode}"`)
 
             // Check if the personal codes are similar (one contains the other)
             if (cachedPersonalCode.includes(targetPersonalCode) || targetPersonalCode.includes(cachedPersonalCode)) {
-              Logger.debug(`Found student with similar personal code: ${cachedStudent.name} (${cachedPersonalCode})`)
+              Logger.warning(`⚠️ Found student with similar personal code: ${cachedStudent.name} (${cachedPersonalCode}) - SUBSTRING MATCH`)
               studentEntry = student
               break
             }
@@ -2717,20 +2964,25 @@ class JournalListSyncFeature extends BaseFeature {
             const cachedLastDigits = cachedPersonalCode.slice(-8)
             const targetLastDigits = targetPersonalCode.slice(-8)
             if (cachedLastDigits === targetLastDigits && cachedLastDigits.length === 8) {
-              Logger.debug(`Found student with matching last 8 digits: ${cachedStudent.name} (${cachedPersonalCode})`)
+              Logger.warning(`⚠️ Found student with matching last 8 digits: ${cachedStudent.name} (${cachedPersonalCode}) - LAST 8 DIGITS MATCH`)
               studentEntry = student
               break
             }
           }
+          
+          Logger.info('=== END SIMILARITY MATCHING ===')
 
           // If we still don't have a match, DO NOT use a random student as fallback
           // Instead, throw an error to prevent updating the wrong student's grade
           if (!studentEntry) {
+            Logger.error(`🚫 FINAL RESULT: Could not find student with personal code ${studentPersonalCode} or any similar personal code. Refusing to update a different student's grade for safety reasons.`)
             throw new Error(
               `Could not find student with personal code ${studentPersonalCode} or any similar personal code. Refusing to update a different student's grade for safety reasons.`
             )
           }
         }
+        
+        Logger.info('=== END FALLBACK SEARCH ===')
 
         if (!studentEntry) {
           // Build a helpful error message
@@ -3167,38 +3419,77 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {Promise<Object|null>} Cached student data or null if not found
    */
   async getCachedStudent(journalStudentId) {
-    if (!journalStudentId) return null
+    if (!journalStudentId) {
+      Logger.debug(`❌ getCachedStudent called with null/undefined journalStudentId`)
+      return null
+    }
 
-    Logger.debug(`🔍 Looking for student in cache with journalStudentId: ${journalStudentId}`)
+    Logger.debug(`🔍 Looking for student in cache with journalStudentId: ${journalStudentId} (type: ${typeof journalStudentId})`)
+
+    // === ENHANCED DEBUG: LOG MAPPING STATE ===
+    const mappingKeys = Object.keys(this.journalStudentIdToStudentId)
+    Logger.debug(`Current mapping has ${mappingKeys.length} entries`)
+    if (mappingKeys.length > 0) {
+      Logger.debug(`Sample mapping entries: ${mappingKeys.slice(0, 3).map(key => `${key}->${this.journalStudentIdToStudentId[key]}`).join(', ')}`)
+    }
 
     // Use the mapping to find the actual studentId
     const studentId = this.journalStudentIdToStudentId[journalStudentId]
     if (studentId) {
-      Logger.debug(`✓ Found mapping: journalStudentId ${journalStudentId} -> studentId ${studentId}`)
+      Logger.debug(`✅ Found mapping: journalStudentId ${journalStudentId} -> studentId ${studentId}`)
 
       try {
         // Use the API cache to get student details
+        Logger.debug(`📡 Fetching student details for studentId ${studentId}`)
         const studentDetails = await this.getStudentDetails(studentId)
-        if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
-          const isActive = studentDetails.status === 'OPPURSTAATUS_O'
-          const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
-
-          const cachedStudent = {
-            personalCode: studentDetails.person.idcode,
-            name: studentDetails.person.firstname + ' ' + studentDetails.person.lastname,
-            isActive: isActive,
-            isDeleted: isDeleted
+        
+        if (studentDetails) {
+          Logger.debug(`📋 Student details structure: ${JSON.stringify(Object.keys(studentDetails))}`)
+          
+          if (studentDetails.person) {
+            Logger.debug(`👤 Person data: ${JSON.stringify({
+              firstname: studentDetails.person.firstname,
+              lastname: studentDetails.person.lastname, 
+              idcode: studentDetails.person.idcode
+            })}`)
+          } else {
+            Logger.warning(`⚠️ No person data in student details for studentId ${studentId}`)
           }
+          
+          if (studentDetails.person && studentDetails.person.idcode) {
+            const isActive = studentDetails.status === 'OPPURSTAATUS_O'
+            const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
 
-          Logger.debug(`✓ Found student from API cache: ${cachedStudent.personalCode} (${cachedStudent.name})`)
-          return cachedStudent
+            const cachedStudent = {
+              personalCode: studentDetails.person.idcode,
+              name: studentDetails.person.firstname + ' ' + studentDetails.person.lastname,
+              isActive: isActive,
+              isDeleted: isDeleted
+            }
+
+            Logger.debug(`✅ Successfully cached student: ${cachedStudent.personalCode} (${cachedStudent.name}) - Active: ${isActive}, Deleted: ${isDeleted}`)
+            return cachedStudent
+          } else {
+            Logger.warning(`⚠️ Missing person.idcode in student details for studentId ${studentId}`)
+          }
+        } else {
+          Logger.warning(`⚠️ No student details returned for studentId ${studentId}`)
         }
       } catch (error) {
-        Logger.debug(`Error getting student ${studentId} from API cache: ${error.message}`)
+        Logger.error(`❌ Error getting student ${studentId} from API cache: ${error.message}`)
+      }
+    } else {
+      Logger.warning(`❌ No studentId mapping found for journalStudentId: ${journalStudentId}`)
+      
+      // Show available mappings for debugging
+      if (mappingKeys.length > 0) {
+        Logger.debug(`Available journalStudentId mappings: ${mappingKeys.join(', ')}`)
+      } else {
+        Logger.warning(`No mappings available at all - this suggests journal students data wasn't loaded properly`)
       }
     }
 
-    Logger.debug(`❌ Student not found in cache for journalStudentId: ${journalStudentId}`)
+    Logger.debug(`🚫 Student not found in cache for journalStudentId: ${journalStudentId}`)
     return null
   }
 }
