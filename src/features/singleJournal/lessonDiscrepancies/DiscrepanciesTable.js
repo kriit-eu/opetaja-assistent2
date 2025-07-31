@@ -198,6 +198,7 @@ export class DiscrepanciesTable {
    * @param {string} missingGradesMessage - Missing grades message
    * @returns {boolean} Success status
    */
+  // eslint-disable-next-line no-unused-vars
   insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
@@ -227,6 +228,7 @@ export class DiscrepanciesTable {
         const highlighted = document.querySelector('.highlight-missing-grade')
         const missingGradesMessage = highlighted ? 'Mõnedel iseseisevatel töödel on hinded puudu' : null
         // Should we show the notifications section?
+        // eslint-disable-next-line max-len
         const shouldShowNotifications = !!missingGradesMessage || ovCells.length > 0 || ovYellowCells.length > 0 || finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0
         let notificationsSection = ''
         if (shouldShowNotifications) {
@@ -342,8 +344,7 @@ export class DiscrepanciesTable {
   // Only return the main table section; notifications are handled after highlights
   const timetableSection = this.#createTimetableSection(discrepancies)
   const capacitySection = this.#createCapacitySection(capacityProblems, null)
-  const mainTableSection = `<div style='${boxStyle}'>${titleBar + indepWorkBanners + timetableSection + capacitySection}</div>`
-  return mainTableSection
+    return `<div style='${boxStyle}'>${titleBar + indepWorkBanners + timetableSection + capacitySection}</div>`
   }
 
   /**

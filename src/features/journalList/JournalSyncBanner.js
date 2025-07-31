@@ -67,7 +67,7 @@ class DifferenceRenderer {
 
     // Name Diffs first
     ;(assignmentNameDiffs || []).forEach(subject => {
-      ;(subject.nameDiffs || []).forEach(nameDiff => {
+      (subject.nameDiffs || []).forEach(nameDiff => {
         // Update latest name for this assignment
         latestNames[nameDiff.assignmentExternalId] = nameDiff.kriit || nameDiff.Tahvel
         // Always show both old and new name in the badge
@@ -102,7 +102,7 @@ class DifferenceRenderer {
 
     // Grade Diffs
     ;(gradeDiffs || []).forEach(subject => {
-      ;(subject.assignments || []).forEach(assignment => {
+      (subject.assignments || []).forEach(assignment => {
         // Always use the new name if a name change exists, fallback to latest name, then all possible sources, and normalize
         let assignmentName = getNewNameIfChanged(assignment.assignmentExternalId)
         if (!assignmentName)
