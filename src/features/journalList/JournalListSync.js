@@ -78,12 +78,27 @@ class JournalListSyncFeature extends BaseFeature {
     const getKey = (journalId, assignmentId) => `${journalId}::${assignmentId}`
 
     // Add name diffs
+    Logger.debug(`[SYNC DEBUG] this.differences has ${this.differences ? this.differences.length : 0} subjects`)
+    if (this.differences) {
+      this.differences.forEach((subject, i) => {
+        Logger.debug(`[SYNC DEBUG] Subject ${i}: ${subject.subjectName} (${subject.subjectExternalId}) with ${subject.assignments ? subject.assignments.length : 0} assignments`)
+      })
+    }
+    
     assignmentNameDiffs.forEach(subjectDiff => {
-      const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName)
-      if (!subject || !Array.isArray(subject.assignments)) return
+      Logger.debug(`[SYNC DEBUG] Processing subject: ${subjectDiff.subjectName} (${subjectDiff.subjectExternalId}) with ${subjectDiff.nameDiffs.length} name diffs`)
+      const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName && s.subjectExternalId === subjectDiff.subjectExternalId)
+      if (!subject || !Array.isArray(subject.assignments)) {
+        Logger.debug(`[SYNC DEBUG] Subject not found or has no assignments: ${subjectDiff.subjectName} (${subjectDiff.subjectExternalId})`)
+        return
+      }
       subjectDiff.nameDiffs.forEach(nameDiff => {
+        Logger.debug(`[SYNC DEBUG] Looking for assignment with externalId: ${nameDiff.assignmentExternalId}`)
         const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
-        if (!assignment) return
+        if (!assignment) {
+          Logger.debug(`[SYNC DEBUG] Assignment not found: ${nameDiff.assignmentExternalId}`)
+          return
+        }
         const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
         if (!updateMap.has(key)) {
           updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
@@ -117,6 +132,7 @@ class JournalListSyncFeature extends BaseFeature {
     })
 
     // For each assignment, send a single PUT to Tahvel
+    Logger.debug(`[SYNC DEBUG] UpdateMap has ${updateMap.size} entries to process`)
     for (const update of updateMap.values()) {
       const { journalId, assignmentId, nameEt, homeworkDuedate, entryDate } = update
       let currentEntry
@@ -257,7 +273,11 @@ class JournalListSyncFeature extends BaseFeature {
             assignmentExternalId: a.assignmentExternalId
           }))
         if (nameDiffs.length > 0) {
-          groupedDiffs.push({ subjectName: subject.subjectName, nameDiffs })
+          groupedDiffs.push({ 
+            subjectName: subject.subjectName, 
+            subjectExternalId: subject.subjectExternalId,
+            nameDiffs 
+          })
         }
       }
     })
