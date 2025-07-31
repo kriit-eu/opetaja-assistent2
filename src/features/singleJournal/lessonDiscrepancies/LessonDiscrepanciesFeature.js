@@ -762,16 +762,37 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     const parsedData = {}
     for (const [key, value] of Object.entries(button.dataset)) {
-      try {
-        parsedData[key] = JSON.parse(value)
-        Logger.debug(`[${this.name}] Successfully parsed ${key}:`, {
-          originalValue: value,
-          parsedValue: parsedData[key],
-          type: typeof parsedData[key]
-        })
-      } catch (parseError) {
-        Logger.error(`[${this.name}] Failed to parse button data key '${key}' with value '${value}':`, parseError)
-        parsedData[key] = value // Fallback to original value
+      // Only try to JSON.parse values that look like JSON (start with [ or {)
+      if (value.startsWith('[') || value.startsWith('{')) {
+        try {
+          parsedData[key] = JSON.parse(value)
+          Logger.debug(`[${this.name}] Successfully parsed ${key} as JSON:`, {
+            originalValue: value,
+            parsedValue: parsedData[key],
+            type: typeof parsedData[key]
+          })
+        } catch (parseError) {
+          Logger.error(`[${this.name}] Failed to parse button data key '${key}' with value '${value}':`, parseError)
+          parsedData[key] = value // Fallback to original value
+        }
+      } else {
+        // For simple values, try to convert numbers, otherwise keep as string
+        const numValue = Number(value)
+        if (!isNaN(numValue) && value !== '') {
+          parsedData[key] = numValue
+          Logger.debug(`[${this.name}] Converted ${key} to number:`, {
+            originalValue: value,
+            parsedValue: numValue,
+            type: 'number'
+          })
+        } else {
+          parsedData[key] = value
+          Logger.debug(`[${this.name}] Kept ${key} as string:`, {
+            originalValue: value,
+            parsedValue: value,
+            type: 'string'
+          })
+        }
       }
     }
 
