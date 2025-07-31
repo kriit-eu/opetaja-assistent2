@@ -218,7 +218,6 @@ export class DiscrepanciesTable {
       const mainTableSection = this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, null, true)
       flexContainer.innerHTML = mainTableSection
       insertionPoint.insertBefore(flexContainer, insertionPoint.firstChild)
-      this.addDiscrepancyButtonListeners()
       setTimeout(() => {
         // Check for all highlight types and missing grades
         const ovCells = document.querySelectorAll('.highlight-ov-red')
@@ -249,6 +248,8 @@ export class DiscrepanciesTable {
         }
         // Update flex container
         flexContainer.innerHTML = mainTableSection + notificationsSection
+        // Add button listeners after final content update
+        this.addDiscrepancyButtonListeners()
         // Now inject banners if needed
         const notifications = flexContainer.querySelector('.notifications-section')
         if (notifications) {
