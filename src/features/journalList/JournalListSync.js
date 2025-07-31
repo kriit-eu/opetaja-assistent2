@@ -2856,6 +2856,7 @@ class JournalListSyncFeature extends BaseFeature {
 
             Logger.info(`Created student entry with journalStudentId ${info.journalStudentId} to handle API discrepancy`)
             Logger.info(`Database shows student is enrolled - proceeding with sync despite API inconsistency`)
+            Logger.info(`🔍 DEBUG: Student entry created successfully, studentEntry.journalStudent = ${studentEntry.journalStudent}`)
           } else {
             // If we couldn't find a journalStudentId, check if the student is active
             if (cachedStudent && !cachedStudent.isActive) {
@@ -2874,6 +2875,7 @@ class JournalListSyncFeature extends BaseFeature {
       }
 
       // If we still don't have a match, try the old method of searching through entry data
+      Logger.info(`🔍 DEBUG: Checking if studentEntry exists. studentEntry: ${studentEntry ? 'EXISTS' : 'NULL'}, journalStudent: ${studentEntry?.journalStudent || 'N/A'}`)
       if (!studentEntry) {
         Logger.debug(`Falling back to searching through entry data for student with personal code ${studentPersonalCode}`)
 
@@ -2983,55 +2985,57 @@ class JournalListSyncFeature extends BaseFeature {
         }
         
         Logger.info('=== END FALLBACK SEARCH ===')
+      }
 
-        if (!studentEntry) {
-          // Build a helpful error message
-          let errorMessage = `Student with personal code ${studentPersonalCode} not found in assignment ${assignmentId}.`
+      // Final check: ensure we have a valid student entry
+      if (!studentEntry) {
+        // Build a helpful error message
+        let errorMessage = `Student with personal code ${studentPersonalCode} not found in assignment ${assignmentId}.`
 
-          // Add more specific diagnostic information
-          errorMessage += `\n\nDiagnostic Info:`
-          errorMessage += `\n- Assignment ID: ${assignmentId}`
-          errorMessage += `\n- Journal ID: ${journalId}`
-          errorMessage += `\n- Students in assignment: ${entryData.journalEntryStudents.length}`
+        // Add more specific diagnostic information
+        errorMessage += `\n\nDiagnostic Info:`
+        errorMessage += `\n- Assignment ID: ${assignmentId}`
+        errorMessage += `\n- Journal ID: ${journalId}`
+        errorMessage += `\n- Students in assignment: ${entryData.journalEntryStudents.length}`
 
-          // Check if student exists in journal students
-          const journalStudentsForCheck = await this.getJournalStudents(journalId)
-          let studentInJournal = null
+        // Check if student exists in journal students
+        const journalStudentsForCheck = await this.getJournalStudents(journalId)
+        let studentInJournal = null
 
-          if (journalStudentsForCheck) {
-            for (const journalStudent of journalStudentsForCheck) {
-              if (journalStudent.student && journalStudent.student.idcode === String(studentPersonalCode)) {
-                studentInJournal = {
-                  name: journalStudent.student.fullname || journalStudent.studentName,
-                  personalCode: journalStudent.student.idcode,
-                  isActive: journalStudent.student.status === 'OPPURSTAATUS_O'
-                }
-                break
+        if (journalStudentsForCheck) {
+          for (const journalStudent of journalStudentsForCheck) {
+            if (journalStudent.student && journalStudent.student.idcode === String(studentPersonalCode)) {
+              studentInJournal = {
+                name: journalStudent.student.fullname || journalStudent.studentName,
+                personalCode: journalStudent.student.idcode,
+                isActive: journalStudent.student.status === 'OPPURSTAATUS_O'
               }
+              break
             }
           }
-
-          if (studentInJournal) {
-            errorMessage += `\n- Student EXISTS in journal: ${studentInJournal.name} (${studentInJournal.personalCode})`
-            errorMessage += `\n- Student status: ${studentInJournal.isActive ? 'Active' : 'Inactive'}`
-            errorMessage += `\n- This means the student is NOT enrolled in this specific assignment`
-            errorMessage += `\n\nSOLUTION: The student needs to be manually added to this assignment in Tahvel first, then you can sync the grade.`
-          } else {
-            errorMessage += `\n- Student NOT FOUND in journal`
-            errorMessage += `\n- This means the student is not enrolled in this journal at all`
-          }
-
-          throw new Error(errorMessage)
         }
 
-        // Check if we have a valid journalStudent ID
-        if (!studentEntry.journalStudent) {
-          // We need to wait for the journalStudentId from getDetailedStudentInfo
-          Logger.warning(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update.`)
-          throw new Error(
-            `No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update. This might be because the student is not enrolled in this journal.`
-          )
+        if (studentInJournal) {
+          errorMessage += `\n- Student EXISTS in journal: ${studentInJournal.name} (${studentInJournal.personalCode})`
+          errorMessage += `\n- Student status: ${studentInJournal.isActive ? 'Active' : 'Inactive'}`
+          errorMessage += `\n- This means the student is NOT enrolled in this specific assignment`
+          errorMessage += `\n\nSOLUTION: The student needs to be manually added to this assignment in Tahvel first, then you can sync the grade.`
+        } else {
+          errorMessage += `\n- Student NOT FOUND in journal`
+          errorMessage += `\n- This means the student is not enrolled in this journal at all`
         }
+
+        throw new Error(errorMessage)
+      }
+
+      // Check if we have a valid journalStudent ID
+      if (!studentEntry.journalStudent) {
+        // We need to wait for the journalStudentId from getDetailedStudentInfo
+        Logger.warning(`No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update.`)
+        throw new Error(
+          `No valid journalStudent ID found for student ${studentPersonalCode}. Cannot proceed with update. This might be because the student is not enrolled in this journal.`
+        )
+      }
 
         // Log the current grade for debugging
         const currentGradeCode = studentEntry.grade?.code || 'No grade'
@@ -3044,6 +3048,8 @@ class JournalListSyncFeature extends BaseFeature {
             `WARNING: Using fallback student ${cachedStudentForFallback.name} (${cachedStudentForFallback.personalCode}) instead of requested student with personal code ${studentPersonalCode}`
           )
         }
+
+        Logger.info(`🔍 DEBUG: About to prepare update data. studentEntry.journalStudent = ${studentEntry.journalStudent}`)
 
         // Prepare the update data - following the exact structure used by the Angular app
         // Create the updated student entry with the new grade
@@ -3400,7 +3406,6 @@ class JournalListSyncFeature extends BaseFeature {
 
         // Return the response, even if it's an empty string (which indicates success)
         return response
-      }
     } catch (error) {
       // Add context to the error message
       const contextualError = new Error(`Error syncing grade for student ${studentPersonalCode} in assignment ${assignmentId}: ${error.message}`)
