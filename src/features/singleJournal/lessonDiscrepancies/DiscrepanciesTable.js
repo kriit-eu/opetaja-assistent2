@@ -198,6 +198,7 @@ export class DiscrepanciesTable {
    * @param {string} missingGradesMessage - Missing grades message
    * @returns {boolean} Success status
    */
+  // eslint-disable-next-line no-unused-vars
   insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage) {
     try {
       document.querySelector('[data-discrepancies-table]')?.remove()
@@ -205,51 +206,58 @@ export class DiscrepanciesTable {
       const insertionPoint = this.#findInsertionPoint()
       if (!insertionPoint) return false
       this.#injectCSS()
-      insertionPoint.insertBefore(
-        this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage),
-        insertionPoint.firstChild
-      )
-      this.addDiscrepancyButtonListeners()
-      // Highlight final grade column and show notification
+      // Always render the main table, but do not render notifications section yet
+      const flexContainer = document.createElement('div')
+      flexContainer.style.display = 'flex'
+      flexContainer.style.flexWrap = 'wrap'
+      flexContainer.style.gap = '16px'
+      flexContainer.style.alignItems = 'flex-start'
+      flexContainer.style.margin = '0'
+      flexContainer.setAttribute('data-discrepancies-table', 'true')
+      // Main table only for now
+      const mainTableSection = this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, null, true)
+      flexContainer.innerHTML = mainTableSection
+      insertionPoint.insertBefore(flexContainer, insertionPoint.firstChild)
       setTimeout(() => {
-        // Highlighting is now handled by HighlightFinalGradesFeature.js
-        // Only check for highlights and inject banners
+        // Check for all highlight types and missing grades
         const ovCells = document.querySelectorAll('.highlight-ov-red')
         const ovYellowCells = document.querySelectorAll('.highlight-ov-yellow')
-        if (Logger.isDebugMode()) {
-          Logger.info(`✨ [DiscrepanciesTable] Found ${ovCells.length} .highlight-ov-red cells after highlight`)
-          Logger.info(`✨ [DiscrepanciesTable] Found ${ovYellowCells.length} .highlight-ov-yellow cells after highlight`)
-          ovCells.forEach((cell, idx) => {
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}]:`, cell)
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-red cell[${idx}] parent:`, cell.parentNode)
-          })
-          ovYellowCells.forEach((cell, idx) => {
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}]:`, cell)
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-ov-yellow cell[${idx}] parent:`, cell.parentNode)
-          })
-        }
         const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
         const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
-        if (Logger.isDebugMode()) {
-          Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeRedCells.length} .highlight-final-grade-red cells after highlight`)
-          Logger.info(`✨ [DiscrepanciesTable] Found ${finalGradeYellowCells.length} .highlight-final-grade-yellow cells after highlight`)
-          finalGradeRedCells.forEach((cell, idx) => {
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}]:`, cell)
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-red cell[${idx}] parent:`, cell.parentNode)
-          })
-          finalGradeYellowCells.forEach((cell, idx) => {
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}]:`, cell)
-            Logger.info(`✨ [DiscrepanciesTable] .highlight-final-grade-yellow cell[${idx}] parent:`, cell.parentNode)
-          })
+        const highlighted = document.querySelector('.highlight-missing-grade')
+        const missingGradesMessage = highlighted ? 'Mõnedel iseseisevatel töödel on hinded puudu' : null
+        // Should we show the notifications section?
+        // eslint-disable-next-line max-len
+        const shouldShowNotifications = !!missingGradesMessage || ovCells.length > 0 || ovYellowCells.length > 0 || finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0
+        let notificationsSection = ''
+        if (shouldShowNotifications) {
+          notificationsSection = `
+            <div class='notifications-section' style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
+                <div style="display:flex;align-items:center;">
+                  <span style="font-size:20px;margin-right:10px;">🎓</span>
+                  <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
+                </div>
+                <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
+                  Hinded
+                </div>
+              </div>
+              ${missingGradesMessage ? `<div class='oa2-banner oa2-banner--red'>${missingGradesMessage}</div>` : ''}
+            </div>
+          `
         }
-        const notifications = document.querySelector('.notifications-section')
+        // Update flex container
+        flexContainer.innerHTML = mainTableSection + notificationsSection
+        // Add button listeners after final content update
+        this.addDiscrepancyButtonListeners()
+        // Now inject banners if needed
+        const notifications = flexContainer.querySelector('.notifications-section')
         if (notifications) {
-          // Remove old banners
+          // Remove old banners (shouldn't be any, but for safety)
           notifications.querySelectorAll('.oa2-banner-ov').forEach(b => b.remove())
           notifications.querySelectorAll('.oa2-banner-final-grade').forEach(b => b.remove())
           // Inject ÕV banner if needed
           if (ovYellowCells.length > 0) {
-            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting ÕV yellow banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--yellow oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund (tähtaeg läheneb)!'
@@ -260,7 +268,6 @@ export class DiscrepanciesTable {
               notifications.appendChild(ovBanner)
             }
           } else if (ovCells.length > 0) {
-            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting ÕV red banner under Hinded')
             const ovBanner = document.createElement('div')
             ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
             ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund!'
@@ -270,12 +277,9 @@ export class DiscrepanciesTable {
             } else {
               notifications.appendChild(ovBanner)
             }
-          } else {
-            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No ÕV highlights found, not injecting banner')
           }
           // Inject final grade banner if needed
           if (finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0) {
-            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] Injecting Lõpptulemus banner under Hinded')
             const fgBanner = document.createElement('div')
             fgBanner.className = 'oa2-banner oa2-banner-final-grade'
             if (finalGradeYellowCells.length > 0) {
@@ -295,11 +299,7 @@ export class DiscrepanciesTable {
             } else {
               notifications.appendChild(fgBanner)
             }
-          } else {
-            if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No final grade highlights found, not injecting banner')
           }
-        } else {
-          if (Logger.isDebugMode()) Logger.info('✨ [DiscrepanciesTable] No notifications section found')
         }
       }, 50)
       return true
@@ -342,37 +342,10 @@ export class DiscrepanciesTable {
       indepWorkBanners = independentWorkMessages.map(msg => `<div class='oa2-banner oa2-banner--red'>${msg}</div>`).join('')
     }
 
-    // Notifications section (side table)
-    let notificationsSection
-    notificationsSection = `<div class='notifications-section' style='background:#fff3cd;border:1px solid #ffeaa7;border-radius:4px;padding:15px;min-width:260px;max-width:340px;box-shadow:0 2px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;flex:1 1 260px;'>`
-    notificationsSection += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
-      <div style="display:flex;align-items:center;">
-        <span style="font-size:20px;margin-right:10px;">🎓</span>
-        <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
-      </div>
-      <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-        Hinded
-      </div>
-    </div>`
-    // Only show missing grades message in notifications section
-    if (missingGradesMessage) {
-      notificationsSection += `<div class='oa2-banner oa2-banner--red'>${missingGradesMessage}</div>`
-    }
-    notificationsSection += `</div>`
-
-    const timetableSection = this.#createTimetableSection(discrepancies)
-    const capacitySection = this.#createCapacitySection(capacityProblems, null)
-    const mainTableSection = `<div style='${boxStyle}'>${titleBar + indepWorkBanners + timetableSection + capacitySection}</div>`
-    // Flex container for side-by-side layout
-    const flexContainer = document.createElement('div')
-    flexContainer.style.display = 'flex'
-    flexContainer.style.flexWrap = 'wrap'
-    flexContainer.style.gap = '16px'
-    flexContainer.style.alignItems = 'flex-start'
-    flexContainer.style.margin = '0' // Ensure no left margin on flex container
-    flexContainer.setAttribute('data-discrepancies-table', 'true')
-    flexContainer.innerHTML = mainTableSection + notificationsSection
-    return flexContainer
+  // Only return the main table section; notifications are handled after highlights
+  const timetableSection = this.#createTimetableSection(discrepancies)
+  const capacitySection = this.#createCapacitySection(capacityProblems, null)
+    return `<div style='${boxStyle}'>${titleBar + indepWorkBanners + timetableSection + capacitySection}</div>`
   }
 
   /**
@@ -526,7 +499,7 @@ export class DiscrepanciesTable {
 
     // Get formatted date for button data
     // Handle null/undefined dates specially since they show as "-" in the main table
-    let safeFormattedDate = 'NO_DATE' // Special identifier for null dates
+    let safeFormattedDate // Special identifier for null dates
     if (entry.entryDate) {
       try {
         const dateObj = new Date(entry.entryDate)

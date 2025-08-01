@@ -244,10 +244,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Timetable events count:', timetableData?.timetableEvents?.length || 0)
 
     const timetable =
-      timetableData?.timetableEvents?.filter(event => {
-        const matches = event.journalId == journalId
-        return matches
-      }) || []
+      timetableData?.timetableEvents?.filter(event => event.journalId == journalId) || []
 
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Filtered timetable events for journal:', timetable)
 

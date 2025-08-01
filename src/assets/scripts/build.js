@@ -158,17 +158,17 @@ async function copyStaticAssets() {
   fs.copyFileSync(cssSourcePath, cssDestPath)
   console.log('  Copied JournalSyncBannerService.css')
 
-  // Copy TahvelLessonTimes.json
+  // Copy VIKKLessonTimes.json
   const lessonTimesSourceDir = path.join(CONFIG.srcDir, 'features', 'singleJournal', 'lessonDiscrepancies')
   const lessonTimesDestDir = path.join(CONFIG.distDir, 'src', 'features', 'singleJournal', 'lessonDiscrepancies')
 
   // Create the destination directory structure
   fs.mkdirSync(lessonTimesDestDir, { recursive: true })
 
-  const lessonTimesSourcePath = path.join(lessonTimesSourceDir, 'TahvelLessonTimes.json')
-  const lessonTimesDestPath = path.join(lessonTimesDestDir, 'TahvelLessonTimes.json')
+  const lessonTimesSourcePath = path.join(lessonTimesSourceDir, 'VIKKLessonTimes.json')
+  const lessonTimesDestPath = path.join(lessonTimesDestDir, 'VIKKLessonTimes.json')
   fs.copyFileSync(lessonTimesSourcePath, lessonTimesDestPath)
-  console.log('  Copied TahvelLessonTimes.json')
+  console.log('  Copied VIKKLessonTimes.json')
 }
 
 // Run the build process
