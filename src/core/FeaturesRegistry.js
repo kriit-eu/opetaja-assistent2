@@ -70,6 +70,7 @@ export async function loadFeatures() {
   } catch (error) {
     Logger.error('Error loading HighlightMissingGradesFeature:', error)
   }
+
   // Load highlight final grades feature (always enabled)
   try {
     const HighlightFinalGradesFeature = (await import('../features/singleJournal/highlightFinalGrades/HighlightFinalGradesFeature.js')).default
@@ -78,6 +79,16 @@ export async function loadFeatures() {
     Logger.debug('Feature "HighlightFinalGradesFeature" created')
   } catch (error) {
     Logger.error('Error loading HighlightFinalGradesFeature:', error)
+  }
+
+  // Load final grades by outcomes feature (always enabled)
+  try {
+    const FinalGradesByOvFeature = (await import('../features/singleJournal/addFinalGrades/FinalGradesByOvFeature.js')).default
+    const finalGradesByOvFeature = new FinalGradesByOvFeature()
+    allAvailableFeatures.singleJournal.push(finalGradesByOvFeature)
+    Logger.debug('Feature "FinalGradesByOvFeature" created')
+  } catch (error) {
+    Logger.error('Error loading FinalGradesByOvFeature:', error)
   }
 
   // Create a copy of the features structure for returning

@@ -85,9 +85,7 @@ class DifferenceRenderer {
     })
 
     // Helper to get latest assignment name
-    const getAssignmentName = (assignmentExternalId, fallback) => {
-      return latestNames[assignmentExternalId] || fallback
-    }
+    const getAssignmentName = (assignmentExternalId, fallback) => latestNames[assignmentExternalId] || fallback
 
     // Helper to get new name if a name change exists for this assignmentExternalId
     const getNewNameIfChanged = assignmentExternalId => {
@@ -107,10 +105,13 @@ class DifferenceRenderer {
       (subject.assignments || []).forEach(assignment => {
         // Always use the new name if a name change exists, fallback to latest name, then all possible sources, and normalize
         let assignmentName = getNewNameIfChanged(assignment.assignmentExternalId)
-        if (!assignmentName) assignmentName = getAssignmentName(assignment.assignmentExternalId,
-          typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null
-            ? assignment.assignmentName.kriit || assignment.assignmentName.Tahvel
-            : assignment.assignmentName)
+        if (!assignmentName)
+          assignmentName = getAssignmentName(
+            assignment.assignmentExternalId,
+            typeof assignment.assignmentName === 'object' && assignment.assignmentName !== null
+              ? assignment.assignmentName.kriit || assignment.assignmentName.Tahvel
+              : assignment.assignmentName
+          )
         if (!assignmentName) assignmentName = assignment.assignmentName || assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel
         assignmentName = normalize(assignmentName) || '—'
         ;(assignment.results || []).forEach(result => {
@@ -133,9 +134,15 @@ class DifferenceRenderer {
 
     // Due Date Diffs
     ;(dueDateDiffs || []).forEach(diff => {
-      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
+      // assignmentName should always be the assignment's name, not a date
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
+      if (!assignmentName)
+        assignmentName = getAssignmentName(
+          diff.assignmentExternalId,
+          typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+            ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+            : diff.assignmentName
+        )
       if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
@@ -150,9 +157,15 @@ class DifferenceRenderer {
 
     // Entry Date Diffs
     ;(entryDateDiffs || []).forEach(diff => {
-      // Always use the new name if a name change exists, fallback to all possible sources, and normalize
+      // assignmentName should always be the assignment's name, not a date
       let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
-      if (!assignmentName) assignmentName = getAssignmentName(diff.assignmentExternalId, diff.kriit || diff.assignmentName)
+      if (!assignmentName)
+        assignmentName = getAssignmentName(
+          diff.assignmentExternalId,
+          typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+            ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+            : diff.assignmentName
+        )
       if (!assignmentName) assignmentName = diff.assignmentName || diff.kriit || diff.Tahvel
       assignmentName = normalize(assignmentName) || '—'
       addDiff(diff.subjectName || '', {
@@ -244,14 +257,24 @@ export class JournalSyncBannerService {
 
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
         classList: ['container']
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add title
@@ -282,7 +305,7 @@ export class JournalSyncBannerService {
     )
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('Missing API key banner created and displayed')
   }
@@ -297,6 +320,17 @@ export class JournalSyncBannerService {
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
@@ -304,8 +338,7 @@ export class JournalSyncBannerService {
         style: 'display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px;'
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add success icon
@@ -338,7 +371,7 @@ export class JournalSyncBannerService {
           classList: ['btn-secondary'],
           onclick: onRefresh
         },
-        'Värskenda andmeid',
+        'Värskenda',
         actions
       )
     }
@@ -357,7 +390,7 @@ export class JournalSyncBannerService {
     }
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('All in sync banner created and displayed')
   }
@@ -374,14 +407,24 @@ export class JournalSyncBannerService {
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
         classList: ['container']
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add title
@@ -416,13 +459,13 @@ export class JournalSyncBannerService {
           classList: ['btn-secondary'],
           onclick: onRefresh
         },
-        'Tühista',
+        'Värskenda',
         actions
       )
     }
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('Differences banner created and displayed')
   }
@@ -447,14 +490,24 @@ export class JournalSyncBannerService {
     const container = bannerService.getBannerContainer()
     bannerService.removeBanner()
 
+    // Add scoping container to prevent CSS leakage
+    const scopedContainer = domService.createAndInsertElement(
+      'div',
+      {
+        classList: ['ta-sync-banner-container']
+      },
+      '',
+      container,
+      'afterbegin'
+    )
+
     const banner = domService.createAndInsertElement(
       'div',
       {
         classList: ['container', 'ta-sync-error']
       },
       '',
-      container,
-      'afterbegin'
+      scopedContainer
     )
 
     // Add error icon
@@ -493,7 +546,7 @@ export class JournalSyncBannerService {
     this._addSyncErrorActions(banner, error, options)
 
     // Update the banner service's current banner reference
-    bannerService.currentBanner = banner
+    bannerService.currentBanner = scopedContainer
 
     Logger.debug('Sync error banner created and displayed')
   }
@@ -678,12 +731,6 @@ export class JournalSyncBannerService {
         )
       }
     }
-  }
-  /**
-   * Clean up sync-specific resources
-   */
-  destroy() {
-    styleService.removeCSS('journal-sync-banner-styles')
   }
 }
 

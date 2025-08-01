@@ -124,6 +124,20 @@ class ApiService {
           // This is the best we can do—we can’t reliably get the client’s IP
           // But we can include the header to match Angular's request
           requestOptions.headers['X-Forwarded-For'] = '127.0.0.1'
+
+          // Add X-XSRF-TOKEN header for POST/PUT requests
+          const cookies = document.cookie.split(';')
+          let xsrfToken = ''
+          for (const cookie of cookies) {
+            const [name, value] = cookie.trim().split('=')
+            if (name === 'XSRF-TOKEN') {
+              xsrfToken = value
+              break
+            }
+          }
+          if (xsrfToken) {
+            requestOptions.headers['X-XSRF-TOKEN'] = xsrfToken
+          }
         }
       }
 
