@@ -637,6 +637,15 @@ class JournalListSyncFeature extends BaseFeature {
           }
           const assignments = this.extractAssignmentsFromEntries(mergedEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
+          // Get last lesson date from timetable
+          let lastLessonDate = null
+          try {
+            const lastLessonData = await this.getLastLessonDate(id, journalInfo)
+            lastLessonDate = lastLessonData
+          } catch (error) {
+            Logger.warning(`Could not get last lesson date for journal ${id}:`, error)
+          }
+
           let teacherName = ''
           let teacherPersonalCode = ''
 
@@ -679,7 +688,8 @@ class JournalListSyncFeature extends BaseFeature {
               groupName: '',
               teacherPersonalCode,
               teacherName,
-              assignments
+              assignments,
+              lastLessonDate
             }
           }
 
@@ -722,7 +732,8 @@ class JournalListSyncFeature extends BaseFeature {
               groupName,
               teacherPersonalCode,
               teacherName,
-              assignments: filteredAssignments
+              assignments: filteredAssignments,
+              lastLessonDate
             })
           }
 
@@ -1338,6 +1349,62 @@ class JournalListSyncFeature extends BaseFeature {
     count += entryDateDiffs.length
 
     return count
+  }
+
+  /**
+   * Get last lesson date from timetable
+   * @param {number} journalId - Journal ID
+   * @param {Object} journalInfo - Journal info object (already fetched)
+   * @returns {Promise<string|null>} Last lesson date in ISO format or null if not found
+   */
+  async getLastLessonDate(journalId, journalInfo) {
+    try {
+      if (!journalInfo) {
+        return null
+      }
+
+      const schoolId = journalInfo.school?.id || 9 // Fallback to school ID 9
+      const teacherId = journalInfo.journalTeachers?.[0]?.id
+
+      if (!teacherId) {
+        Logger.debug(`No teacher ID available for journal ${journalId}`)
+        return null
+      }
+
+      // Get study year dates
+      const now = new Date()
+      const studyYear = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear()
+      const from = journalInfo.studyYearStartDate || new Date(Date.UTC(studyYear, 8, 1)).toISOString()
+      const thru = journalInfo.studyYearEndDate || new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
+
+      const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherId}&thru=${thru}`
+      
+      const timetableData = await this.api.tahvel.get(endpoint, {}, { 
+        cache: true, 
+        cacheExpiration: 24 * 60 * 60 * 1000  // 24 hours cache
+      })
+
+      if (!timetableData?.timetableEvents) {
+        return null
+      }
+
+      // Filter timetable events for this specific journal
+      const journalTimetable = timetableData.timetableEvents.filter(event => event.journalId == journalId)
+      
+      if (journalTimetable.length === 0) {
+        return null
+      }
+
+      // Sort by date and get the last lesson
+      const sortedTimetable = journalTimetable.slice().sort((a, b) => new Date(a.date) - new Date(b.date))
+      const lastLessonDate = sortedTimetable[sortedTimetable.length - 1]?.date
+
+      return lastLessonDate || null
+
+    } catch (error) {
+      Logger.warning(`Error getting last lesson date for journal ${journalId}:`, error)
+      return null
+    }
   }
 
   /**
