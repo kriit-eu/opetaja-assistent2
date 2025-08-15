@@ -440,28 +440,67 @@ export class JournalSyncBannerService {
     const actions = domService.createAndInsertElement('div', { classList: ['actions'] }, '', banner)
 
     // Add sync button only if there are differences to sync
+    let syncBtn = null
+    let refreshBtn = null
     if (totalDifferences > 0 && onSync) {
-      domService.createAndInsertElement(
+      syncBtn = domService.createAndInsertElement(
         'button',
         {
-          classList: ['btn-primary'],
-          onclick: onSync
+          classList: ['btn-primary']
         },
         'Sünkroniseeri kõik',
         actions
       )
+
+      // Create a small spinner element (styled via CSS animation)
+      const spinner = domService.createAndInsertElement(
+        'span',
+        { classList: ['sync-spinner'], style: 'margin-left:8px; display: none;', 'aria-hidden': 'true' },
+        '',
+        syncBtn
+      )
+
+      // Click handler wraps the provided onSync to manage UI state
+      syncBtn.addEventListener('click', async () => {
+        try {
+          // Disable both action buttons
+          const buttons = actions.querySelectorAll('button')
+          buttons.forEach(b => (b.disabled = true))
+
+          // Show spinner and change label
+          spinner.style.display = 'inline-block'
+          syncBtn.setAttribute('aria-busy', 'true')
+          syncBtn.classList.add('loading')
+
+          // Await the provided sync callback
+          await onSync()
+        } catch (err) {
+          // Swallow here; error handling will be shown by the caller via banners
+          Logger.warning('Sync action failed:', err)
+        } finally {
+          // Re-enable buttons and hide spinner
+          const buttons = actions.querySelectorAll('button')
+          buttons.forEach(b => (b.disabled = false))
+          spinner.style.display = 'none'
+          syncBtn.removeAttribute('aria-busy')
+          syncBtn.classList.remove('loading')
+        }
+      })
     }
 
     if (onRefresh) {
-      domService.createAndInsertElement(
+      // If we've already created syncBtn above, create refreshBtn and keep reference
+      refreshBtn = domService.createAndInsertElement(
         'button',
         {
-          classList: ['btn-secondary'],
-          onclick: onRefresh
+          classList: ['btn-secondary']
         },
         'Värskenda',
         actions
       )
+
+      // Wire refresh to provided callback
+      refreshBtn.addEventListener('click', () => onRefresh())
     }
 
     // Update the banner service's current banner reference
