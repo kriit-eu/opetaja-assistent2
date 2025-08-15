@@ -194,8 +194,32 @@ class FinalGradesLFeature {
         '✨ FinalGradesLFeature: filtered results.output journalStudentIds',
         filteredOutput.map(r => r.journalStudentId)
       )
+      // Fetch student statuses for filtered students so we can apply OPPURSTAATUS_A rule
+      const uniqueStudentIds = Array.from(new Set(filteredOutput.map(r => r.studentId).filter(Boolean)))
+      const studentStatusMap = {}
+      await Promise.all(uniqueStudentIds.map(async id => {
+        try {
+          const det = await this.api.tahvel.get(`/students/${id}`)
+          studentStatusMap[String(id)] = det && det.status ? det.status : null
+        } catch (e) {
+          Logger.error('✨ FinalGradesLFeature: Failed to fetch student details, defaulting to include', { studentId: id, err: e })
+          studentStatusMap[String(id)] = null
+        }
+      }))
+
       const mappedStudents = filteredOutput
         .map(r => {
+          // If student is on status A (OPPURSTAATUS_A) only allow adding if finalGrade is not MA, 1 or 2
+          const status = studentStatusMap[String(r.studentId)]
+          const gradeStr = String(r.finalGrade || '').toUpperCase()
+          if (status === 'OPPURSTAATUS_A' && (gradeStr === 'MA' || gradeStr === '1' || gradeStr === '2')) {
+            Logger.info('✨ FinalGradesLFeature: Skipping L grade for OPPURSTAATUS_A student due to disallowed grade', { journalStudentId: r.journalStudentId, studentId: r.studentId, grade: gradeStr })
+            return null
+          }
+          
+          // existing mapping logic
+          
+          
           const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
           const grade = r.finalGrade
           let code = null,

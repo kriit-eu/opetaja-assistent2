@@ -123,6 +123,19 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
           })
         }
+        // Fetch statuses for students in filteredOutput so we can apply OPPURSTAATUS_A rule
+        const uniqueStudentIds = Array.from(new Set(filteredOutput.map(r => Number(r.studentId)).filter(Boolean)))
+        const studentStatusMap = {}
+        await Promise.all(uniqueStudentIds.map(async sid => {
+          try {
+            const det = await this.api.tahvel.get(`/students/${sid}`)
+            studentStatusMap[String(sid)] = det && det.status ? det.status : null
+          } catch (e) {
+            Logger.error('FinalGradesByOvFeature: Failed to fetch student details, defaulting to include', { studentId: sid, err: e })
+            studentStatusMap[String(sid)] = null
+          }
+        }))
+
         const outcomeStudents = filteredOutput
           .map(r => {
             let grade = r.ovGrades[ovNum]
@@ -132,6 +145,13 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (rounded >= 1 && rounded <= 5) grade = String(rounded)
             }
             const studentId = Number(r.studentId)
+            // If student is on academic leave (OPPURSTAATUS_A) only allow adding ÕV if grade is not MA, 1 or 2
+            const status = studentStatusMap[String(studentId)]
+            const normalizedGrade = String(grade || '').toUpperCase()
+            if (status === 'OPPURSTAATUS_A' && (normalizedGrade === 'MA' || normalizedGrade === '1' || normalizedGrade === '2')) {
+              Logger.info('FinalGradesByOvFeature: Skipping ÕV grade for OPPURSTAATUS_A student due to disallowed grade', { studentId, ovNum, grade: normalizedGrade })
+              return null
+            }
             const lookupKey = `${studentId}|${ovNum}`
             const mapped = this.#mapGradeToSchema(grade)
             if (!mapped) return null
