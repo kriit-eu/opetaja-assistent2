@@ -461,7 +461,7 @@ export class JournalSyncBannerService {
       )
 
       // Click handler wraps the provided onSync to manage UI state
-      syncBtn.addEventListener('click', async () => {
+      syncBtn.addEventListener('click', async() => {
         try {
           // Disable both action buttons
           const buttons = actions.querySelectorAll('button')
