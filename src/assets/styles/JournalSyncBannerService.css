@@ -219,3 +219,43 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Spinner and loading state for sync button */
+.ta-sync-banner-container .sync-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  vertical-align: middle;
+}
+
+.ta-sync-banner-container button.loading {
+  position: relative;
+}
+
+.ta-sync-banner-container button.loading .sync-spinner {
+  display: inline-block;
+  /* Replace with animation if desired; simple text fallback is used */
+}
+
+/* Animated spinner visuals */
+.ta-sync-banner-container .sync-spinner {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  border-top-color: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+@keyframes ta-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ta-sync-banner-container button.loading .sync-spinner {
+  animation: ta-sync-spin 720ms linear infinite;
+}
