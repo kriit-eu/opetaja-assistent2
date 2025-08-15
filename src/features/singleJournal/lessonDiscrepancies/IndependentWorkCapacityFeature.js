@@ -26,7 +26,8 @@ export default class IndependentWorkCapacityFeature {
     if (!notifMatch) return null
 
     try {
-      const info = await api.tahvel.get(`/journals/${journalId}`)
+  // Force refresh to avoid using stale cached journal data when teacher updates
+  const info = await api.tahvel.get(`/journals/${journalId}`, {}, { forceRefresh: true })
       const capacityHours = info.lessonHours?.capacityHours || []
       const indep = capacityHours.find(c => c.capacity === 'MAHT_i')
       if (!indep) return null
