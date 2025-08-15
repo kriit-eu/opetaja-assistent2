@@ -279,11 +279,27 @@ class HighlightFinalGradesFeature extends BaseFeature {
       })()
 
     rows.forEach((row, rowIdx) => {
+      // Helper: detect AP (academic leave) marker in the student row. The template renders
+      // <span ng-if="row.status === 'OPPURSTAATUS_A'">AP</span> inside the first fixed-cell.
+      const rowHasAcademicLeave = r => {
+        try {
+          // Look for a span whose textContent is exactly 'AP' inside the row
+          return Array.from(r.querySelectorAll('span')).some(s => (s.textContent || '').trim() === 'AP')
+        } catch (e) {
+          return false
+        }
+      }
       const cells = Array.from(row.children).filter(n => n.nodeType === 1)
+      const isRowAP = rowHasAcademicLeave(row)
       if (Logger.isDebugMode()) Logger.info(`✨ [HighlightFinalGradesFeature] Row ${rowIdx} has ${cells.length} cells`)
       finalGradeCols.forEach(colIdx => {
         const cell = cells[colIdx]
         if (cell) {
+          // Skip highlighting for students on academic leave
+          if (isRowAP) {
+            cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red')
+            return
+          }
           if (Logger.isDebugMode())
             Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting FINAL cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
           if (!cell.textContent.trim()) {
@@ -306,6 +322,11 @@ class HighlightFinalGradesFeature extends BaseFeature {
       ovCols.forEach(colIdx => {
         const cell = cells[colIdx]
         if (cell) {
+          // Skip highlighting for students on academic leave
+          if (isRowAP) {
+            cell.classList.remove('highlight-ov-yellow', 'highlight-ov-red')
+            return
+          }
           if (Logger.isDebugMode())
             Logger.info(`✨ [HighlightFinalGradesFeature] Highlighting ÕV cell at row ${rowIdx}, col ${colIdx}, value: "${cell.textContent.trim()}"`)
           if (!cell.textContent.trim()) {

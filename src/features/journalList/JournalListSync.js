@@ -1378,9 +1378,9 @@ class JournalListSyncFeature extends BaseFeature {
       const thru = journalInfo.studyYearEndDate || new Date(Date.UTC(studyYear + 1, 7, 31, 23, 59, 59, 999)).toISOString()
 
       const endpoint = `/timetableevents/timetableByTeacher/${schoolId}?from=${from}&lang=ET&teachers=${teacherId}&thru=${thru}`
-      
-      const timetableData = await this.api.tahvel.get(endpoint, {}, { 
-        cache: true, 
+
+      const timetableData = await this.api.tahvel.get(endpoint, {}, {
+        cache: true,
         cacheExpiration: 24 * 60 * 60 * 1000  // 24 hours cache
       })
 
@@ -1390,7 +1390,7 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Filter timetable events for this specific journal
       const journalTimetable = timetableData.timetableEvents.filter(event => event.journalId == journalId)
-      
+
       if (journalTimetable.length === 0) {
         return null
       }
