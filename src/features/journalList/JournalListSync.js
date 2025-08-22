@@ -2370,170 +2370,68 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.updateUI()
 
-      // Process each grade change one by one
+      // Process grade changes grouped by assignment (batch multiple students per PUT)
       const successfulSyncs = []
       const failedSyncs = []
       let currentItem = null
+
+      // Helper: group syncData by journalId::assignmentId
+      const grouped = {}
+      syncData.forEach(item => {
+        const key = `${item.journalId}::${item.assignmentId}`
+        if (!grouped[key]) grouped[key] = { journalId: item.journalId, assignmentId: item.assignmentId, items: [] }
+        grouped[key].items.push(item)
+      })
 
       try {
         // Update UI to show progress
         this.updateProgressUI(0, syncData.length)
 
-        for (let i = 0; i < syncData.length; i++) {
-          const item = syncData[i]
-          currentItem = item
+        const groupKeys = Object.keys(grouped)
+        let processedCount = 0
 
+        for (let g = 0; g < groupKeys.length; g++) {
+          const group = grouped[groupKeys[g]]
           if (Logger.isDebugMode()) {
-            Logger.debug(`=== Syncing student ${i + 1}/${syncData.length}: ${item.studentPersonalCode} ===`)
+            Logger.debug(`Processing batch ${g + 1}/${groupKeys.length} for journal ${group.journalId} assignment ${group.assignmentId} with ${group.items.length} students`)
           }
 
-          // Update progress in UI (with safe error handling)
+          // Update progress to show how many items have been processed so far
           try {
-            this.updateProgressUI(i, syncData.length)
+            this.updateProgressUI(processedCount, syncData.length)
           } catch (progressError) {
             Logger.warning(`Progress UI update failed: ${progressError.message}`)
-            // Continue with sync even if progress UI fails
           }
 
+          // Perform the batch update for this assignment
           try {
-            // Validate item properties before calling syncGradeToTahvel
-            if (!item.journalId) {
-              throw new Error('Missing journalId in sync item')
+            const batchResult = await this.syncGradesBatchToTahvel(group.journalId, group.assignmentId, group.items)
+            // batchResult: { successes: [], failures: [] }
+            if (Array.isArray(batchResult.successes)) {
+              batchResult.successes.forEach(s => successfulSyncs.push(s))
             }
-
-            if (!item.assignmentId) {
-              throw new Error('Missing assignmentId in sync item')
+            if (Array.isArray(batchResult.failures)) {
+              batchResult.failures.forEach(f => failedSyncs.push(f))
             }
-
-            if (!item.studentPersonalCode) {
-              throw new Error('Missing studentPersonalCode in sync item')
-            }
-
-            if (!item.grade) {
-              throw new Error('Missing grade in sync item')
-            }
-
-            // Log the item we're about to process
-            Logger.debug(
-              `Processing sync item: ${JSON.stringify({
-                journalId: item.journalId,
-                assignmentId: item.assignmentId,
-                studentPersonalCode: item.studentPersonalCode,
-                grade: item.grade
-              })}`
-            )
-
-            // Additional validation: check if this grade actually needs updating
-            // by fetching the current state from Tahvel
-            try {
-              const entryData = await this.api.tahvel.get(`/journals/${item.journalId}/journalEntry/${item.assignmentId}`, { allStudents: true })
-
-              if (entryData && entryData.journalEntryStudents) {
-                // Find the student in the assignment
-                let studentEntry = null
-                for (const student of entryData.journalEntryStudents) {
-                  if (!student.journalStudent) continue
-                  const cachedStudent = await this.getCachedStudent(student.journalStudent)
-                  if (cachedStudent && String(cachedStudent.personalCode) === String(item.studentPersonalCode)) {
-                    studentEntry = student
-                    break
-                  }
-                }
-
-                if (studentEntry && studentEntry.grade && studentEntry.grade.code) {
-                  const currentTahvelGrade = studentEntry.grade.code.replace('KUTSEHINDAMINE_', '')
-                  const targetGrade = String(item.grade)
-
-                  if (currentTahvelGrade === targetGrade) {
-                  if (Logger.isDebugMode()) {
-                    Logger.debug(
-                      `Grade already up to date for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}" - skipping`
-                    )
-                  }
-                    successfulSyncs.push({ ...item, skipped: true }) // Count as successful since no action was needed
-                    continue
-                  }
-
-                  Logger.debug(`Grade needs update for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}"`)
-                }
-              }
-            } catch (preCheckError) {
-              Logger.warning(`Could not pre-validate grade for student ${item.studentPersonalCode}: ${preCheckError.message}`)
-              // Continue with sync attempt anyway
-            }
-
-            // Call the sync method with validated data
-            if (Logger.isDebugMode()) {
-              Logger.debug(`Calling syncGradeToTahvel for student ${item.studentPersonalCode}...`)
-            }
-            if (Logger.isDebugMode()) {
-              Logger.debug('=== SYNC PARAMETERS ===')
-              Logger.debug(`Journal ID: ${item.journalId} (type: ${typeof item.journalId})`)
-              Logger.debug(`Assignment ID: ${item.assignmentId} (type: ${typeof item.assignmentId})`)
-              Logger.debug(`Student Personal Code: "${item.studentPersonalCode}" (type: ${typeof item.studentPersonalCode})`)
-              Logger.debug(`Grade: "${item.grade}" (type: ${typeof item.grade})`)
-              Logger.debug('=== END SYNC PARAMETERS ===')
-            }
-
-            await this.syncGradeToTahvel(item.journalId, item.assignmentId, item.studentPersonalCode, item.grade)
-
-            if (Logger.isDebugMode()) {
-              Logger.debug(`Successfully synced grade for student ${item.studentPersonalCode}`)
-            }
-            // Add to successful syncs
-            successfulSyncs.push(item)
-          } catch (error) {
-            // Check if this is an inactive student error
-            const errorMessage = error.message || 'Unknown error'
-            const isInactiveStudentError =
-              errorMessage.includes('not actively studying') ||
-              errorMessage.includes('changeIsNotAllowedStudentIsNotStudying') ||
-              errorMessage.includes('academic leave') ||
-              errorMessage.includes('status is inactive')
-
-            if (isInactiveStudentError) {
-              // Log as warning instead of error for inactive students
-              Logger.warning(
-                `Skipping inactive student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}: ${errorMessage}`
-              )
-
-              // Add to failed syncs but mark as inactive (not a real error)
-              failedSyncs.push({
-                ...item,
-                error: errorMessage,
-                errorType: 'inactive_student',
-                timestamp: new Date().toISOString()
-              })
-            } else {
-              // Log the error with full context for real errors
-              Logger.error(
-                `Failed to sync grade for student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}:`,
-                error
-              )
-
-              // Add to failed syncs with detailed error info
-              failedSyncs.push({
-                ...item,
-                error: errorMessage,
-                errorType: 'sync_error',
-                timestamp: new Date().toISOString()
-              })
-            }
+            processedCount += group.items.length
+          } catch (batchError) {
+            // Mark all items in this group as failed
+            Logger.error(`Batch update failed for journal ${group.journalId} assignment ${group.assignmentId}: ${batchError.message}`)
+            group.items.forEach(it => {
+              failedSyncs.push({ ...it, error: batchError.message, errorType: 'sync_error', timestamp: new Date().toISOString() })
+            })
+            processedCount += group.items.length
           }
 
-          Logger.debug(`Completed processing student ${i + 1}/${syncData.length}. Moving to next student...`)
-
-          // Add delay between sync operations to prevent race conditions
-          if (i < syncData.length - 1) {
-            // Don't delay after the last item
-            Logger.debug(`Adding 500ms delay before next sync operation...`)
-            await new Promise(resolve => setTimeout(resolve, 500))
+          // Small delay between batch requests to reduce server load
+          if (g < groupKeys.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300))
           }
         }
 
         // Final progress update
         if (Logger.isDebugMode()) {
-          Logger.debug(`Sync loop completed. Updating final progress: ${syncData.length}/${syncData.length}`)
+          Logger.debug(`Batch sync completed. Updating final progress: ${syncData.length}/${syncData.length}`)
         }
         try {
           this.updateProgressUI(syncData.length, syncData.length)
@@ -3634,6 +3532,161 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Rethrow with the enhanced message
       throw contextualError
+    }
+  }
+
+  /**
+   * Sync multiple grades for the same journal+assignment in one PUT request.
+   * items: array of { journalId, assignmentId, studentPersonalCode, grade }
+   * Returns { successes: [], failures: [] }
+   */
+  async syncGradesBatchToTahvel(journalId, assignmentId, items = []) {
+    const successes = []
+    const failures = []
+    try {
+      if (!journalId || !assignmentId) throw new Error('journalId and assignmentId are required for batch sync')
+
+      // Fetch the full assignment entry with all students
+      let entryData
+      try {
+        const cacheKey = `GET_${this.api.tahvel.baseUrl}/journals/${journalId}/journalEntry/${assignmentId}?allStudents=true`
+        await cacheService.clearCache(cacheKey)
+        entryData = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, { allStudents: true })
+      } catch (error) {
+        throw new Error(`Failed to fetch assignment data for batch: ${error.message}`)
+      }
+
+      if (!entryData || !Array.isArray(entryData.journalEntryStudents)) {
+        throw new Error('Invalid assignment data returned from Tahvel for batch update')
+      }
+
+      // Build a map of journalStudentId -> student object for quick updates
+      const journalStudentsMap = {}
+      for (const s of entryData.journalEntryStudents) {
+        if (s && s.journalStudent) journalStudentsMap[String(s.journalStudent)] = s
+      }
+
+      // For items that correspond to existing journalEntryStudents, update their grade
+      // For items that don't exist in entryData, try to find journalStudent via getJournalStudents or getDetailedStudentInfo
+      const studentsToSend = []
+
+      for (const it of items) {
+        try {
+          const targetPersonalCode = String(it.studentPersonalCode)
+          // Find matching journalStudent in entryData by cached mapping
+          let match = null
+
+          // First, see if any entry has matching cached personalCode
+          for (const s of entryData.journalEntryStudents) {
+            if (!s.journalStudent) continue
+            const cached = await this.getCachedStudent(s.journalStudent)
+            if (cached && String(cached.personalCode) === targetPersonalCode) {
+              match = s
+              break
+            }
+          }
+
+          // If no match, try to find journalStudent from journal students list
+          if (!match) {
+            const journalStudents = await this.getJournalStudents(journalId)
+            if (Array.isArray(journalStudents)) {
+              for (const js of journalStudents) {
+                const personal = js.student?.idcode || js.idcode
+                if (personal && String(personal) === targetPersonalCode) {
+                  // create a new student entry object similar to syncGradeToTahvel's fallback
+                  match = {
+                    journalStudent: js.id || js.studentId || null,
+                    id: null,
+                    studentName: js.student?.fullname || js.studentName || null,
+                    grade: null,
+                    addInfo: null
+                  }
+                  break
+                }
+              }
+            }
+          }
+
+          if (!match) {
+            // Try detailed lookup
+            const info = await this.getDetailedStudentInfo(targetPersonalCode, journalId)
+            if (info && info.journalStudentId) {
+              match = { journalStudent: info.journalStudentId, id: null, studentName: info.name || null, grade: null, addInfo: null }
+            }
+          }
+
+          if (!match || !match.journalStudent) {
+            throw new Error(`Could not resolve journalStudentId for personal code ${it.studentPersonalCode}`)
+          }
+
+          // Prepare student entry object
+          const updatedStudentEntry = {
+            id: match.id || null,
+            journalStudent: Number(match.journalStudent),
+            absence: null,
+            grade: {
+              code: `KUTSEHINDAMINE_${it.grade}`,
+              gradingSchemaRowId: null,
+              value: String(it.grade),
+              value2: String(it.grade),
+              extraval1: null,
+              extraval2: null,
+              nameEt: `Hinne ${it.grade}`,
+              nameEn: `Grade ${it.grade}`,
+              valid: true
+            },
+            verbalGrade: null,
+            removeStudentHistory: true,
+            addInfo: this.getAddInfoFromExistingStudents(entryData.journalEntryStudents),
+            isLessonAbsence: false,
+            hasOverlappingLessonAbsence: false,
+            isPraise: false,
+            isRemark: false,
+            lessonAbsences: {},
+            studentName: match.studentName || null,
+            studentGroup: null,
+            journalEntryStudentHistories: [],
+            hasWholeDayAcceptedAbsence: false,
+            wholeDayAbsenceCode: null,
+            gradeValue: null
+          }
+
+          studentsToSend.push(updatedStudentEntry)
+          successes.push({ ...it, skipped: false })
+        } catch (itemErr) {
+          failures.push({ ...it, error: itemErr.message, errorType: 'resolve_error', timestamp: new Date().toISOString() })
+        }
+      }
+
+      if (studentsToSend.length === 0) {
+        return { successes: [], failures }
+      }
+
+      // Build update payload similar to syncGradeToTahvel
+      const updateData = { ...entryData, journalEntryStudents: studentsToSend }
+      if (!updateData.version && entryData.version) updateData.version = entryData.version
+      if (Array.isArray(updateData.journalEntryTeachers)) updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
+      if (!updateData.journalEntryCapacityTypes && entryData.entryType) {
+        updateData.journalEntryCapacityTypes = entryData.entryType === 'SISSEKANNE_I' ? ['MAHT_i'] : ['MAHT_h']
+      }
+
+      // Send PUT once for the assignment
+      try {
+        const response = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, updateData)
+        // treat as success for all studentsToSend
+        return { successes, failures }
+      } catch (err) {
+        // mark all students in this batch as failed
+        const msg = err.message || 'Batch PUT failed'
+        const ts = new Date().toISOString()
+        studentsToSend.forEach(s => {
+          failures.push({ journalId, assignmentId, studentPersonalCode: s.studentPersonalCode || null, grade: s.grade?.value || null, error: msg, errorType: 'sync_error', timestamp: ts })
+        })
+        return { successes: [], failures }
+      }
+    } catch (error) {
+      Logger.error('syncGradesBatchToTahvel error:', error)
+      return { successes, failures: [...failures, { error: error.message, timestamp: new Date().toISOString() }] }
     }
   }
 
