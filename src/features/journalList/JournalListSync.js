@@ -1435,12 +1435,13 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntries(journalId) {
     try {
+      // Use cache for 10 minutes to avoid excessive requests
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntry`,
         {},
         {
-          cache: false, // Explicitly disable caching
-          forceRefresh: true // Force a refresh
+          cache: true,
+          cacheExpiration: 10 * 60 * 1000 // 10 minutes
         }
       )
 
