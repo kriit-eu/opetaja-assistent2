@@ -239,6 +239,11 @@ class JournalListSyncFeature extends BaseFeature {
       }
       try {
         await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
+        // Invalidate cache for this journal so next fetch is fresh
+        if (typeof cacheService?.clearJournalCache === 'function') {
+          await cacheService.clearJournalCache(journalId)
+          if (Logger.isDebugMode()) Logger.debug(`✨ Cleared cache for journalId=${journalId} after assignment update`)
+        }
         if (Logger.isDebugMode()) {
           Logger.debug(`✨ Updated assignment in Tahvel: ${assignmentId} with changes: ${JSON.stringify(update)}`)
         }
@@ -1459,12 +1464,13 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntriesWithGrades(journalId) {
     try {
+      // Use cache for 10 minutes to avoid excessive requests
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntriesByDate`,
         { allStudents: true },
         {
-          cache: false, // Explicitly disable caching
-          forceRefresh: true // Force a refresh
+          cache: true,
+          cacheExpiration: 10 * 60 * 1000 // 10 minutes
         }
       )
 
