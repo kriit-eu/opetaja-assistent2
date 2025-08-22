@@ -3567,7 +3567,7 @@ class JournalListSyncFeature extends BaseFeature {
       }
 
       // For items that correspond to existing journalEntryStudents, update their grade
-      // For items that don't exist in entryData, try to find journalStudent via getJournalStudents or getDetailedStudentInfo
+      // Only use existing entryData.journalEntryStudents + getCachedStudent (API cache only)
       const studentsToSend = []
 
       for (const it of items) {
@@ -3576,7 +3576,7 @@ class JournalListSyncFeature extends BaseFeature {
           // Find matching journalStudent in entryData by cached mapping
           let match = null
 
-          // First, see if any entry has matching cached personalCode
+          // Look through existing journalEntryStudents and use getCachedStudent to check personal codes
           for (const s of entryData.journalEntryStudents) {
             if (!s.journalStudent) continue
             const cached = await this.getCachedStudent(s.journalStudent)
@@ -3586,37 +3586,27 @@ class JournalListSyncFeature extends BaseFeature {
             }
           }
 
-          // If no match, try to find journalStudent from journal students list
+          // If no match in assignment, try to find in our cached mapping (from initial data collection)
           if (!match) {
-            const journalStudents = await this.getJournalStudents(journalId)
-            if (Array.isArray(journalStudents)) {
-              for (const js of journalStudents) {
-                const personal = js.student?.idcode || js.idcode
-                if (personal && String(personal) === targetPersonalCode) {
-                  // create a new student entry object similar to syncGradeToTahvel's fallback
-                  match = {
-                    journalStudent: js.id || js.studentId || null,
-                    id: null,
-                    studentName: js.student?.fullname || js.studentName || null,
-                    grade: null,
-                    addInfo: null
-                  }
-                  break
+            // Look through our journalStudentIdToStudentId mapping to find the student
+            for (const [journalStudentId, studentId] of Object.entries(this.journalStudentIdToStudentId)) {
+              const cached = await this.getCachedStudent(journalStudentId)
+              if (cached && String(cached.personalCode) === targetPersonalCode) {
+                // Create a new student entry object for students not yet in this assignment
+                match = {
+                  journalStudent: Number(journalStudentId),
+                  id: null,
+                  studentName: cached.name || null,
+                  grade: null,
+                  addInfo: null
                 }
+                break
               }
             }
           }
 
-          if (!match) {
-            // Try detailed lookup
-            const info = await this.getDetailedStudentInfo(targetPersonalCode, journalId)
-            if (info && info.journalStudentId) {
-              match = { journalStudent: info.journalStudentId, id: null, studentName: info.name || null, grade: null, addInfo: null }
-            }
-          }
-
           if (!match || !match.journalStudent) {
-            throw new Error(`Could not resolve journalStudentId for personal code ${it.studentPersonalCode}`)
+            throw new Error(`Student with personal code ${it.studentPersonalCode} not found in cached data. Student may not be enrolled in this journal or cache is incomplete.`)
           }
 
           // Prepare student entry object
@@ -3691,7 +3681,7 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
-   * Get student from cache using multiple lookup strategies
+   * Get student from cache using only in-memory cached data (no API calls)
    * @param {string|number} journalStudentId - Journal student ID to look up
    * @returns {Promise<Object|null>} Cached student data or null if not found
    */
@@ -3701,78 +3691,50 @@ class JournalListSyncFeature extends BaseFeature {
       return null
     }
 
-    Logger.debug(`🔍 Looking for student in cache with journalStudentId: ${journalStudentId} (type: ${typeof journalStudentId})`)
-
-    // === ENHANCED DEBUG: LOG MAPPING STATE ===
-    if (Logger.isDebugMode()) {
-      const mappingKeys = Object.keys(this.journalStudentIdToStudentId)
-      Logger.debug(`Current mapping has ${mappingKeys.length} entries`)
-      if (mappingKeys.length > 0) {
-        Logger.debug(`Sample mapping entries: ${mappingKeys.slice(0, 3).map(key => `${key}->${this.journalStudentIdToStudentId[key]}`).join(', ')}`)
-      }
+    // Prefer fast in-memory cache first
+    if (this._studentCache && this._studentCache[journalStudentId]) {
+      if (Logger.isDebugMode()) Logger.debug(`Returning student from in-memory cache for journalStudentId: ${journalStudentId}`)
+      return this._studentCache[journalStudentId]
     }
 
-    // Use the mapping to find the actual studentId
+    // Use the mapping to find the actual studentId and rely on ApiService cache via getStudentDetails
     const studentId = this.journalStudentIdToStudentId[journalStudentId]
-    if (studentId) {
-      Logger.debug(`✅ Found mapping: journalStudentId ${journalStudentId} -> studentId ${studentId}`)
-
-      try {
-        // Use the API cache to get student details
-        Logger.debug(`📡 Fetching student details for studentId ${studentId}`)
-        const studentDetails = await this.getStudentDetails(studentId)
-
-        if (studentDetails) {
-          Logger.debug(`📋 Student details structure: ${JSON.stringify(Object.keys(studentDetails))}`)
-
-          if (studentDetails.person) {
-            Logger.debug(`👤 Person data: ${JSON.stringify({
-              firstname: studentDetails.person.firstname,
-              lastname: studentDetails.person.lastname,
-              idcode: studentDetails.person.idcode
-            })}`)
-          } else {
-            Logger.warning(`⚠️ No person data in student details for studentId ${studentId}`)
-          }
-
-          if (studentDetails.person && studentDetails.person.idcode) {
-            const isActive = studentDetails.status === 'OPPURSTAATUS_O'
-            const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
-
-            const cachedStudent = {
-              personalCode: studentDetails.person.idcode,
-              name: studentDetails.person.firstname + ' ' + studentDetails.person.lastname,
-              isActive: isActive,
-              isDeleted: isDeleted
-            }
-
-            Logger.debug(`✅ Successfully cached student: ${cachedStudent.personalCode} (${cachedStudent.name}) - Active: ${isActive}, Deleted: ${isDeleted}`)
-            return cachedStudent
-          } else {
-            Logger.warning(`⚠️ Missing person.idcode in student details for studentId ${studentId}`)
-          }
-        } else {
-          Logger.warning(`⚠️ No student details returned for studentId ${studentId}`)
-        }
-      } catch (error) {
-        Logger.error(`❌ Error getting student ${studentId} from API cache: ${error.message}`)
-      }
-    } else {
-      Logger.warning(`❌ No studentId mapping found for journalStudentId: ${journalStudentId}`)
-
-      // Show available mappings for debugging
-      if (Logger.isDebugMode()) {
-        const mappingKeys = Object.keys(this.journalStudentIdToStudentId)
-        if (mappingKeys.length > 0) {
-          Logger.debug(`Available journalStudentId mappings: ${mappingKeys.join(', ')}`)
-        } else {
-          Logger.debug(`No mappings available at all - this suggests journal students data wasn't loaded properly`)
-        }
-      }
+    if (!studentId) {
+      if (Logger.isDebugMode()) Logger.debug(`No studentId mapping for journalStudentId: ${journalStudentId} - will not attempt expensive lookups`)
+      return null
     }
 
-    Logger.debug(`🚫 Student not found in cache for journalStudentId: ${journalStudentId}`)
-    return null
+    try {
+      const studentDetails = await this.getStudentDetails(studentId)
+      if (!studentDetails || !studentDetails.person || !studentDetails.person.idcode) {
+        if (Logger.isDebugMode()) Logger.debug(`No student details (or missing idcode) for studentId ${studentId}`)
+        return null
+      }
+
+      const cachedStudent = {
+        personalCode: studentDetails.person.idcode,
+        name: `${studentDetails.person.firstname || ''} ${studentDetails.person.lastname || ''}`.trim(),
+        studentId,
+        journalStudentId,
+        isActive: studentDetails.status === 'OPPURSTAATUS_O',
+        isDeleted: studentDetails.status === 'OPPURSTAATUS_K',
+        cacheInfo: studentDetails
+      }
+
+      // Populate in-memory cache for quick reuse in this sync run
+      try {
+        if (!this._studentCache) this._studentCache = {}
+        this._studentCache[journalStudentId] = cachedStudent
+        this._studentCache[studentId] = cachedStudent
+      } catch (cacheErr) {
+        if (Logger.isDebugMode()) Logger.debug(`Failed to write to in-memory student cache: ${cacheErr.message}`)
+      }
+
+      return cachedStudent
+    } catch (error) {
+      if (Logger.isDebugMode()) Logger.debug(`Error resolving studentId ${studentId} via ApiService: ${error.message}`)
+      return null
+    }
   }
 }
 
