@@ -16,6 +16,9 @@ const CACHE_EXPIRATION = {
 // In-memory cache for the current page session
 const memoryCache = {}
 
+// Map of in-flight fetch promises to prevent duplicate concurrent requests for the same key
+const inflightRequests = new Map()
+
 // Size thresholds for logging cache statistics (not limits)
 const CACHE_SIZE_WARNING = 1000000 // 1MB
 const CACHE_SIZE_LARGE = 5000000 // 5MB
@@ -88,7 +91,29 @@ const cacheService = {
     // Cache miss or expired - fetch fresh data
     if (Logger.isDebugMode()) Logger.debug(`Fetching fresh data for ${key}`)
     try {
-      const data = await fetchFn()
+      // If there's already a fetch in progress for this key, return that promise
+      if (inflightRequests.has(cacheKey)) {
+        if (Logger.isDebugMode()) Logger.debug(`[Cache] Waiting for in-flight request for ${key}`)
+        return await inflightRequests.get(cacheKey)
+      }
+
+      // Start fetch and store the promise in inflightRequests
+      const fetchPromise = (async () => {
+        try {
+          return await fetchFn()
+        } catch (err) {
+          // Propagate error after ensuring cleanup
+          throw err
+        }
+      })()
+
+      inflightRequests.set(cacheKey, fetchPromise)
+
+      // Await the fetch result
+      const data = await fetchPromise
+
+      // Clean up inflightRequests entry
+      inflightRequests.delete(cacheKey)
 
       // Store in both caches
       const timestamp = Date.now()
