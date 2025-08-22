@@ -213,8 +213,9 @@ class HighlightFinalGradesFeature extends BaseFeature {
       return
     }
     const rows = Array.from(table.querySelectorAll('tbody tr'))
-    table.querySelectorAll('.highlight-final-grade-yellow, .highlight-final-grade-red, .highlight-ov-red').forEach(cell => {
-      cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red', 'highlight-ov-red')
+    // Clean up any previously applied highlight classes (including both ÕV yellow/red)
+    table.querySelectorAll('.highlight-final-grade-yellow, .highlight-final-grade-red, .highlight-ov-red, .highlight-ov-yellow').forEach(cell => {
+      cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red', 'highlight-ov-red', 'highlight-ov-yellow')
     })
 
     // Get journalId from URL
