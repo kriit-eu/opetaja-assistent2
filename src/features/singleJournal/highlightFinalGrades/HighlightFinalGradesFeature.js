@@ -217,9 +217,14 @@ class HighlightFinalGradesFeature extends BaseFeature {
       cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red', 'highlight-ov-red')
     })
 
-    // Get journalId from URL
-    const match = window.location.hash.match(/journal\/(\d+)/)
-    const journalId = match ? match[1] : null
+    // Get journalId from URL/hash robustly (support both hash and pathname)
+    let journalId = null
+    try {
+      const hrefMatch = window.location.href.match(/journal\/(\d+)/)
+      if (hrefMatch) journalId = hrefMatch[1]
+    } catch (e) {
+      journalId = null
+    }
     // Try to read last lesson date from LastLessonNotificationFeature banner
     let bannerLessonDate = null
     const lastLessonBanner = document.getElementById('last-lesson-inline-notification')
@@ -236,6 +241,25 @@ class HighlightFinalGradesFeature extends BaseFeature {
     }
     let finalLessonDate = bannerLessonDate
     let inWarningWindow = false
+    // If banner is not yet present, wait briefly for it to appear before falling back
+    // to API. This prevents premature highlighting (yellow) on initial page load.
+    if (!finalLessonDate) {
+      const banner = document.getElementById('last-lesson-inline-notification')
+      if (!banner) {
+        // Observe document body for banner insertion and re-run highlighting when it appears
+        const docObserver = new MutationObserver((mutations, obs) => {
+          const b = document.getElementById('last-lesson-inline-notification')
+          if (b) {
+            if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] Detected last-lesson banner insertion, re-running highlight')
+            obs.disconnect()
+            // Re-run highlighting asynchronously to allow DOM settle
+            setTimeout(() => void this.run(), 50)
+          }
+        })
+        docObserver.observe(document.body, { childList: true, subtree: true })
+      }
+    }
+
     if (!finalLessonDate && journalId) {
       try {
         const apiDate = await this.getFinalLessonDate(journalId)
