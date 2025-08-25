@@ -22,6 +22,70 @@ const CACHE_SIZE_LARGE = 5000000 // 5MB
 
 const cacheService = {
   /**
+   * Set arbitrary cache value (persistent storage)
+   * @param {string} key
+   * @param {any} data
+   */
+  async set(key, data) {
+    const cacheKey = `${CACHE_PREFIX}${key}`
+    const cacheItem = { data, timestamp: Date.now() }
+    try {
+      // Update memory cache
+      memoryCache[cacheKey] = cacheItem
+      // Persist to storage
+      return new Promise(resolve => {
+        chrome.storage.local.set({ [cacheKey]: cacheItem }, () => resolve(true))
+      })
+    } catch (error) {
+      Logger.warning(`Error setting cache for ${key}: ${error.message}`)
+      return false
+    }
+  },
+
+  /**
+   * Get raw cached value without using fetchFn
+   * @param {string} key
+   * @returns {Promise<any>} cached data or null
+   */
+  /**
+   * Get cached value with optional maxAge (ms). If the cached item is older
+   * than maxAge, returns null.
+   * @param {string} key
+   * @param {number} [maxAge] max age in ms (optional)
+   * @returns {Promise<any>} cached data or null
+   */
+  async get(key, maxAge = Infinity) {
+    const cacheKey = `${CACHE_PREFIX}${key}`
+    // Check memory first
+    if (memoryCache[cacheKey]) {
+      const item = memoryCache[cacheKey]
+      if (Date.now() - item.timestamp <= maxAge) return item.data
+      // expired in memory
+      delete memoryCache[cacheKey]
+      return null
+    }
+    // Check storage
+    try {
+      return await new Promise(resolve => {
+        chrome.storage.local.get([cacheKey], result => {
+          const item = result[cacheKey]
+          if (!item) return resolve(null)
+          const age = Date.now() - (item.timestamp || 0)
+          if (age <= maxAge) {
+            // populate memory cache
+            memoryCache[cacheKey] = { data: item.data, timestamp: item.timestamp }
+            return resolve(item.data)
+          }
+          // expired
+          return resolve(null)
+        })
+      })
+    } catch (error) {
+      Logger.warning(`Error reading cache for ${key}: ${error.message}`)
+      return null
+    }
+  },
+  /**
    * Get data from cache or fetch it if not available
    * @param {string} key - Cache key
    * @param {Function} fetchFn - Function to fetch data if not in cache

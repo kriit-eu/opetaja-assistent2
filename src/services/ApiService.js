@@ -264,11 +264,22 @@ class ApiService {
    */
   async get(endpoint, params = {}, options = {}) {
     // Default options
-    const { cache = true, cacheExpiration = cacheService.EXPIRATION.MEDIUM, forceRefresh = false } = options
+    const {
+      cache = undefined,
+      cacheExpiration = undefined,
+      forceRefresh = false
+    } = options
 
-    // Log caching decision for debugging
+    // Smart defaults for specific endpoints. Do not override explicit caller choices.
+    let finalCache = typeof cache === 'undefined' ? true : cache
+    let finalCacheExpiration = typeof cacheExpiration === 'undefined' ? cacheService.EXPIRATION.MEDIUM : cacheExpiration
+
+    // For the heavy journalEntriesByDate endpoint, prefer a longer default cache so page reloads
+    // don't hammer the Tahvel API. Callers that explicitly set cache:false or provide
+    // cacheExpiration will still have their preferences respected.
     if (endpoint.includes('journalEntriesByDate')) {
-      // empty
+      if (typeof cache === 'undefined') finalCache = true
+      if (typeof cacheExpiration === 'undefined') finalCacheExpiration = cacheService.EXPIRATION.MEDIUM
     }
 
     return this.request({
@@ -278,8 +289,8 @@ class ApiService {
       params,
       data: null,
       headers: {},
-      cache: cache && !forceRefresh,
-      cacheExpiration
+      cache: finalCache && !forceRefresh,
+      cacheExpiration: finalCacheExpiration
     })
   }
 
