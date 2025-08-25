@@ -1,5 +1,6 @@
 import Logger from '../../../services/Logger.js'
 import { domService } from '../../../services/DomService.js'
+import HighlightFinalGradesFeature from '../highlightFinalGrades/HighlightFinalGradesFeature.js'
 
 class FinalGradesLFeature {
   constructor(api, extractJournalId) {
@@ -145,6 +146,151 @@ class FinalGradesLFeature {
     return { output }
   }
 
+  // Highlight cells in the journal table where the current L-grade differs from our calculated grade
+  _highlightIncorrectCurrentGrades(results) {
+    try {
+      if (!results || !results.output || !Array.isArray(results.output)) return
+      const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
+      if (!table) return
+
+      const hf = new HighlightFinalGradesFeature()
+      const { finalGradeCols } = hf.findColumnIndices(table)
+      if (!finalGradeCols || finalGradeCols.length === 0) return
+
+      const extractGradeToken = txt => {
+        if (!txt) return ''
+        const s = String(txt || '')
+          .replace(/\u00A0/g, ' ')
+          .replace(/[,\s]+(?=\d{1,2}$)/, '.')
+          .trim()
+        const tokens = []
+        Array.from(s.matchAll(/\bMA\b/ig)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
+        Array.from(s.matchAll(/\bA\b/ig)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
+        Array.from(s.matchAll(/\b([1-5](?:[.,]\d+)?)\b/g)).forEach(m => tokens.push({ type: 'NUM', value: m[1].replace(',', '.'), index: m.index }))
+        if (tokens.length) {
+          tokens.sort((a, b) => (a.index || 0) - (b.index || 0))
+          const lastTok = tokens[tokens.length - 1]
+          if (lastTok.type === 'MA') return 'MA'
+          if (lastTok.type === 'A') return 'A'
+          if (lastTok.type === 'NUM') return lastTok.value
+        }
+        return ''
+      }
+
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+
+      const rowHasAcademicLeave = r => {
+        try {
+          return Array.from(r.querySelectorAll('span')).some(s => (s.textContent || '').trim() === 'AP')
+        } catch (e) {
+          return false
+        }
+      }
+
+      const resultMap = {}
+      results.output.forEach(r => {
+        if (r && r.journalStudentId != null) resultMap[String(r.journalStudentId).trim()] = r
+      })
+
+      rows.forEach((row, rowIdx) => {
+        try {
+          if (rowHasAcademicLeave(row)) return
+          const cells = Array.from(row.children).filter(n => n.nodeType === 1)
+
+          const ds = (row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') || (row.dataset ? row.dataset.journalStudent : null) || '').toString()
+          let student = null
+          if (ds && resultMap[ds]) student = resultMap[ds]
+
+          if (!student) {
+            const txt = (row.textContent || '')
+            student = results.output.find(r => {
+              const name = (r.name || '').trim()
+              const idcode = (r.idcode || '').trim()
+              if (name && txt.includes(name)) return true
+              if (idcode && txt.includes(idcode)) return true
+              return false
+            }) || null
+          }
+
+          if (!student) student = results.output[rowIdx] || null
+          if (!student) return
+
+          finalGradeCols.forEach(colIdx => {
+            const cell = cells[colIdx]
+            if (!cell) return
+            try {
+              const cellToken = extractGradeToken(cell.getAttribute('data-grade') || cell.textContent || '')
+              const calcToken = extractGradeToken(String((student.finalGrade || '')).toString())
+              const setTooltip = (current, calculated) => {
+                try { cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}` } catch (e) {}
+              }
+              const clearTooltip = () => { try { cell.title = '' } catch (e) {} }
+
+              if (!cellToken && !calcToken) {
+                cell.classList.remove('highlight-final-grade-red')
+                clearTooltip()
+                return
+              }
+              if (!cellToken || !calcToken) {
+                cell.classList.add('highlight-final-grade-red')
+                setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
+                return
+              }
+              if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
+                if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
+                  cell.classList.add('highlight-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              const cellIsInt = /^[1-5]$/.test(cellToken)
+              const calcIsNum = /^[1-5](?:\.\d+)?$/.test(calcToken)
+              if (cellIsInt && calcIsNum) {
+                const rounded = String(Math.round(Number(calcToken)))
+                if (rounded !== cellToken) {
+                  cell.classList.add('highlight-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              if (calcIsNum && /^[1-5](?:\.\d+)?$/.test(cellToken)) {
+                const c1 = Number(parseFloat(calcToken).toFixed(2))
+                const c2 = Number(parseFloat(cellToken).toFixed(2))
+                if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
+                  cell.classList.add('highlight-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              if (calcToken !== cellToken) {
+                cell.classList.add('highlight-final-grade-red')
+                setTooltip(cellToken, calcToken)
+              } else {
+                cell.classList.remove('highlight-final-grade-red')
+                clearTooltip()
+              }
+            } catch (e) {
+              // ignore per-cell errors
+            }
+          })
+        } catch (e) {
+          // ignore per-row errors
+        }
+      })
+    } catch (e) {
+      Logger.warn('FinalGradesLFeature: Error while highlighting incorrect current grades', e)
+    }
+  }
+
   async showResults(results, button, lastEntries, opts = { autoSync: true }) {
     // Only sync grades and show a status message, do not render a table
     let container = document.getElementById('oa-final-grades-results')
@@ -199,6 +345,12 @@ class FinalGradesLFeature {
         if (!current) return r.finalGrade && r.finalGrade !== ''
         return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
       })
+      // Update UI highlights for incorrect current L grades (visual aid)
+      try {
+        this._highlightIncorrectCurrentGrades(results)
+      } catch (e) {
+        Logger.warn('FinalGradesLFeature: Failed to update current grade highlights', e)
+      }
       // If autoSync is disabled, we only compute filteredOutput and update button state/UI
       if (!opts.autoSync) {
         try {
