@@ -436,6 +436,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #createMissingLessonDiscrepancies({ date, tEntries }, journal, discrepancies) {
+    // Do not create discrepancies for lessons that are strictly in the future.
+    // Same-day missing lessons are allowed per AC.
+    try {
+      const today = new Date()
+      const target = new Date(date)
+      // Normalize to year-month-day for comparison (local timezone)
+      const isSameDay = target.getFullYear() === today.getFullYear() && target.getMonth() === today.getMonth() && target.getDate() === today.getDate()
+      const isFuture = !isSameDay && target.getTime() > today.setHours(23, 59, 59, 999)
+      if (isFuture) {
+        // Skip adding any discrepancies for future-only lessons
+        return
+      }
+    } catch (err) {
+      // If date parsing fails, continue normally (safer to show discrepancy)
+      Logger.debug(`[${this.name}] date parsing error in #createMissingLessonDiscrepancies:`, err)
+    }
     const schoolId = journal.info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
     /** @type {Array<{date: string, timeStart: string, timeEnd: string, name: string, rooms: Array, lessonNumber: number, type: string}>} */
     const missingLessons = await Promise.all(
