@@ -426,7 +426,20 @@ class FinalGradesByOvFeature extends BaseFeature {
         const hasSissekanneL = lFeature.detect(entries)
         const resultsOnLoad = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
         // Call showResults with autoSync=false so we only compute filteredOutput and update button state/UI
-        await this.#showResults(resultsOnLoad, button, { autoSync: false })
+        if (hasSissekanneL) {
+          // Use the L feature's showResults which accepts autoSync flag
+          await lFeature.showResults(resultsOnLoad, button, entries, { autoSync: false })
+          // Attach L-specific DOM observer so the L-button is kept up-to-date on meaningful DOM changes
+          try {
+            const lObserver = lFeature.attachDomObserver(button, entries)
+            // store observer so it can be disconnected later if needed
+            this._lObserver = lObserver
+          } catch (e) {
+            Logger.warn('FinalGradesByOvFeature: Failed to attach L DOM observer', e)
+          }
+        } else {
+          await this.#showResults(resultsOnLoad, button, { autoSync: false })
+        }
       } catch (err) {
         Logger.warn('FinalGradesByOvFeature: Failed to calculate grades on page load', err)
       }

@@ -145,7 +145,7 @@ class FinalGradesLFeature {
     return { output }
   }
 
-  async showResults(results, button, lastEntries) {
+  async showResults(results, button, lastEntries, opts = { autoSync: true }) {
     // Only sync grades and show a status message, do not render a table
     let container = document.getElementById('oa-final-grades-results')
     if (!container) {
@@ -171,10 +171,19 @@ class FinalGradesLFeature {
         statusDiv.textContent = 'Lõpptulemus puudub.'
         return
       }
-      // Fetch current state from API first
-      const currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`)
-      Logger.info('✨ FinalGradesLFeature: Current entry from API', currentEntry)
-      // Build journalEntryStudents array from our filtered calculated grades
+      // Prefer using provided lastEntries to avoid unnecessary API calls when possible
+      let currentEntry = null
+      if (lastEntries && Array.isArray(lastEntries)) {
+        currentEntry = lastEntries.find(e => e.id === lEntry.id) || null
+      }
+      // If we don't have a usable currentEntry (or it lacks journalEntryStudents), fetch fresh from API
+      if (!currentEntry || !Array.isArray(currentEntry.journalEntryStudents)) {
+        currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`, {}, { cache: false })
+        Logger.info('✨ FinalGradesLFeature: Fetched current entry from API', currentEntry)
+      } else {
+        Logger.info('✨ FinalGradesLFeature: Using current entry from lastEntries', currentEntry)
+      }
+  // Build journalEntryStudents array from our filtered calculated grades
       const lGrades = {}
       if (currentEntry && Array.isArray(currentEntry.journalEntryStudents)) {
         currentEntry.journalEntryStudents.forEach(js => {
@@ -190,6 +199,35 @@ class FinalGradesLFeature {
         if (!current) return r.finalGrade && r.finalGrade !== ''
         return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
       })
+      // If autoSync is disabled, we only compute filteredOutput and update button state/UI
+      if (!opts.autoSync) {
+        try {
+          if (!button) return filteredOutput
+          if (!Array.isArray(filteredOutput) || filteredOutput.length === 0) {
+            button.disabled = true
+            button.style.opacity = '0.6'
+            button.title = 'Kõik lõpptulemuse hinded ühtivad juba olemasolevate hinnetega'
+            button._oaFinalGradesDisabled = true
+            window._oaFinalGradesDisabled = true
+            Logger.info('✨ FinalGradesLFeature: Button disabled on page load because no L changes detected')
+          } else {
+            // enable button if previously disabled
+            window._oaFinalGradesDisabled = false
+            button._oaFinalGradesDisabled = false
+            try {
+              button.disabled = false
+              button.style.opacity = ''
+              button.title = ''
+            } catch (e) {
+              Logger.warn('FinalGradesLFeature: Failed to enable button', e)
+            }
+            Logger.info('✨ FinalGradesLFeature: Button enabled on page load — L changes detected')
+          }
+        } catch (e) {
+          Logger.warn('FinalGradesLFeature: Error while updating button state on page load', e)
+        }
+        return filteredOutput
+      }
       Logger.info(
         '✨ FinalGradesLFeature: filtered results.output journalStudentIds',
         filteredOutput.map(r => r.journalStudentId)
@@ -199,7 +237,7 @@ class FinalGradesLFeature {
       const studentStatusMap = {}
       await Promise.all(uniqueStudentIds.map(async id => {
         try {
-          const det = await this.api.tahvel.get(`/students/${id}`)
+          const det = await this.api.tahvel.get(`/students/${id}`, {}, { cache: false })
           studentStatusMap[String(id)] = det && det.status ? det.status : null
         } catch (e) {
           Logger.error('✨ FinalGradesLFeature: Failed to fetch student details, defaulting to include', { studentId: id, err: e })
@@ -320,6 +358,66 @@ class FinalGradesLFeature {
       setTimeout(() => window.location.reload(), 1000)
     } catch (err) {
       statusDiv.textContent = 'Viga saatmisel.'
+    }
+  }
+
+  // Attach a DOM observer that re-evaluates L-grade diffs and updates the provided button
+  // Uses a lightweight visible-text snapshot to avoid API calls for minor/no-op mutations
+  attachDomObserver(button, initialEntries) {
+    try {
+      const tableEl = document.querySelector('.journalTableContainer') || document.querySelector('#main-content')
+      if (!tableEl) return null
+      let debounceTimer = null
+      let lastSnapshot = null
+      const getSnapshot = () => {
+        try {
+          const txt = (tableEl && tableEl.innerText) ? tableEl.innerText.trim() : ''
+          return txt ? txt.slice(0, 20000) : ''
+        } catch (e) {
+          return ''
+        }
+      }
+      // Initialize snapshot from provided initialEntries if available
+      if (initialEntries) {
+        try {
+          const fakeEl = { innerText: JSON.stringify(initialEntries).slice(0, 20000) }
+          lastSnapshot = (fakeEl.innerText || '').trim()
+        } catch (e) {
+          lastSnapshot = null
+        }
+      }
+      const onChange = () => {
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(async () => {
+          try {
+            const snapshot = getSnapshot()
+            if (snapshot === lastSnapshot) {
+              Logger.info('✨ FinalGradesLFeature: DOM changed but table snapshot unchanged — skipping API')
+              return
+            }
+            lastSnapshot = snapshot
+            Logger.info('✨ FinalGradesLFeature: Detected meaningful DOM change — re-evaluating L diffs')
+            const journalId = this.extractJournalId()
+            if (!journalId) return
+            const [newEntries, newStudents] = await Promise.all([
+              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+            ])
+            this._lastEntries = newEntries
+            const newResults = this.extractFinalGrades(newEntries, newStudents)
+            await this.showResults(newResults, button, newEntries, { autoSync: false })
+            Logger.info('✨ FinalGradesLFeature: Button state updated after DOM change')
+          } catch (err) {
+            Logger.warn('✨ FinalGradesLFeature: Error while re-evaluating after DOM change', err)
+          }
+        }, 250)
+      }
+      const mo = new MutationObserver(onChange)
+      mo.observe(tableEl, { childList: true, subtree: true, attributes: true })
+      return mo
+    } catch (e) {
+      Logger.warn('✨ FinalGradesLFeature: Failed to attach DOM observer for table changes', e)
+      return null
     }
   }
 }
