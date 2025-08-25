@@ -258,7 +258,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               return
             }
             const [entries, students] = await Promise.all([
-              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
               this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
             ])
             Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
@@ -320,7 +320,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Fetch entries and students to check for ÕV columns or SISSEKANNE_L
       Logger.info('[DEBUG] Fetching entries and students for journalId:', journalId)
       const [entries, students] = await Promise.all([
-        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
         this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
       ])
       Logger.info('[DEBUG] Entries fetched:', entries)
@@ -423,7 +423,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             return
           }
           const [entries, students] = await Promise.all([
-            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
             this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
           ])
           Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)

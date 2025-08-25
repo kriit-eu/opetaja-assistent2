@@ -30,19 +30,14 @@ class JournalListSyncFeature extends BaseFeature {
     if (!this.differences || !Array.isArray(this.differences)) {
       return entryDateDiffs
     }
+
     this.differences.forEach(subjectDiff => {
       if (!Array.isArray(subjectDiff.assignments)) return
       subjectDiff.assignments.forEach(assignment => {
-        if (
-          assignment.assignmentEntryDate &&
-          typeof assignment.assignmentEntryDate === 'object'
-        ) {
+        if (assignment.assignmentEntryDate && typeof assignment.assignmentEntryDate === 'object') {
           const kriitEntryDate = assignment.assignmentEntryDate.kriit
           const tahvelEntryDate = assignment.assignmentEntryDate.Tahvel
-          if (
-            (kriitEntryDate !== tahvelEntryDate) &&
-            !(kriitEntryDate == null && tahvelEntryDate == null)
-          ) {
+          if ((kriitEntryDate !== tahvelEntryDate) && !(kriitEntryDate == null && tahvelEntryDate == null)) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
               assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
@@ -59,193 +54,8 @@ class JournalListSyncFeature extends BaseFeature {
         }
       })
     })
-    Logger.debug(`✨ [extractEntryDateDifferences] Total entry date diffs: ${entryDateDiffs.length}`)
+
     return entryDateDiffs
-  }
-  /**
-   * Update assignment names in Tahvel to match Kriit
-   */
-  async syncAssignmentNameDifferences() {
-    // Gather all diffs: name, due date, entry date
-    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
-    const dueDateDiffs = this.extractDueDateDifferences()
-    const entryDateDiffs = this.extractEntryDateDifferences()
-
-    // Build a map: { journalId, assignmentId } => { name, dueDate, entryDate }
-    const updateMap = new Map()
-
-    // Helper to get key
-    const getKey = (journalId, assignmentId) => `${journalId}::${assignmentId}`
-
-    // Add name diffs
-    Logger.debug(`[SYNC DEBUG] this.differences has ${this.differences ? this.differences.length : 0} subjects`)
-    if (this.differences) {
-      this.differences.forEach((subject, i) => {
-        Logger.debug(`[SYNC DEBUG] Subject ${i}: ${subject.subjectName} (${subject.subjectExternalId}) with ${subject.assignments ? subject.assignments.length : 0} assignments`)
-      })
-    }
-
-    assignmentNameDiffs.forEach(subjectDiff => {
-      Logger.debug(`[SYNC DEBUG] Processing subject: ${subjectDiff.subjectName} (${subjectDiff.subjectExternalId}) with ${subjectDiff.nameDiffs.length} name diffs`)
-      const subject = this.differences.find(s => s.subjectName === subjectDiff.subjectName && s.subjectExternalId === subjectDiff.subjectExternalId)
-      if (!subject || !Array.isArray(subject.assignments)) {
-        Logger.debug(`[SYNC DEBUG] Subject not found or has no assignments: ${subjectDiff.subjectName} (${subjectDiff.subjectExternalId})`)
-        return
-      }
-      subjectDiff.nameDiffs.forEach(nameDiff => {
-        Logger.debug(`[SYNC DEBUG] Looking for assignment with externalId: ${nameDiff.assignmentExternalId}`)
-        const assignment = subject.assignments.find(a => a.assignmentExternalId === nameDiff.assignmentExternalId)
-        if (!assignment) {
-          Logger.debug(`[SYNC DEBUG] Assignment not found: ${nameDiff.assignmentExternalId}`)
-          return
-        }
-        const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
-        if (!updateMap.has(key)) {
-          updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
-        }
-        updateMap.get(key).nameEt = nameDiff.kriit
-        Logger.debug(`[UPDATE MAP] Set nameEt for key ${key}: ${nameDiff.kriit}`)
-      })
-    })
-
-    // Add due date diffs
-    dueDateDiffs.forEach(diff => {
-      // Find subject and assignment
-      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
-      if (!subject) return
-      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
-      if (!assignment) return
-      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
-      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
-      updateMap.get(key).homeworkDuedate = diff.kriit
-    })
-
-    // Add entry date diffs
-    entryDateDiffs.forEach(diff => {
-      const subject = this.differences.find(s => s.assignments.some(a => a.assignmentExternalId === diff.assignmentExternalId))
-      if (!subject) return
-      const assignment = subject.assignments.find(a => a.assignmentExternalId === diff.assignmentExternalId)
-      if (!assignment) return
-      const key = getKey(subject.subjectExternalId, assignment.assignmentExternalId)
-      if (!updateMap.has(key)) updateMap.set(key, { journalId: subject.subjectExternalId, assignmentId: assignment.assignmentExternalId })
-      updateMap.get(key).entryDate = diff.kriit
-    })
-
-    // For each assignment, send a single PUT to Tahvel
-    Logger.debug(`[SYNC DEBUG] UpdateMap has ${updateMap.size} entries to process`)
-    for (const update of updateMap.values()) {
-      const { journalId, assignmentId, nameEt, homeworkDuedate, entryDate } = update
-      let currentEntry
-      try {
-        currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false, forceRefresh: true })
-      } catch (error) {
-        Logger.error(`Failed to fetch journal entry for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
-        continue
-      }
-      if (!currentEntry) {
-        Logger.error(`No journal entry found for journalId=${journalId}, assignmentId=${assignmentId}`)
-        continue
-      }
-      // Build the PUT payload by copying all fields, updating changed ones
-      const payload = { ...currentEntry }
-      if (nameEt && typeof nameEt === 'string' && nameEt.trim() !== '' && nameEt !== currentEntry.nameEt) {
-        payload.nameEt = nameEt
-      }
-      // Ensure date fields are strings, extract from object if needed
-      if (homeworkDuedate) {
-        let dateValue = homeworkDuedate
-        if (typeof dateValue === 'object' && dateValue !== null) {
-          // If it's a Date object, convert to ISO string
-          dateValue = dateValue.toISOString()
-        }
-        if (typeof dateValue === 'string') {
-          // If format is 'YYYY-MM-DD HH:MM:SS', convert to ISO 8601
-          let match = dateValue.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/)
-          if (match) {
-            // Convert to 'YYYY-MM-DDTHH:MM:SS.000Z'
-            dateValue = `${match[1]}T${match[2]}.000Z`
-          } else {
-            // If format is 'YYYY-MM-DD', append T23:59:59.000Z
-            match = dateValue.match(/^(\d{4}-\d{2}-\d{2})$/)
-            if (match) {
-              dateValue = `${match[1]}T23:59:59.000Z`
-            }
-            // If already ISO, leave as is
-          }
-        }
-        payload.homeworkDuedate = dateValue
-      }
-      if (entryDate) {
-        let dateValue = entryDate
-        if (typeof dateValue === 'object' && dateValue !== null) {
-          dateValue = dateValue.kriit || dateValue.Tahvel || ''
-        }
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
-          payload.entryDate = `${dateValue}T00:00:00Z`
-        } else if (typeof dateValue === 'string') {
-          payload.entryDate = dateValue
-        } else {
-          payload.entryDate = String(dateValue)
-        }
-      }
-      // Ensure teacher IDs are strings
-      if (Array.isArray(payload.journalEntryTeachers)) {
-        payload.journalEntryTeachers = payload.journalEntryTeachers.map(id => String(id))
-      }
-      payload.journalEntryCapacityTypes = ['MAHT_i']
-      // Optionally add homework field with Kriit link
-      let kriitAssignmentUrl = ''
-      const groupCode = currentEntry.groupName || ''
-  // Use the Kriit API base URL from the API service, trimming any trailing slash and removing '/api' if present
-  let kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
-  kriitBaseUrl = kriitBaseUrl.replace(/\/api$/, '')
-  kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
-  payload.homework = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
-
-      // Filter out students with OPPURSTAATUS_K (studentIsDeleted: true) from journalEntryStudents if present
-      if (Array.isArray(payload.journalEntryStudents)) {
-        const studentPromises = payload.journalEntryStudents.map(async student => {
-          const journalStudentId = student.journalStudent
-          if (!journalStudentId) return student // Keep if no ID
-
-          const studentId = this.journalStudentIdToStudentId[journalStudentId]
-          if (!studentId) {
-            Logger.warning(`[syncAssignmentNameDifferences] No studentId mapping for journalStudentId: ${journalStudentId}`)
-            return student // Keep if no mapping
-          }
-
-          try {
-            const studentDetails = await this.getStudentDetails(studentId)
-            if (studentDetails && studentDetails.status === 'OPPURSTAATUS_K') {
-              if (Logger.isDebugMode()) {
-                Logger.debug(
-                  `[syncAssignmentNameDifferences] Filtering out student ${studentDetails.person.lastname} (journalStudentId: ${journalStudentId}) with status OPPURSTAATUS_K`
-                )
-              }
-              return null // Filter out
-            }
-          } catch (error) {
-            Logger.error(`[syncAssignmentNameDifferences] Failed to get details for studentId ${studentId}, keeping in payload to be safe.`, error)
-          }
-
-          return student // Keep by default
-        })
-
-        payload.journalEntryStudents = (await Promise.all(studentPromises)).filter(Boolean)
-      }
-
-      if (Logger.isDebugMode()) {
-        Logger.debug(`✨ [syncAssignmentNameDifferences] PUT /journals/${journalId}/journalEntry/${assignmentId} with payload: ${JSON.stringify(payload)}`)
-      }
-      try {
-        await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, payload)
-        if (Logger.isDebugMode()) {
-          Logger.debug(`✨ Updated assignment in Tahvel: ${assignmentId} with changes: ${JSON.stringify(update)}`)
-        }
-      } catch (error) {
-        Logger.error(`Failed to update assignment for journalId=${journalId}, assignmentId=${assignmentId}: ${error.message}`)
-      }
-    }
   }
   /**
    * Extract assignment name differences from Kriit response
@@ -1029,8 +839,14 @@ class JournalListSyncFeature extends BaseFeature {
     journalSyncBannerService.showDifferencesBanner(
       totalDifferences,
       async() => {
-        await this.syncAssignmentNameDifferences()
+        // Run the batched sync which now includes assignment-level changes
         await this.syncWithKriit()
+        // Ensure we clear caches so fetchJournalData gets fresh Tahvel data
+        try {
+          await this.clearCache()
+        } catch (err) {
+          Logger.warning('Failed to clear cache before refresh:', err.message)
+        }
         await this.fetchJournalData()
       },
       () => this.fetchJournalData(),
@@ -1168,6 +984,19 @@ class JournalListSyncFeature extends BaseFeature {
       }
 
       try {
+        // Compute a stable hash of the payload and skip calling Kriit if unchanged since last successful call
+    const payloadHash = await computePayloadHash(journalData)
+        try {
+    const ONE_DAY = 24 * 60 * 60 * 1000
+    const lastHash = await cacheService.get('journalList_lastPayloadHash', ONE_DAY)
+          if (lastHash && lastHash === payloadHash) {
+            // Payload unchanged - log but DO NOT skip the Kriit API call
+            Logger.debug('Journal data payload unchanged since last check - will still call Kriit to get fresh differences')
+          }
+        } catch (err) {
+          Logger.warning('Failed to compare payload hash:', err.message)
+        }
+
         // Make the actual API call
         const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
         // Store Kriit assignments for due date diff feature
@@ -1205,6 +1034,15 @@ class JournalListSyncFeature extends BaseFeature {
         // Always update global differences after setting this.differences
         if (!window.journalListSync) window.journalListSync = {}
         window.journalListSync.differences = this.differences
+
+        // Persist the payload hash and differences to cache so we can skip redundant calls on refresh
+        try {
+          // Persist payload hash and differences to cache
+          await cacheService.set('journalList_lastPayloadHash', payloadHash)
+          await cacheService.set('journalList_lastDifferences', this.differences)
+        } catch (err) {
+          Logger.warning('Failed to persist journal list cache:', err.message)
+        }
       } catch (error) {
         Logger.error('Error calling Kriit API:', error)
 
@@ -1273,18 +1111,49 @@ class JournalListSyncFeature extends BaseFeature {
                   // Process each result
                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
                     diffAssignment.results.forEach(diffResult => {
-                      // Find matching student in our data
-                      const matchingResult = matchingAssignment.results.find(r => r.studentPersonalCode === diffResult.studentPersonalCode)
+                      // Find matching student in our data using robust comparisons
+                      const targetCode = diffResult.studentPersonalCode ? String(diffResult.studentPersonalCode).trim() : ''
+
+                      let matchingResult = null
+
+                      if (targetCode) {
+                        // Exact match after normalization
+                        matchingResult = matchingAssignment.results.find(r => {
+                          const rc = r.studentPersonalCode ? String(r.studentPersonalCode).trim() : ''
+                          return rc === targetCode
+                        })
+
+                        // Fallback: match by last 8 digits (handles formatting differences)
+                        if (!matchingResult) {
+                          const targetLast8 = targetCode.slice(-8)
+                          matchingResult = matchingAssignment.results.find(r => {
+                            const rc = r.studentPersonalCode ? String(r.studentPersonalCode).trim() : ''
+                            return rc.slice(-8) === targetLast8 && rc.length >= 8
+                          })
+                        }
+                      }
+
+                      // Fallback: try matching by student name (case-insensitive, substring)
+                      if (!matchingResult && diffResult.studentName) {
+                        const targetName = String(diffResult.studentName).toLowerCase()
+                        matchingResult = matchingAssignment.results.find(r => {
+                          const rn = r.studentName ? String(r.studentName).toLowerCase() : ''
+                          return rn && (rn === targetName || rn.includes(targetName) || targetName.includes(rn))
+                        })
+                      }
 
                       if (matchingResult) {
                         // Add student name and active status from our data
-                        // Kriit response for result has studentName, but we'll trust Tahvel's for consistency.
                         diffResult.studentName = matchingResult.studentName
                         diffResult.studentIsActive = matchingResult.studentIsActive
                         diffResult.studentIsDeleted = matchingResult.studentIsDeleted
 
                         // Add the Tahvel grade as currentGrade for UI display
                         diffResult.currentGrade = matchingResult.grade
+                      } else {
+                        if (Logger.isDebugMode()) {
+                          Logger.debug(`Could not find matching Tahvel result for personalCode="${diffResult.studentPersonalCode}" name="${diffResult.studentName || ''}" in assignment ${diffAssignment.assignmentExternalId}`)
+                        }
                       }
                     })
                   }
@@ -1430,12 +1299,14 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getJournalEntries(journalId) {
     try {
+      // Use caching for journal entries to avoid making this heavy request on every page refresh.
+      // Callers that need fresh data (teacher-initiated actions) should call the API directly with forceRefresh.
       const response = await this.api.tahvel.get(
         `/journals/${journalId}/journalEntry`,
         {},
         {
-          cache: false, // Explicitly disable caching
-          forceRefresh: true // Force a refresh
+          cache: true,
+          cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
         }
       )
 
@@ -1463,8 +1334,10 @@ class JournalListSyncFeature extends BaseFeature {
         `/journals/${journalId}/journalEntriesByDate`,
         { allStudents: true },
         {
-          cache: false, // Explicitly disable caching
-          forceRefresh: true // Force a refresh
+          // Use ApiService smart defaults for caching. Callers can pass { cache: false }
+          // if a real-time refresh is required (for example during an explicit user action).
+          cache: true,
+          forceRefresh: false
         }
       )
 
@@ -2167,11 +2040,19 @@ class JournalListSyncFeature extends BaseFeature {
     }
     Logger.feature(this.name, 'Syncing with Kriit...')
 
-    // Prevent multiple sync operations from running simultaneously
+  // Prevent multiple sync operations from running simultaneously
     if (this.isLoading) {
       Logger.warning('Sync already in progress, ignoring new sync request')
       return
     }
+
+  // Per-sync caches to avoid repeated heavy requests during a single sync run
+  // assignmentEntryCache: cache /journals/:journalId/journalEntry/:assignmentId responses
+  const assignmentEntryCache = new Map()
+
+  // localStudentCache: cache student details fetched during this sync to avoid repeated API/cacheService calls
+  if (!this._localStudentCache) this._localStudentCache = {}
+
 
     try {
       if (!this.differences || !Array.isArray(this.differences) || this.differences.length === 0) {
@@ -2363,373 +2244,356 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.updateUI()
 
-      // Process each grade change one by one
-      const successfulSyncs = []
-      const failedSyncs = []
-      let currentItem = null
+      // Process grade changes grouped by assignment to avoid overwriting assignment-level changes
+  const successfulSyncs = []
+  const failedSyncs = []
 
       try {
-        // Update UI to show progress
-        this.updateProgressUI(0, syncData.length)
-
-        for (let i = 0; i < syncData.length; i++) {
-          const item = syncData[i]
-          currentItem = item
-
-          if (Logger.isDebugMode()) {
-            Logger.debug(`=== Syncing student ${i + 1}/${syncData.length}: ${item.studentPersonalCode} ===`)
+        // Build assignment-level batches
+        const assignmentMap = new Map()
+        for (const item of syncData) {
+          const key = `${item.journalId}::${item.assignmentId}`
+          if (!assignmentMap.has(key)) {
+            assignmentMap.set(key, {
+              journalId: item.journalId,
+              assignmentId: item.assignmentId,
+              students: []
+            })
           }
+          assignmentMap.get(key).students.push({ studentPersonalCode: item.studentPersonalCode, grade: item.grade })
+        }
 
-          // Update progress in UI (with safe error handling)
-          try {
-            this.updateProgressUI(i, syncData.length)
-          } catch (progressError) {
-            Logger.warning(`Progress UI update failed: ${progressError.message}`)
-            // Continue with sync even if progress UI fails
+        // Merge assignment-level changes from this.differences (name, due date, entry date)
+        for (const batch of assignmentMap.values()) {
+          if (!this.differences || !Array.isArray(this.differences)) continue
+          const subject = this.differences.find(s => s.subjectExternalId === batch.journalId)
+          if (!subject || !Array.isArray(subject.assignments)) continue
+          const assignmentDiff = subject.assignments.find(a => a.assignmentExternalId === batch.assignmentId)
+          if (!assignmentDiff) continue
+          // If Kriit provided assignment-level fields, apply them
+          if (assignmentDiff.assignmentName && typeof assignmentDiff.assignmentName === 'object' && assignmentDiff.assignmentName.kriit) {
+            batch.nameEt = assignmentDiff.assignmentName.kriit
           }
+          if (assignmentDiff.assignmentDueAt && typeof assignmentDiff.assignmentDueAt === 'object' && assignmentDiff.assignmentDueAt.kriit) {
+            batch.homeworkDuedate = assignmentDiff.assignmentDueAt.kriit
+          }
+          if (assignmentDiff.assignmentEntryDate && typeof assignmentDiff.assignmentEntryDate === 'object' && assignmentDiff.assignmentEntryDate.kriit) {
+            batch.entryDate = assignmentDiff.assignmentEntryDate.kriit
+          }
+        }
+
+        const batches = Array.from(assignmentMap.values())
+        this.updateProgressUI(0, batches.length)
+
+        for (let bi = 0; bi < batches.length; bi++) {
+          const batch = batches[bi]
+          if (Logger.isDebugMode()) Logger.debug(`Processing assignment batch ${bi + 1}/${batches.length}: ${batch.journalId} / ${batch.assignmentId}`)
 
           try {
-            // Validate item properties before calling syncGradeToTahvel
-            if (!item.journalId) {
-              throw new Error('Missing journalId in sync item')
+            // Fetch assignment entry once (use per-sync cache)
+            const entryCacheKey = `${batch.journalId}::${batch.assignmentId}`
+            let entryData = assignmentEntryCache.get(entryCacheKey)
+            if (!entryData) {
+              entryData = await this.api.tahvel.get(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, { allStudents: true })
+              assignmentEntryCache.set(entryCacheKey, entryData)
             }
 
-            if (!item.assignmentId) {
-              throw new Error('Missing assignmentId in sync item')
+            if (!entryData) {
+              throw new Error(`No entry data for journal ${batch.journalId} assignment ${batch.assignmentId}`)
             }
 
-            if (!item.studentPersonalCode) {
-              throw new Error('Missing studentPersonalCode in sync item')
-            }
+            // Build list of student entries to update or add
+            const studentsToUpdate = []
+            for (const s of batch.students) {
+              const personalCode = String(s.studentPersonalCode)
+              const targetGrade = String(s.grade)
 
-            if (!item.grade) {
-              throw new Error('Missing grade in sync item')
-            }
-
-            // Log the item we're about to process
-            Logger.debug(
-              `Processing sync item: ${JSON.stringify({
-                journalId: item.journalId,
-                assignmentId: item.assignmentId,
-                studentPersonalCode: item.studentPersonalCode,
-                grade: item.grade
-              })}`
-            )
-
-            // Additional validation: check if this grade actually needs updating
-            // by fetching the current state from Tahvel
-            try {
-              const entryData = await this.api.tahvel.get(`/journals/${item.journalId}/journalEntry/${item.assignmentId}`, { allStudents: true })
-
-              if (entryData && entryData.journalEntryStudents) {
-                // Find the student in the assignment
-                let studentEntry = null
-                for (const student of entryData.journalEntryStudents) {
-                  if (!student.journalStudent) continue
-                  const cachedStudent = await this.getCachedStudent(student.journalStudent)
-                  if (cachedStudent && String(cachedStudent.personalCode) === String(item.studentPersonalCode)) {
-                    studentEntry = student
-                    break
+              // Try to find existing student entry in assignment data by cached personal codes
+              let studentEntry = null
+              for (const student of entryData.journalEntryStudents || []) {
+                if (!student.journalStudent) continue
+                const mappedId = this.journalStudentIdToStudentId[student.journalStudent]
+                let cachedStudent = mappedId ? this._localStudentCache?.[mappedId] : null
+                if (!cachedStudent) {
+                  cachedStudent = await this.getCachedStudent(student.journalStudent)
+                  if (mappedId) {
+                    if (!this._localStudentCache) this._localStudentCache = {}
+                    this._localStudentCache[mappedId] = cachedStudent
                   }
                 }
-
-                if (studentEntry && studentEntry.grade && studentEntry.grade.code) {
-                  const currentTahvelGrade = studentEntry.grade.code.replace('KUTSEHINDAMINE_', '')
-                  const targetGrade = String(item.grade)
-
-                  if (currentTahvelGrade === targetGrade) {
-                  if (Logger.isDebugMode()) {
-                    Logger.debug(
-                      `Grade already up to date for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}" - skipping`
-                    )
-                  }
-                    successfulSyncs.push({ ...item, skipped: true }) // Count as successful since no action was needed
-                    continue
-                  }
-
-                  Logger.debug(`Grade needs update for student ${item.studentPersonalCode}: current="${currentTahvelGrade}", target="${targetGrade}"`)
+                if (cachedStudent && String(cachedStudent.personalCode) === personalCode) {
+                  studentEntry = student
+                  break
                 }
               }
-            } catch (preCheckError) {
-              Logger.warning(`Could not pre-validate grade for student ${item.studentPersonalCode}: ${preCheckError.message}`)
-              // Continue with sync attempt anyway
+
+              // If not found, try fallback by checking journal students mapping
+              if (!studentEntry) {
+                // Attempt to find journalStudentId by scanning journal students
+                const journalStudents = await this.getJournalStudents(batch.journalId)
+                if (journalStudents && journalStudents.length > 0) {
+                  const match = journalStudents.find(js => js.student && String(js.student.idcode) === personalCode)
+                  if (match) {
+                    // Try to find an entry in entryData with this journalStudent id
+                    const potential = (entryData.journalEntryStudents || []).find(e => String(e.journalStudent) === String(match.id))
+                    if (potential) studentEntry = potential
+                  }
+                }
+              }
+
+              // Build updated entry for this student
+              let finalStudentEntry = null
+              if (studentEntry) {
+                // Update existing student's grade
+                finalStudentEntry = { ...studentEntry }
+                finalStudentEntry.grade = {
+                  code: `KUTSEHINDAMINE_${targetGrade}`,
+                  gradingSchemaRowId: null,
+                  value: String(targetGrade),
+                  value2: String(targetGrade),
+                  extraval1: null,
+                  extraval2: null,
+                  nameEt: `Hinne ${targetGrade}`,
+                  nameEn: `Grade ${targetGrade}`,
+                  valid: true
+                }
+                // ensure removeStudentHistory is present
+                finalStudentEntry.removeStudentHistory = true
+              } else {
+                // Need to add a new student entry - try to get journalStudent id
+                const info = await this.getDetailedStudentInfo(personalCode, batch.journalId)
+                if (!info || !info.journalStudentId) {
+                  throw new Error(`Could not find journalStudentId for personal code ${personalCode} in journal ${batch.journalId}`)
+                }
+                finalStudentEntry = {
+                  id: null,
+                  journalStudent: Number(info.journalStudentId),
+                  absence: null,
+                  grade: {
+                    code: `KUTSEHINDAMINE_${targetGrade}`,
+                    gradingSchemaRowId: null,
+                    value: String(targetGrade),
+                    value2: String(targetGrade),
+                    extraval1: null,
+                    extraval2: null,
+                    nameEt: `Hinne ${targetGrade}`,
+                    nameEn: `Grade ${targetGrade}`,
+                    valid: true
+                  },
+                  verbalGrade: null,
+                  removeStudentHistory: true,
+                  addInfo: this.getAddInfoFromExistingStudents(entryData.journalEntryStudents),
+                  isLessonAbsence: false,
+                  hasOverlappingLessonAbsence: false,
+                  isPraise: false,
+                  isRemark: false,
+                  lessonAbsences: {},
+                  studentName: null,
+                  studentGroup: null,
+                  journalEntryStudentHistories: [],
+                  hasWholeDayAcceptedAbsence: false,
+                  wholeDayAbsenceCode: null,
+                  gradeValue: null
+                }
+              }
+
+              // Attach debug-friendly info
+              let cachedForName = null
+              if (studentEntry) {
+                cachedForName = await this.getCachedStudent(studentEntry.journalStudent)
+              } else {
+                cachedForName = await this.getCachedStudent(finalStudentEntry.journalStudent)
+              }
+              const studentName = cachedForName ? cachedForName.name : (studentEntry ? studentEntry.studentName : 'Unknown')
+              const studentPersonal = cachedForName ? cachedForName.personalCode : personalCode
+
+              studentsToUpdate.push({ ...finalStudentEntry, studentName, studentPersonalCode: studentPersonal })
             }
 
-            // Call the sync method with validated data
-            if (Logger.isDebugMode()) {
-              Logger.debug(`Calling syncGradeToTahvel for student ${item.studentPersonalCode}...`)
-            }
-            if (Logger.isDebugMode()) {
-              Logger.debug('=== SYNC PARAMETERS ===')
-              Logger.debug(`Journal ID: ${item.journalId} (type: ${typeof item.journalId})`)
-              Logger.debug(`Assignment ID: ${item.assignmentId} (type: ${typeof item.assignmentId})`)
-              Logger.debug(`Student Personal Code: "${item.studentPersonalCode}" (type: ${typeof item.studentPersonalCode})`)
-              Logger.debug(`Grade: "${item.grade}" (type: ${typeof item.grade})`)
-              Logger.debug('=== END SYNC PARAMETERS ===')
+            if (studentsToUpdate.length === 0) {
+              Logger.debug(`No student updates required for assignment ${batch.assignmentId}`)
+              successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, skipped: true })
+              // update progress
+              this.updateProgressUI(bi + 1, batches.length)
+              continue
             }
 
-            await this.syncGradeToTahvel(item.journalId, item.assignmentId, item.studentPersonalCode, item.grade)
+            // Prepare update payload based on existing entryData but with filtered studentsToUpdate
+            const updateData = { ...entryData }
+            // Replace journalEntryStudents with only students being updated (server expects student objects with names)
+            updateData.journalEntryStudents = studentsToUpdate.map(s => ({
+              ...s
+            }))
 
-            if (Logger.isDebugMode()) {
-              Logger.debug(`Successfully synced grade for student ${item.studentPersonalCode}`)
+            // Assignment-level updates: normalize date formats expected by Tahvel
+            if (batch.nameEt) updateData.nameEt = batch.nameEt
+            if (batch.homeworkDuedate) {
+              // homeworkDuedate may come as 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:mm:ss' - Tahvel expects a full datetime
+              let due = batch.homeworkDuedate
+              if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
+                // Use end of day for due date
+                due = `${due}T23:59:59.000Z`
+              }
+              // If it's a short ISO without timezone, try to append Z
+              if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(due)) {
+                due = `${due}.000Z`
+              }
+              updateData.homeworkDuedate = due
+              // also normalize batch for in-memory update
+              batch.homeworkDuedate = due
             }
-            // Add to successful syncs
-            successfulSyncs.push(item)
-          } catch (error) {
-            // Check if this is an inactive student error
-            const errorMessage = error.message || 'Unknown error'
-            const isInactiveStudentError =
-              errorMessage.includes('not actively studying') ||
-              errorMessage.includes('changeIsNotAllowedStudentIsNotStudying') ||
-              errorMessage.includes('academic leave') ||
-              errorMessage.includes('status is inactive')
+            if (batch.entryDate) {
+              // entryDate may be 'YYYY-MM-DD' - Tahvel expects full datetime (start of day)
+              let ed = batch.entryDate
+              if (typeof ed === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ed)) {
+                ed = `${ed}T00:00:00Z`
+              }
+              updateData.entryDate = ed
+              batch.entryDate = ed
+            }
 
-            if (isInactiveStudentError) {
-              // Log as warning instead of error for inactive students
-              Logger.warning(
-                `Skipping inactive student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}: ${errorMessage}`
-              )
+            // Ensure teacher IDs and capacity types as in other flows
+            if (Array.isArray(updateData.journalEntryTeachers)) {
+              updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
+            }
+            updateData.journalEntryCapacityTypes = updateData.journalEntryCapacityTypes || ['MAHT_i']
 
-              // Add to failed syncs but mark as inactive (not a real error)
-              failedSyncs.push({
-                ...item,
-                error: errorMessage,
-                errorType: 'inactive_student',
-                timestamp: new Date().toISOString()
+            // Filter out students with OPPURSTAATUS_K using mapping similar to syncAssignmentNameDifferences
+            if (Array.isArray(updateData.journalEntryStudents)) {
+              const studentPromises = updateData.journalEntryStudents.map(async student => {
+                const journalStudentId = student.journalStudent
+                if (!journalStudentId) return student
+                const studentId = this.journalStudentIdToStudentId[journalStudentId]
+                if (!studentId) return student
+                try {
+                  const studentDetails = await this.getStudentDetails(studentId)
+                  if (studentDetails && studentDetails.status === 'OPPURSTAATUS_K') return null
+                } catch (err) {
+                  Logger.warning(`Failed to get student details for ${studentId}: ${err.message}`)
+                }
+                return student
               })
-            } else {
-              // Log the error with full context for real errors
-              Logger.error(
-                `Failed to sync grade for student ${item.studentPersonalCode || 'unknown'} in assignment ${item.assignmentId || 'unknown'}:`,
-                error
-              )
-
-              // Add to failed syncs with detailed error info
-              failedSyncs.push({
-                ...item,
-                error: errorMessage,
-                errorType: 'sync_error',
-                timestamp: new Date().toISOString()
-              })
+              updateData.journalEntryStudents = (await Promise.all(studentPromises)).filter(Boolean)
             }
+
+            // Send single PUT for the whole assignment
+            try {
+              if (Logger.isDebugMode()) Logger.debug(`PUT /journals/${batch.journalId}/journalEntry/${batch.assignmentId} payload: ${JSON.stringify(updateData)}`)
+              await this.api.tahvel.put(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, updateData)
+              // Mark successful
+              successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, updated: studentsToUpdate.length })
+
+              // Update in-memory differences: clear assignment-level diffs and update per-student currentGrade
+              try {
+                if (Array.isArray(this.differences)) {
+                  const subject = this.differences.find(s => s.subjectExternalId === batch.journalId)
+                  if (subject && Array.isArray(subject.assignments)) {
+                    const assignmentObj = subject.assignments.find(a => a.assignmentExternalId === batch.assignmentId)
+                    if (assignmentObj) {
+                      if (batch.nameEt) {
+                        assignmentObj.assignmentName = assignmentObj.assignmentName || {}
+                        assignmentObj.assignmentName.Tahvel = batch.nameEt
+                      }
+                      if (batch.homeworkDuedate) {
+                        assignmentObj.assignmentDueAt = assignmentObj.assignmentDueAt || {}
+                        // batch.homeworkDuedate was normalized to a full ISO datetime string earlier
+                        assignmentObj.assignmentDueAt.Tahvel = batch.homeworkDuedate
+                      }
+                      if (batch.entryDate) {
+                        assignmentObj.assignmentEntryDate = assignmentObj.assignmentEntryDate || {}
+                        // batch.entryDate was normalized to a full ISO datetime string earlier
+                        assignmentObj.assignmentEntryDate.Tahvel = batch.entryDate
+                      }
+                      // Update results: set currentGrade for synced students
+                      if (Array.isArray(assignmentObj.results)) {
+                        for (const s of studentsToUpdate) {
+                          const targetCode = s.studentPersonalCode ? String(s.studentPersonalCode) : null
+                          const match = assignmentObj.results.find(r => {
+                            const rc = r.studentPersonalCode ? String(r.studentPersonalCode) : ''
+                            // Exact match
+                            const exactMatch = rc === targetCode
+                            // Fallback: compare last 8 digits if both present
+                            const targetLast8 = targetCode ? String(targetCode).slice(-8) : null
+                            const rcLast8 = rc ? String(rc).slice(-8) : null
+                            const last8Match = targetLast8 && rcLast8 && rcLast8 === targetLast8
+                            // Fallback by name substring (case-insensitive)
+                            let nameMatch = false
+                            if (r.studentName && s.studentName) {
+                              try {
+                                nameMatch = r.studentName.toLowerCase().includes(s.studentName.toLowerCase())
+                              } catch (e) {
+                                nameMatch = false
+                              }
+                            }
+                            return exactMatch || last8Match || nameMatch
+                          })
+                          if (match) {
+                            match.currentGrade = s.grade?.value || s.grade || (s.gradeValue ? s.gradeValue : null)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (err) {
+                Logger.warning(`Failed to update in-memory differences after batch PUT ${batch.assignmentId}: ${err.message}`)
+              }
+            } catch (err) {
+              Logger.error(`Failed to PUT assignment ${batch.assignmentId} in journal ${batch.journalId}: ${err.message}`)
+              failedSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, error: err.message })
+            }
+
+            // Update progress UI per assignment
+            try {
+              this.updateProgressUI(bi + 1, batches.length)
+            } catch (err) {
+              Logger.warning(`Progress UI update failed for batch ${bi}: ${err.message}`)
+            }
+          } catch (err) {
+            Logger.error(`Error processing assignment batch ${batch.journalId}/${batch.assignmentId}: ${err.message}`)
+            failedSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, error: err.message })
           }
 
-          Logger.debug(`Completed processing student ${i + 1}/${syncData.length}. Moving to next student...`)
-
-          // Add delay between sync operations to prevent race conditions
-          if (i < syncData.length - 1) {
-            // Don't delay after the last item
-            Logger.debug(`Adding 500ms delay before next sync operation...`)
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
+          // Small delay between batches to reduce server load
+          if (bi < batches.length - 1) await new Promise(r => setTimeout(r, 500))
         }
 
-        // Final progress update
-        if (Logger.isDebugMode()) {
-          Logger.debug(`Sync loop completed. Updating final progress: ${syncData.length}/${syncData.length}`)
-        }
-        try {
-          this.updateProgressUI(syncData.length, syncData.length)
-        } catch (finalProgressError) {
-          Logger.warning(`Final progress UI update failed: ${finalProgressError.message}`)
-        }
-
-        // Log results
-        Logger.debug(`Sync completed: ${successfulSyncs.length} successful, ${failedSyncs.length} failed`)
-
-        // Categorize failed syncs by error type
+        // After batch processing complete, set results and refresh UI similar to previous logic
         const inactiveStudentErrors = failedSyncs.filter(item => item.errorType === 'inactive_student')
         const realErrors = failedSyncs.filter(item => item.errorType !== 'inactive_student')
 
-        if (Logger.isDebugMode()) {
-          Logger.debug(`=== SYNC SUMMARY ===`)
-          Logger.debug(`Total items processed: ${syncData.length}`)
-          Logger.debug(`Successful syncs: ${successfulSyncs.length}`)
-          Logger.debug(`Failed syncs: ${failedSyncs.length}`)
-        }
-        if (inactiveStudentErrors.length > 0) {
-          if (Logger.isDebugMode()) {
-            Logger.debug(`  - Inactive students skipped: ${inactiveStudentErrors.length}`)
-          }
-        }
-        if (realErrors.length > 0) {
-          if (Logger.isDebugMode()) {
-            Logger.debug(`  - Real sync errors: ${realErrors.length}`)
-          }
-        }
-        if (Logger.isDebugMode()) {
-          Logger.debug(`==================`)
-        }
+        const actualUpdates = successfulSyncs.reduce((acc, s) => acc + (s.updated || 0), 0)
+        const skippedUpdates = successfulSyncs.filter(s => s.skipped).length
 
-        // Count how many were actually updated vs skipped
-        const actualUpdates = successfulSyncs.filter(item => !item.skipped).length
-        const skippedUpdates = successfulSyncs.filter(item => item.skipped).length
-
-        // Show appropriate message based on results
+        // Show success or partial messages
+        this.isLoading = false
         if (realErrors.length === 0) {
-          // No real errors occurred (only inactive students if any)
-          this.isLoading = false
-          this.error = null
-
-          // Show success message in the banner
           let successMessage
           if (actualUpdates > 0) {
             successMessage = `Edukalt sünkroniseeritud ${actualUpdates} hinnet Kriidist Tahvlisse.`
-            if (skippedUpdates > 0) {
-              successMessage += ` ${skippedUpdates} hinnet olid juba õiged.`
-            }
-            if (inactiveStudentErrors.length > 0) {
-              successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
-            }
+            if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} hinnet olid juba õiged.`
+            if (inactiveStudentErrors.length > 0) successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
             successMessage += ` Andmed värskendatakse automaatselt mõne sekundi pärast...`
           } else {
-            if (inactiveStudentErrors.length > 0 && successfulSyncs.length === 0) {
-              successMessage = `${inactiveStudentErrors.length} üliõpilast vahele jäetud, kuna nad ei õpi aktiivselt. Pole midagi sünkroniseerida.`
-            } else {
-              successMessage = `Kõik ${successfulSyncs.length} hinnet olid juba õiged - pole midagi sünkroniseerida.`
-              if (inactiveStudentErrors.length > 0) {
-                successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
-              }
-            }
-          }
-
-          if (Logger.isDebugMode()) {
-            Logger.debug(`Showing success banner: ${successMessage}`)
+            successMessage = `Kõik ${successfulSyncs.length} hinnet olid juba õiged - pole midagi sünkroniseerida.`
           }
           this.showSuccessBanner(successMessage)
 
-          // Log the successful syncs for debugging
-          Logger.debug(
-            `Successful syncs: ${JSON.stringify(
-              successfulSyncs.map(item => ({
-                student: item.studentPersonalCode,
-                assignment: item.assignmentId,
-                grade: item.grade
-              }))
-            )}`
-          )
-
-          // Log inactive students for information
-          if (inactiveStudentErrors.length > 0) {
-            if (Logger.isDebugMode()) {
-              Logger.debug(
-                `Inactive students skipped: ${JSON.stringify(
-                  inactiveStudentErrors.map(item => ({
-                    student: item.studentPersonalCode,
-                    assignment: item.assignmentId,
-                    reason: 'Not actively studying'
-                  }))
-                )}`
-              )
-            }
-          }
-
-          // After 3 seconds, refresh data to show updated state
-          Logger.debug('Setting timeout to refresh data in 3 seconds')
+          // Refresh data after clearing cache
           setTimeout(() => {
-            Logger.debug('Timeout triggered, refreshing journal data')
-            // Clear all cache before fetching new data to ensure we get fresh results
-            this.clearCache()
-              .then(() => {
-                Logger.debug('Cache cleared, now fetching fresh journal data')
-                this.fetchJournalData()
-              })
-              .catch(error => {
-                Logger.error('Error clearing cache:', error)
-                // Still try to fetch data even if cache clearing fails
-                this.fetchJournalData()
-              })
+            this.clearCache().then(() => this.fetchJournalData()).catch(() => this.fetchJournalData())
           }, 3000)
-        } else if (successfulSyncs.length === 0 && inactiveStudentErrors.length === 0) {
-          // All syncs failed with real errors
-          this.isLoading = false
-          this.error = `Kõik ${realErrors.length} hinde sünkroniseerimine ebaõnnestus. Vaata konsoolist täpsemaid vigu.`
-          this.updateUI()
-
-          // Log detailed errors for debugging
-          Logger.error(
-            'All syncs failed. Details:',
-            realErrors.map(item => ({
-              student: item.studentPersonalCode,
-              assignment: item.assignmentId,
-              error: item.error
-            }))
-          )
         } else {
-          // Mixed results
-          this.isLoading = false
-
-          let errorMessage = `Sünkroniseerimine osaliselt õnnestus: ${successfulSyncs.length} õnnestus`
-          if (realErrors.length > 0) {
-            errorMessage += `, ${realErrors.length} ebaõnnestus`
-          }
-          if (inactiveStudentErrors.length > 0) {
-            errorMessage += `, ${inactiveStudentErrors.length} vahele jäetud (ei õpi aktiivselt)`
-          }
-          errorMessage += `.`
-
-          this.error = errorMessage
+          this.error = `Sünkroniseerimine osaliselt õnnestus: ${successfulSyncs.length} õnnestus, ${realErrors.length} ebaõnnestus.`
           this.updateUI()
-
-          // Log detailed errors for debugging
-          if (realErrors.length > 0) {
-            Logger.error(
-              'Some syncs failed with real errors. Details:',
-              realErrors.map(item => ({
-                student: item.studentPersonalCode,
-                assignment: item.assignmentId,
-                error: item.error
-              }))
-            )
-          }
-
-          if (inactiveStudentErrors.length > 0) {
-            if (Logger.isDebugMode()) {
-              Logger.debug(
-                'Some students skipped due to inactive status. Details:',
-                inactiveStudentErrors.map(item => ({
-                  student: item.studentPersonalCode,
-                  assignment: item.assignmentId,
-                  reason: 'Not actively studying'
-                }))
-              )
-            }
-          }
-
-          // After 3 seconds, refresh data to show updated state
           setTimeout(() => {
-            // Clear all cache before fetching new data to ensure we get fresh results
-            this.clearCache()
-              .then(() => {
-                Logger.debug('Cache cleared, now fetching fresh journal data')
-                this.fetchJournalData()
-              })
-              .catch(error => {
-                Logger.error('Error clearing cache:', error)
-                // Still try to fetch data even if cache clearing fails
-                this.fetchJournalData()
-              })
+            this.clearCache().then(() => this.fetchJournalData()).catch(() => this.fetchJournalData())
           }, 3000)
         }
       } catch (error) {
-        // Handle unexpected errors in the sync loop
-        Logger.error('Unexpected error during sync process:', error)
-        Logger.error('Error stack:', error.stack)
-
-        let errorMessage = 'Sünkroniseerimine ebaõnnestus ootamatu vea tõttu.'
-
-        if (currentItem) {
-          errorMessage += ` Viga tekkis õpilase ${currentItem.studentPersonalCode} hinde sünkroniseerimisel.`
-
-          // Log details about which item caused the error
-          Logger.error(`Error occurred while processing item: ${JSON.stringify(currentItem)}`)
-        }
-
-        // Log how many items were processed before the error
-        Logger.error(`Sync failed after processing ${successfulSyncs.length} successful and ${failedSyncs.length} failed items`)
-
+        Logger.error('Unexpected error during batch sync process:', error)
         this.isLoading = false
-        this.error = errorMessage
+        this.error = 'Sünkroniseerimine ebaõnnestus ootamatu vea tõttu.'
         this.updateUI()
       }
     } catch (error) {
@@ -2837,15 +2701,17 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Syncing grade ${grade} directly to Tahvel`)
       }
 
-      // First, get the current entry data - force fresh data to avoid caching issues
+      // First, get the current entry data - prefer instance-level cache to avoid repeated requests
       let entryData
       try {
-        // Clear any existing cache for this specific assignment to ensure fresh data
-        const cacheKey = `GET_${this.api.tahvel.baseUrl}/journals/${journalId}/journalEntry/${assignmentId}?allStudents=true`
-        await cacheService.clearCache(cacheKey)
-
-        // Use allStudents=true to get data for all students, not just the current user's students
-        entryData = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, { allStudents: true })
+        if (!this._assignmentEntryCache) this._assignmentEntryCache = new Map()
+        const entryCacheKey = `${journalId}::${assignmentId}`
+        entryData = this._assignmentEntryCache.get(entryCacheKey)
+        if (!entryData) {
+          // Fetch fresh data and cache it for the lifetime of this feature instance
+          entryData = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, { allStudents: true })
+          this._assignmentEntryCache.set(entryCacheKey, entryData)
+        }
       } catch (error) {
         throw new Error(`Failed to fetch assignment data: ${error.message}. Check if the assignment still exists in Tahvel.`)
       }
@@ -2871,7 +2737,16 @@ class JournalListSyncFeature extends BaseFeature {
           const studentId = student.journalStudent
 
           if (studentId) {
-            const cachedStudent = await this.getCachedStudent(studentId)
+            // Try to use local sync cache first
+            const mappedId = this.journalStudentIdToStudentId[studentId]
+            let cachedStudent = mappedId ? this._localStudentCache?.[mappedId] : null
+            if (!cachedStudent) {
+              cachedStudent = await this.getCachedStudent(studentId)
+              if (mappedId) {
+                if (!this._localStudentCache) this._localStudentCache = {}
+                this._localStudentCache[mappedId] = cachedStudent
+              }
+            }
             const personalCode = cachedStudent ? cachedStudent.personalCode : 'UNKNOWN_PERSONAL_CODE'
             const name = cachedStudent ? cachedStudent.name : student.studentName || 'UNKNOWN_NAME'
             const isActive = cachedStudent ? cachedStudent.isActive : 'UNKNOWN_STATUS'
@@ -3652,6 +3527,13 @@ class JournalListSyncFeature extends BaseFeature {
       }
     }
 
+    // Simple memoization to avoid repeated API/cache calls for the same student during a session
+    if (!this._cachedStudents) this._cachedStudents = {}
+    const memoKey = String(journalStudentId)
+    if (Object.prototype.hasOwnProperty.call(this._cachedStudents, memoKey)) {
+      return this._cachedStudents[memoKey]
+    }
+
     // Use the mapping to find the actual studentId
     const studentId = this.journalStudentIdToStudentId[journalStudentId]
     if (studentId) {
@@ -3687,6 +3569,7 @@ class JournalListSyncFeature extends BaseFeature {
             }
 
             Logger.debug(`✅ Successfully cached student: ${cachedStudent.personalCode} (${cachedStudent.name}) - Active: ${isActive}, Deleted: ${isDeleted}`)
+            this._cachedStudents[memoKey] = cachedStudent
             return cachedStudent
           } else {
             Logger.warning(`⚠️ Missing person.idcode in student details for studentId ${studentId}`)
@@ -3712,7 +3595,8 @@ class JournalListSyncFeature extends BaseFeature {
     }
 
     Logger.debug(`🚫 Student not found in cache for journalStudentId: ${journalStudentId}`)
-    return null
+  this._cachedStudents[memoKey] = null
+  return null
   }
 }
 
@@ -4013,6 +3897,32 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
   } catch (error) {
     Logger.error('Error in getTahvelSubjectsWithAssignmentsAndGrades:', error)
     throw error
+  }
+}
+
+/**
+ * Compute a stable hash for a JSON payload. Uses SubtleCrypto SHA-1 when available.
+ * Falls back to a simple checksum when crypto is not available.
+ * @param {any} payload
+ * @returns {Promise<string>} hex hash
+ */
+async function computePayloadHash(payload) {
+  try {
+    const text = JSON.stringify(payload)
+    if (window && window.crypto && window.crypto.subtle && window.TextEncoder) {
+      const encoder = new TextEncoder()
+      const data = encoder.encode(text)
+      const hashBuffer = await window.crypto.subtle.digest('SHA-1', data)
+      const hashArray = Array.from(new Uint8Array(hashBuffer))
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+    // Fallback simple checksum
+    let sum = 0
+    for (let i = 0; i < text.length; i++) sum = (sum + text.charCodeAt(i)) % 0xffffffff
+    return `fallback-${sum}`
+  } catch (error) {
+    Logger.warning('computePayloadHash failed:', error.message)
+    return 'hash-failed'
   }
 }
 
