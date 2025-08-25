@@ -98,7 +98,7 @@ const cacheService = {
       }
 
       // Start fetch and store the promise in inflightRequests
-      const fetchPromise = (async () => {
+      const fetchPromise = (async() => {
         try {
           return await fetchFn()
         } catch (err) {
