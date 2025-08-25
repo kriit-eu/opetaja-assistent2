@@ -2,6 +2,7 @@ import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { domService } from '../../../services/DomService.js'
 import FinalGradesLFeature from './FinalGradesLFeature.js'
+import HighlightFinalGradesFeature from '../highlightFinalGrades/HighlightFinalGradesFeature.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
   // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
@@ -1027,6 +1028,257 @@ class FinalGradesByOvFeature extends BaseFeature {
   // If ÕV columns exist, automatically sync grades silently (no status message unless error)
   if (allOvNums.length > 0) {
       container.innerHTML = ''
+      // --- Highlight mismatched cells in the journal table ---
+      try {
+        // Locate the journal table
+        const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
+        if (table) {
+          // Use HighlightFinalGradesFeature to detect column indices
+          const hf = new HighlightFinalGradesFeature()
+          const { finalGradeCols, ovCols } = hf.findColumnIndices(table)
+          // Map ovCols -> ovNum using results.allOvNums; fall back to sequence if lengths mismatch
+          const sortedOvCols = (ovCols || []).slice().sort((a, b) => a - b)
+          const ovColToNum = {}
+          if (sortedOvCols.length === (allOvNums || []).length) {
+            sortedOvCols.forEach((colIdx, i) => {
+              ovColToNum[colIdx] = String(allOvNums[i])
+            })
+          } else {
+            // Best-effort: try to parse numbers from header cells
+            let headerCols = []
+            const headerRows = Array.from(table.querySelectorAll('thead tr'))
+            headerRows.forEach(row => {
+              let colIdx = 0
+              Array.from(row.children).forEach(th => {
+                const colspan = parseInt(th.getAttribute('colspan') || '1', 10)
+                const rawText = th.innerText || th.textContent || ''
+                for (let i = 0; i < colspan; i++) {
+                  headerCols[colIdx + i] = rawText
+                }
+                colIdx += colspan
+              })
+            })
+            sortedOvCols.forEach(colIdx => {
+              const txt = headerCols[colIdx] || ''
+              const m = txt.match(/õv\s*[_\-\s]?(\d+)/i) || txt.match(/õv(\d+)/i)
+              if (m && m[1]) ovColToNum[colIdx] = String(m[1])
+            })
+            // If still empty, map in order to available ovNums
+            const unmappedCols = sortedOvCols.filter(c => !ovColToNum[c])
+            let next = 0
+            for (const c of unmappedCols) {
+              if (allOvNums[next]) ovColToNum[c] = String(allOvNums[next])
+              next++
+            }
+          }
+
+          const rows = Array.from(table.querySelectorAll('tbody tr'))
+
+          // Helper to detect AP rows (academic leave)
+          const rowHasAcademicLeave = r => {
+            try {
+              return Array.from(r.querySelectorAll('span')).some(s => (s.textContent || '').trim() === 'AP')
+            } catch (e) {
+              return false
+            }
+          }
+
+          // Helper: extract canonical grade token from text: 'MA', 'A', or numeric (supports comma decimal)
+          const extractGradeToken = txt => {
+            if (!txt) return ''
+            const s = String(txt || '')
+              .replace(/\u00A0/g, ' ') // NBSP
+              .replace(/[,\s]+(?=\d{1,2}$)/, '.') // convert comma decimals like '4,0' to '4.0' conservatively
+              .trim()
+              // Find all tokens (MA, A, or numeric) and prefer the last occurring token in the cell
+              const tokens = []
+              // push MA/A tokens with an explicit marker
+              Array.from(s.matchAll(/\bMA\b/ig)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
+              Array.from(s.matchAll(/\bA\b/ig)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
+              // numeric tokens
+              Array.from(s.matchAll(/\b([1-5](?:[.,]\d+)?)\b/g)).forEach(m => tokens.push({ type: 'NUM', value: m[1].replace(',', '.'), index: m.index }))
+              if (tokens.length) {
+                // sort by occurrence index and pick last
+                tokens.sort((a, b) => (a.index || 0) - (b.index || 0))
+                const lastTok = tokens[tokens.length - 1]
+                if (lastTok.type === 'MA') return 'MA'
+                if (lastTok.type === 'A') return 'A'
+                if (lastTok.type === 'NUM') return lastTok.value
+              }
+            return ''
+          }
+
+          // Iterate over results and try to find matching row for each student
+          for (const student of output) {
+            let row = null
+            // Prefer matching by name or idcode within row text to avoid index-order mismatches
+            const needleName = (student.name || '').trim()
+            const needleIdcode = (student.idcode || '').trim()
+            if (needleName) {
+              row = rows.find(r => (r.textContent || '').includes(needleName)) || null
+            }
+            if (!row && needleIdcode) {
+              row = rows.find(r => (r.textContent || '').includes(needleIdcode)) || null
+            }
+            // Fallback: index-based mapping if table order appears to match
+            if (!row) {
+              try {
+                const idx = output.indexOf(student)
+                if (rows && rows[idx]) row = rows[idx]
+              } catch (e) {
+                row = null
+              }
+            }
+            if (!row) continue
+            const isAP = rowHasAcademicLeave(row)
+            if (isAP) continue
+            const cells = Array.from(row.children).filter(n => n.nodeType === 1)
+
+            // Check final grade columns
+            finalGradeCols.forEach(colIdx => {
+              const cell = cells[colIdx]
+              if (!cell) return
+              const cellToken = extractGradeToken(cell.textContent || '')
+              const calcToken = extractGradeToken(String(student.finalGrade || ''))
+              const setTooltip = (current, calculated) => {
+                try {
+                  cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
+                } catch (e) {
+                  // ignore
+                }
+              }
+              const clearTooltip = () => { try { cell.title = '' } catch (e) {} }
+              // If both empty, consider equal
+              if (!cellToken && !calcToken) {
+                cell.classList.remove('highlight-final-grade-red')
+                clearTooltip()
+                return
+              }
+              // If either token empty, treat as mismatch
+              if (!cellToken || !calcToken) {
+                cell.classList.add('highlight-final-grade-red')
+                setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
+                return
+              }
+              // Compare MA/A directly
+              if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
+                if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
+                  cell.classList.add('highlight-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              // Numeric comparison: if cell shows integer (no dot), round calculated to nearest int
+              const cellIsInt = /^[1-5]$/.test(cellToken)
+              const calcIsNum = /^[1-5](?:\.\d+)?$/.test(calcToken)
+              if (cellIsInt && calcIsNum) {
+                const rounded = String(Math.round(Number(calcToken)))
+                if (rounded !== cellToken) {
+                  cell.classList.add('highlight-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              // Otherwise compare numeric to two decimals
+              if (calcIsNum && /^[1-5](?:\.\d+)?$/.test(cellToken)) {
+                const c1 = Number(parseFloat(calcToken).toFixed(2))
+                const c2 = Number(parseFloat(cellToken).toFixed(2))
+                if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
+                  cell.classList.add('highlight-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              // Fallback: strict comparison
+              if (calcToken !== cellToken) {
+                cell.classList.add('highlight-final-grade-red')
+                setTooltip(cellToken, calcToken)
+              } else {
+                cell.classList.remove('highlight-final-grade-red')
+                clearTooltip()
+              }
+            })
+
+            // Check ÕV columns
+            Object.entries(ovColToNum).forEach(([colIdxStr, ovNum]) => {
+              const colIdx = Number(colIdxStr)
+              const cell = cells[colIdx]
+              if (!cell) return
+              const cellToken = extractGradeToken(cell.textContent || '')
+              const calcToken = extractGradeToken(String((student.ovGrades && student.ovGrades[ovNum]) ? student.ovGrades[ovNum] : ''))
+              const setTooltipOv = (current, calculated) => {
+                try {
+                  cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
+                } catch (e) {}
+              }
+              const clearTooltipOv = () => { try { cell.title = '' } catch (e) {} }
+              if (!cellToken && !calcToken) {
+                cell.classList.remove('highlight-ov-red')
+                clearTooltipOv()
+                return
+              }
+              if (!cellToken || !calcToken) {
+                cell.classList.add('highlight-ov-red')
+                setTooltipOv(cellToken || '(tühi)', calcToken || '(tühi)')
+                return
+              }
+              if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
+                if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
+                  cell.classList.add('highlight-ov-red')
+                  setTooltipOv(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-ov-red')
+                  clearTooltipOv()
+                }
+                return
+              }
+              const cellIsInt = /^[1-5]$/.test(cellToken)
+              const calcIsNum = /^[1-5](?:\.\d+)?$/.test(calcToken)
+              if (cellIsInt && calcIsNum) {
+                const rounded = String(Math.round(Number(calcToken)))
+                if (rounded !== cellToken) {
+                  cell.classList.add('highlight-ov-red')
+                  setTooltipOv(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-ov-red')
+                  clearTooltipOv()
+                }
+                return
+              }
+              if (calcIsNum && /^[1-5](?:\.\d+)?$/.test(cellToken)) {
+                const c1 = Number(parseFloat(calcToken).toFixed(2))
+                const c2 = Number(parseFloat(cellToken).toFixed(2))
+                if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
+                  cell.classList.add('highlight-ov-red')
+                  setTooltipOv(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('highlight-ov-red')
+                  clearTooltipOv()
+                }
+                return
+              }
+              if (calcToken !== cellToken) {
+                cell.classList.add('highlight-ov-red')
+                setTooltipOv(cellToken, calcToken)
+              } else {
+                cell.classList.remove('highlight-ov-red')
+                clearTooltipOv()
+              }
+            })
+          }
+        }
+      } catch (e) {
+        Logger.warn('FinalGradesByOvFeature: Failed to highlight mismatched cells', e)
+      }
       // If autoSync is false, we only compute filteredOutput and update button/UI state, do not post grades
   if (!opts.autoSync) {
         Logger.info('✨ FinalGradesByOvFeature: autoSync disabled on page load — skipping POST')
