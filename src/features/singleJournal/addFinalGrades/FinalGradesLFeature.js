@@ -204,20 +204,37 @@ class FinalGradesLFeature {
         try {
           if (!button) return filteredOutput
           if (!Array.isArray(filteredOutput) || filteredOutput.length === 0) {
-            button.disabled = true
-            button.style.opacity = '0.6'
-            button.title = 'Kõik lõpptulemuse hinded ühtivad juba olemasolevate hinnetega'
-            button._oaFinalGradesDisabled = true
-            window._oaFinalGradesDisabled = true
+            // No changes -> disable button and show clear label/title
+            try {
+              button.disabled = true
+              button.style.opacity = '0.6'
+              button.title = 'Kõik lõpptulemuse hinded ühtivad juba olemasolevate hinnetega'
+              // Prefer keeping a marker both on the button and globally
+              button._oaFinalGradesDisabled = true
+              window._oaFinalGradesDisabled = true
+              // Use a clearer disabled text
+              try {
+                button.textContent = 'Lõpptulemuste hinded korrektsed.'
+              } catch (inner) {}
+            } catch (innerErr) {
+              Logger.warn('FinalGradesLFeature: Failed to set disabled button state', innerErr)
+            }
             Logger.info('✨ FinalGradesLFeature: Button disabled on page load because no L changes detected')
           } else {
             // enable button if previously disabled
-            window._oaFinalGradesDisabled = false
-            button._oaFinalGradesDisabled = false
             try {
+              window._oaFinalGradesDisabled = false
+              button._oaFinalGradesDisabled = false
               button.disabled = false
               button.style.opacity = ''
               button.title = ''
+              // Restore proper label and primary blue background
+              try {
+                button.textContent = 'Lisa lõpptulemuse hinded'
+                button.style.background = 'rgb(21, 101, 192)'
+              } catch (innerErr) {
+                Logger.warn('FinalGradesLFeature: Failed to restore button text/style', innerErr)
+              }
             } catch (e) {
               Logger.warn('FinalGradesLFeature: Failed to enable button', e)
             }
@@ -388,7 +405,7 @@ class FinalGradesLFeature {
       }
       const onChange = () => {
         if (debounceTimer) clearTimeout(debounceTimer)
-        debounceTimer = setTimeout(async () => {
+        debounceTimer = setTimeout(async() => {
           try {
             const snapshot = getSnapshot()
             if (snapshot === lastSnapshot) {

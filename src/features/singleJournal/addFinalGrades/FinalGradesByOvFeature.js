@@ -212,6 +212,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.disabled = true
             button.style.opacity = '0.6'
             button.title = 'Hinded saadetud — enam pole midagi saata'
+            try {
+              const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
+                (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+              button.textContent = isL ? 'Lõpptulemused saadetud' : 'Õpiväljundite hinded saadetud'
+            } catch (innerErr) {}
           } catch (e) {
             Logger.warn('FinalGradesByOvFeature: Failed to update button state after sync', e)
           }
@@ -493,11 +498,16 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
         })
         if (allOvNums.length > 0 && filteredOutput.length === 0) {
-          // No changes needed — disable button and indicate so
+          // No changes needed — disable button and indicate so with clearer text/title
           try {
             button.disabled = true
             button.style.opacity = '0.6'
-            button.title = 'Kõik õpiväljundite hinded ühtivad juba olemasolevate hinnetega'
+            button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+            try {
+              const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
+                (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+              button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
+            } catch (innerErr) {}
             // mark as intentionally disabled (no further re-enable)
             button._oaFinalGradesDisabled = true
             Logger.info('✨ FinalGradesByOvFeature: No grade changes detected — disabled button')
@@ -603,9 +613,9 @@ class FinalGradesByOvFeature extends BaseFeature {
               return ''
             }
           }
-          const onTableChange = records => {
+          const onTableChange = _records => {
             if (debounceTimer) clearTimeout(debounceTimer)
-            debounceTimer = setTimeout(async () => {
+            debounceTimer = setTimeout(async() => {
               try {
                 // Compute snapshot and bail out quickly if nothing meaningful changed
                 const snapshot = getSnapshot()
@@ -617,14 +627,27 @@ class FinalGradesByOvFeature extends BaseFeature {
                 Logger.info('✨ FinalGradesByOvFeature: Detected meaningful DOM change — re-evaluating grade diffs')
                 const journalId = this.#extractJournalId()
                 if (!journalId) return
-                const [newEntries, newStudents] = await Promise.all([
-                  this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-                  this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
-                ])
+                    const [newEntries, newStudents] = await Promise.all([
+                      this.api.tahvel.get(
+                        `/journals/${journalId}/journalEntriesByDate`,
+                        { allStudents: true },
+                        { cache: false }
+                      ),
+                      this.api.tahvel.get(
+                        `/journals/${journalId}/journalStudents`,
+                        { allStudents: true },
+                        { cache: false }
+                      )
+                    ])
                 this._lastEntries = newEntries
                 const lFeatureLocal = new FinalGradesLFeature(this.api, this.#extractJournalId)
                 const hasLLocal = lFeatureLocal.detect(newEntries)
-                const newResults = hasLLocal ? lFeatureLocal.extractFinalGrades(newEntries, newStudents) : await this.#calculateFinalGrades(newEntries, newStudents)
+                let newResults
+                if (hasLLocal) {
+                  newResults = lFeatureLocal.extractFinalGrades(newEntries, newStudents)
+                } else {
+                  newResults = await this.#calculateFinalGrades(newEntries, newStudents)
+                }
                 // Call showResults with autoSync=false to compute filteredOutput and update button state
                 const filtered = await this.#showResults(newResults, button, { autoSync: false })
                 // If filtered is an array and has items -> enable button, otherwise disable and set global marker
@@ -637,6 +660,15 @@ class FinalGradesByOvFeature extends BaseFeature {
                       button.disabled = false
                       button.style.opacity = ''
                       button.title = ''
+                      try {
+                        // Decide proper label based on whether L-flow is present
+                        const lFeatureCheck = new FinalGradesLFeature(this.api, this.#extractJournalId)
+                        const hasLNow = lFeatureCheck.detect(this._lastEntries || [])
+                        button.textContent = hasLNow ? 'Lisa lõpptulemuse hinded' : 'Lisa õpiväljundite hinded'
+                        button.style.background = 'rgb(21, 101, 192)'
+                      } catch (innerErr) {
+                        // ignore and leave title/style as-is
+                      }
                     }
                     Logger.info('✨ FinalGradesByOvFeature: Button enabled after DOM change — changes detected')
                   } else {
@@ -646,7 +678,12 @@ class FinalGradesByOvFeature extends BaseFeature {
                       button._oaFinalGradesDisabled = true
                       button.disabled = true
                       button.style.opacity = '0.6'
-                      button.title = 'Kõik õpiväljundite hinded ühtivad juba olemasolevate hinnetega'
+                      button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+                      try {
+                        const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
+                          (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                        button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
+                      } catch (innerErr) {}
                     }
                     Logger.info('✨ FinalGradesByOvFeature: Button disabled after DOM change — no changes detected')
                   }
@@ -990,7 +1027,16 @@ class FinalGradesByOvFeature extends BaseFeature {
           try {
             button.disabled = true
             button.style.opacity = '0.6'
-            button.title = 'Kõik õpiväljundite hinded ühtivad juba olemasolevate hinnetega'
+            // Use a clearer, localized disabled title
+            button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+            // Prefer to set visible text when possible (use existing button text to detect L-flow)
+            try {
+              const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
+                (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+              button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
+            } catch (innerErr) {
+              // ignore
+            }
             // Mark as intentionally disabled so click handlers don't re-enable
             button._oaFinalGradesDisabled = true
             Logger.info('✨ FinalGradesByOvFeature: Button disabled on page load because no changes detected')
