@@ -212,11 +212,10 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.disabled = true
             button.style.opacity = '0.6'
             button.title = 'Hinded saadetud — enam pole midagi saata'
-            try {
-              const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
-                (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
-              button.textContent = isL ? 'Lõpptulemused saadetud' : 'Õpiväljundite hinded saadetud'
-            } catch (innerErr) {}
+              try {
+                const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                button.textContent = isL ? 'Lõpptulemused saadetud' : 'Õpiväljundite hinded saadetud'
+              } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
           } catch (e) {
             Logger.warn('FinalGradesByOvFeature: Failed to update button state after sync', e)
           }
@@ -503,11 +502,10 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.disabled = true
             button.style.opacity = '0.6'
             button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
-            try {
-              const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
-                (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
-              button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
-            } catch (innerErr) {}
+              try {
+                const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
+              } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
             // mark as intentionally disabled (no further re-enable)
             button._oaFinalGradesDisabled = true
             Logger.info('✨ FinalGradesByOvFeature: No grade changes detected — disabled button')
@@ -680,10 +678,10 @@ class FinalGradesByOvFeature extends BaseFeature {
                       button.style.opacity = '0.6'
                       button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
                       try {
-                        const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
-                          (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                        const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus')
+                          : (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
                         button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
-                      } catch (innerErr) {}
+                        } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
                     }
                     Logger.info('✨ FinalGradesByOvFeature: Button disabled after DOM change — no changes detected')
                   }
@@ -1031,11 +1029,10 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
             // Prefer to set visible text when possible (use existing button text to detect L-flow)
             try {
-              const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus') :
-                (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+              const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
               button.textContent = isL ? 'Lõpptulemuste hinded korrektsed.' : 'Õpiväljundite hinded korrektsed.'
             } catch (innerErr) {
-              // ignore
+              Logger.warn('FinalGradesByOvFeature: Ignored inner error setting button text', innerErr)
             }
             // Mark as intentionally disabled so click handlers don't re-enable
             button._oaFinalGradesDisabled = true

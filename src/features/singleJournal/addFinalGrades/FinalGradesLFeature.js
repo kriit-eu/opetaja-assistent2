@@ -215,7 +215,7 @@ class FinalGradesLFeature {
               // Use a clearer disabled text
               try {
                 button.textContent = 'Lõpptulemuste hinded korrektsed.'
-              } catch (inner) {}
+              } catch (inner) { Logger.warn('FinalGradesLFeature: Ignored inner error setting button text', inner) }
             } catch (innerErr) {
               Logger.warn('FinalGradesLFeature: Failed to set disabled button state', innerErr)
             }
