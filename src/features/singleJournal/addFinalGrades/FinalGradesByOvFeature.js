@@ -89,7 +89,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     return { code, value, nameEt, nameEn }
   }
 
-  async #syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container, statusDiv = null }) {
+  async #syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container, statusDiv = null, button = null }) {
     let allSuccess = true
     try {
       const journalId = this.#extractJournalId()
@@ -204,8 +204,23 @@ class FinalGradesByOvFeature extends BaseFeature {
           if (statusDiv) statusDiv.textContent += `ÕV ${ovNum}: VIGA! `
         }
       }
-      if (allSuccess && statusDiv) {
-        window.location.reload()
+      if (allSuccess) {
+        // mark button as intentionally disabled after successful send
+        if (button) {
+          try {
+            button._oaFinalGradesDisabled = true
+            button.disabled = true
+            button.style.opacity = '0.6'
+            button.title = 'Hinded saadetud — enam pole midagi saata'
+              try {
+                const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                button.textContent = isL ? 'Lõpptulemused saadetud' : 'Õpiväljundite hinded saadetud'
+              } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
+          } catch (e) {
+            Logger.warn('FinalGradesByOvFeature: Failed to update button state after sync', e)
+          }
+        }
+        if (statusDiv && statusDiv.textContent === '') statusDiv.textContent = 'Kõik õpiväljundite hinded saadetud.'
       } else if (!allSuccess && statusDiv && statusDiv.textContent === '') {
         statusDiv.textContent = 'Ühtegi hinnet ei saadetud.'
       }
@@ -258,8 +273,8 @@ class FinalGradesByOvFeature extends BaseFeature {
               return
             }
             const [entries, students] = await Promise.all([
-              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
-              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
+              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
             ])
             Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
             Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
@@ -275,9 +290,15 @@ class FinalGradesByOvFeature extends BaseFeature {
             btn.style.background = '#d32f2f'
           } finally {
             setTimeout(() => {
-              btn.disabled = false
-              btn.textContent = 'Lisa õpiväljundite hinded'
-              btn.style.background = 'rgb(21, 101, 192)'
+              try {
+                if (!btn._oaFinalGradesDisabled) {
+                  btn.disabled = false
+                  btn.textContent = 'Lisa õpiväljundite hinded'
+                  btn.style.background = 'rgb(21, 101, 192)'
+                }
+              } catch (e) {
+                Logger.warn('FinalGradesByOvFeature: Error restoring button state', e)
+              }
             }, 3000)
           }
         })
@@ -320,8 +341,8 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Fetch entries and students to check for ÕV columns or SISSEKANNE_L
       Logger.info('[DEBUG] Fetching entries and students for journalId:', journalId)
       const [entries, students] = await Promise.all([
-        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
-        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
+        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
       ])
       Logger.info('[DEBUG] Entries fetched:', entries)
       Logger.info('[DEBUG] Students fetched:', students)
@@ -399,6 +420,102 @@ class FinalGradesByOvFeature extends BaseFeature {
           clientHeight: button.clientHeight
         })
       }
+      // Store entries for later use (used by #showResults and delegated handler)
+      this._lastEntries = entries
+
+      // --- NEW: Calculate grades on page load (without auto-sync) ---
+      try {
+        Logger.info('✨ FinalGradesByOvFeature: Calculating grades on page load')
+        const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
+        const hasSissekanneL = lFeature.detect(entries)
+        const resultsOnLoad = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
+        // Call showResults with autoSync=false so we only compute filteredOutput and update button state/UI
+        if (hasSissekanneL) {
+          // Use the L feature's showResults which accepts autoSync flag
+          await lFeature.showResults(resultsOnLoad, button, entries, { autoSync: false })
+          // Attach L-specific DOM observer so the L-button is kept up-to-date on meaningful DOM changes
+          try {
+            const lObserver = lFeature.attachDomObserver(button, entries)
+            // store observer so it can be disconnected later if needed
+            this._lObserver = lObserver
+          } catch (e) {
+            Logger.warn('FinalGradesByOvFeature: Failed to attach L DOM observer', e)
+          }
+        } else {
+          await this.#showResults(resultsOnLoad, button, { autoSync: false })
+        }
+      } catch (err) {
+        Logger.warn('FinalGradesByOvFeature: Failed to calculate grades on page load', err)
+      }
+
+      // Determine whether there are any grade changes to send and disable button if none
+      try {
+        const allOvNums = results.allOvNums || []
+        const existingGradesMap = {}
+        if (this._lastEntries) {
+          for (const entry of this._lastEntries) {
+            if (entry.entryType === 'SISSEKANNE_O') {
+              const match = entry.nameEt && entry.nameEt.match(/^([0-9]+)\)/)
+              const ovNum = match && match[1]
+              if (ovNum) {
+                const studentOutcomeResults = entry.studentOutcomeResults
+                if (!studentOutcomeResults && entry.curriculumModuleOutcomes) {
+                  // best-effort: try to fetch detailed outcome map synchronously-like (avoid awaiting here)
+                } else if (studentOutcomeResults) {
+                  Object.entries(studentOutcomeResults).forEach(([studentIdFromResults, res]) => {
+                    const studentId = studentIdFromResults
+                    if (studentId && res && res.grade) {
+                      const key = `${studentId}|${ovNum}`
+                      existingGradesMap[key] = res
+                    }
+                  })
+                }
+              }
+            }
+          }
+        }
+        const output = results.output || []
+        const filteredOutput = output.filter(student => {
+          if (allOvNums.length > 0) {
+            return allOvNums.some(ovNum => {
+              const calculatedGrade = student.ovGrades[ovNum]
+              const existingGradeKey = `${student.studentId}|${ovNum}`
+              const existingGradeEntry = existingGradesMap[existingGradeKey]
+              let existingGrade = ''
+              if (existingGradeEntry && existingGradeEntry.grade && existingGradeEntry.grade.code) {
+                existingGrade = existingGradeEntry.grade.code.replace('KUTSEHINDAMINE_', '')
+              }
+              let normalizedCalculated = String(calculatedGrade || '').trim()
+              const normalizedExisting = String(existingGrade || '').trim()
+              if (/^\d+(\.\d+)?$/.test(normalizedCalculated) && /^\d+$/.test(normalizedExisting)) {
+                normalizedCalculated = String(Math.round(Number(normalizedCalculated)))
+              }
+              return normalizedCalculated !== normalizedExisting
+            })
+          } else {
+            return true
+          }
+        })
+        if (allOvNums.length > 0 && filteredOutput.length === 0) {
+          // No changes needed — disable button and indicate so with clearer text/title
+          try {
+            button.disabled = true
+            button.style.opacity = '0.6'
+            button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+              try {
+                const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
+              } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
+            // mark as intentionally disabled (no further re-enable)
+            button._oaFinalGradesDisabled = true
+            Logger.info('✨ FinalGradesByOvFeature: No grade changes detected — disabled button')
+          } catch (e) {
+            Logger.warn('FinalGradesByOvFeature: Failed to disable button', e)
+          }
+        }
+      } catch (e) {
+        Logger.warn('FinalGradesByOvFeature: Error while checking for grade changes', e)
+      }
       // Remove any old event delegation to avoid duplicates
       if (window._oaFinalGradesDelegation) {
         Logger.info('[DEBUG] Removing old event delegation')
@@ -423,8 +540,8 @@ class FinalGradesByOvFeature extends BaseFeature {
             return
           }
           const [entries, students] = await Promise.all([
-            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
-            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
+            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
           ])
           Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
@@ -460,12 +577,23 @@ class FinalGradesByOvFeature extends BaseFeature {
           btn.style.background = '#d32f2f'
         } finally {
           setTimeout(() => {
-            btn.disabled = false
-            // Set button text based on latest SISSEKANNE_L detection
-            const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
-            const hasL = lFeature.detect(this._lastEntries || [])
-            btn.textContent = hasL ? 'Lisa lõpptulemuse hinded' : 'Lisa õpiväljundite hinded'
-            btn.style.background = 'rgb(21, 101, 192)'
+            try {
+              if (!btn._oaFinalGradesDisabled) {
+                btn.disabled = false
+                // Set button text based on latest SISSEKANNE_L detection and whether any ÕV grades already exist
+                const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
+                const hasL = lFeature.detect(this._lastEntries || [])
+                if (hasL) {
+                  btn.textContent = 'Lisa lõpptulemuse hinded'
+                } else {
+                  const hasExistingOv = this.#hasAnyOvGrades(this._lastEntries || [])
+                  btn.textContent = hasExistingOv ? 'Uuenda õpiväljundite hinded' : 'Lisa õpiväljundite hinded'
+                }
+                btn.style.background = 'rgb(21, 101, 192)'
+              }
+            } catch (e) {
+              Logger.warn('FinalGradesByOvFeature: Error restoring button state (delegated)', e)
+            }
           }, 3000)
         }
       }
@@ -473,6 +601,114 @@ class FinalGradesByOvFeature extends BaseFeature {
       Logger.info('[DEBUG] Adding event delegation for .oa-final-grades-btn')
       document.addEventListener('click', delegatedHandler, true)
       // No need to add a direct event listener here; handled by mutation observer logic above
+      // --- NEW: Observe journal table for changes and re-evaluate button state ---
+      try {
+        const tableEl = document.querySelector('.journalTableContainer') || document.querySelector('#main-content')
+        if (tableEl) {
+          let debounceTimer = null
+          let lastSnapshot = null
+          const getSnapshot = () => {
+            try {
+              // Lightweight visible text snapshot — trim to avoid huge strings
+              const txt = (tableEl && tableEl.innerText) ? tableEl.innerText.trim() : ''
+              return txt ? txt.slice(0, 20000) : ''
+            } catch (e) {
+              return ''
+            }
+          }
+          const onTableChange = _records => {
+            if (debounceTimer) clearTimeout(debounceTimer)
+            debounceTimer = setTimeout(async() => {
+              try {
+                // Compute snapshot and bail out quickly if nothing meaningful changed
+                const snapshot = getSnapshot()
+                if (snapshot === lastSnapshot) {
+                  Logger.info('✨ FinalGradesByOvFeature: DOM changed but table snapshot unchanged — skipping API')
+                  return
+                }
+                lastSnapshot = snapshot
+                Logger.info('✨ FinalGradesByOvFeature: Detected meaningful DOM change — re-evaluating grade diffs')
+                const journalId = this.#extractJournalId()
+                if (!journalId) return
+                    const [newEntries, newStudents] = await Promise.all([
+                      this.api.tahvel.get(
+                        `/journals/${journalId}/journalEntriesByDate`,
+                        { allStudents: true },
+                        { cache: false }
+                      ),
+                      this.api.tahvel.get(
+                        `/journals/${journalId}/journalStudents`,
+                        { allStudents: true },
+                        { cache: false }
+                      )
+                    ])
+                this._lastEntries = newEntries
+                const lFeatureLocal = new FinalGradesLFeature(this.api, this.#extractJournalId)
+                const hasLLocal = lFeatureLocal.detect(newEntries)
+                let newResults
+                if (hasLLocal) {
+                  newResults = lFeatureLocal.extractFinalGrades(newEntries, newStudents)
+                } else {
+                  newResults = await this.#calculateFinalGrades(newEntries, newStudents)
+                }
+                // Call showResults with autoSync=false to compute filteredOutput and update button state
+                const filtered = await this.#showResults(newResults, button, { autoSync: false })
+                // If filtered is an array and has items -> enable button, otherwise disable and set global marker
+                try {
+                  if (Array.isArray(filtered) && filtered.length > 0) {
+                    // enable
+                    window._oaFinalGradesDisabled = false
+                    if (button) {
+                      button._oaFinalGradesDisabled = false
+                      button.disabled = false
+                      button.style.opacity = ''
+                      button.title = ''
+                      try {
+                        // Decide proper label based on whether L-flow is present
+                          const lFeatureCheck = new FinalGradesLFeature(this.api, this.#extractJournalId)
+                          const hasLNow = lFeatureCheck.detect(this._lastEntries || [])
+                          if (hasLNow) {
+                            button.textContent = 'Lisa lõpptulemuse hinded'
+                          } else {
+                            const hasExistingOvNow = this.#hasAnyOvGrades(this._lastEntries || [])
+                            button.textContent = hasExistingOvNow ? 'Uuenda õpiväljundite hinded' : 'Lisa õpiväljundite hinded'
+                          }
+                        button.style.background = 'rgb(21, 101, 192)'
+                      } catch (innerErr) {
+                        // ignore and leave title/style as-is
+                      }
+                    }
+                    Logger.info('✨ FinalGradesByOvFeature: Button enabled after DOM change — changes detected')
+                  } else {
+                    // disable globally
+                    window._oaFinalGradesDisabled = true
+                    if (button) {
+                      button._oaFinalGradesDisabled = true
+                      button.disabled = true
+                      button.style.opacity = '0.6'
+                      button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+                      try {
+                        const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus')
+                          : (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                        button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
+                        } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
+                    }
+                    Logger.info('✨ FinalGradesByOvFeature: Button disabled after DOM change — no changes detected')
+                  }
+                } catch (e) {
+                  Logger.warn('FinalGradesByOvFeature: Failed to update button state after DOM change', e)
+                }
+              } catch (err) {
+                Logger.warn('FinalGradesByOvFeature: Error while re-evaluating after DOM change', err)
+              }
+            }, 250)
+          }
+          const mo = new MutationObserver(onTableChange)
+          mo.observe(tableEl, { childList: true, subtree: true, attributes: true })
+        }
+      } catch (e) {
+        Logger.warn('FinalGradesByOvFeature: Failed to attach DOM observer for table changes', e)
+      }
     } catch (e) {
       Logger.error('FinalGradesByOvFeature init error', e)
       Logger.info('[DEBUG] Exception in onActivate:', e)
@@ -725,8 +961,8 @@ class FinalGradesByOvFeature extends BaseFeature {
     return { output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI }
   }
 
-  async #showResults(results, button) {
-    Logger.info('✨ FinalGradesByOvFeature: #showResults called', { results, button })
+  async #showResults(results, button, opts = { autoSync: true }) {
+    Logger.info('✨ FinalGradesByOvFeature: #showResults called', { results, button, opts })
     // Only perform sync logic, do not render a table
     // eslint-disable-next-line no-unused-vars
     const { allOvNums, ovNumToOutcomeId,
@@ -788,11 +1024,38 @@ class FinalGradesByOvFeature extends BaseFeature {
       container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Ühtegi õpiväljundit pole märgitud iseseisvatesse töödesse!</div>'
       return
     }
-    // If ÕV columns exist, automatically sync grades silently (no status message unless error)
-    if (allOvNums.length > 0) {
+  // If ÕV columns exist, automatically sync grades silently (no status message unless error)
+  if (allOvNums.length > 0) {
       container.innerHTML = ''
+      // If autoSync is false, we only compute filteredOutput and update button/UI state, do not post grades
+  if (!opts.autoSync) {
+        Logger.info('✨ FinalGradesByOvFeature: autoSync disabled on page load — skipping POST')
+        // If there are no changes, disable the button (this logic mirrors earlier checks)
+        if (filteredOutput.length === 0) {
+          try {
+            button.disabled = true
+            button.style.opacity = '0.6'
+            // Use a clearer, localized disabled title
+            button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+            // Prefer to set visible text when possible (use existing button text to detect L-flow)
+            try {
+              const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+              button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
+            } catch (innerErr) {
+              Logger.warn('FinalGradesByOvFeature: Ignored inner error setting button text', innerErr)
+            }
+            // Mark as intentionally disabled so click handlers don't re-enable
+            button._oaFinalGradesDisabled = true
+            Logger.info('✨ FinalGradesByOvFeature: Button disabled on page load because no changes detected')
+          } catch (e) {
+            Logger.warn('FinalGradesByOvFeature: Failed to disable button on page load', e)
+          }
+        }
+        return filteredOutput
+      }
+
       setTimeout(() => {
-        this.#syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container })
+        this.#syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container, button })
           .then(success => {
             if (success) {
               window.location.reload()
@@ -803,7 +1066,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Viga õpiväljundite hinnete saatmisel!</div>'
           })
       }, 0)
-      return
+      return filteredOutput
     }
     // If no ÕV columns, do not render a table, just remove any old send button/status
     const existingSendBtn = document.getElementById('oa-send-ov-grades-btn')
@@ -815,6 +1078,24 @@ class FinalGradesByOvFeature extends BaseFeature {
       existingStatusDiv.remove()
     }
     Logger.info('✨ FinalGradesByOvFeature: Table rendering skipped as requested')
+  }
+
+  // Helper: detect whether any SISSEKANNE_O outcome grades exist in the provided entries
+  // Returns true if at least one student outcome grade exists for any SISSEKANNE_O entry
+  #hasAnyOvGrades(entries) {
+    try {
+      if (!entries || !Array.isArray(entries)) return false
+      for (const entry of entries) {
+        if (entry && entry.entryType === 'SISSEKANNE_O') {
+          const sor = entry.studentOutcomeResults
+          if (sor && typeof sor === 'object' && Object.keys(sor).length > 0) return true
+          if (entry.outcomeStudents && Array.isArray(entry.outcomeStudents) && entry.outcomeStudents.length > 0) return true
+        }
+      }
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error while checking for existing ÕV grades', e)
+    }
+    return false
   }
 }
 export default FinalGradesByOvFeature
