@@ -519,8 +519,8 @@ class FinalGradesByOvFeature extends BaseFeature {
             return
           }
           const [entries, students] = await Promise.all([
-            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: true }),
-            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: true })
+            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
           ])
           Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
           Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
@@ -580,17 +580,34 @@ class FinalGradesByOvFeature extends BaseFeature {
         const tableEl = document.querySelector('.journalTableContainer') || document.querySelector('#main-content')
         if (tableEl) {
           let debounceTimer = null
-          const onTableChange = async () => {
+          let lastSnapshot = null
+          const getSnapshot = () => {
+            try {
+              // Lightweight visible text snapshot — trim to avoid huge strings
+              const txt = (tableEl && tableEl.innerText) ? tableEl.innerText.trim() : ''
+              return txt ? txt.slice(0, 20000) : ''
+            } catch (e) {
+              return ''
+            }
+          }
+          const onTableChange = records => {
             if (debounceTimer) clearTimeout(debounceTimer)
             debounceTimer = setTimeout(async () => {
               try {
-                Logger.info('✨ FinalGradesByOvFeature: Detected DOM change — re-evaluating grade diffs')
+                // Compute snapshot and bail out quickly if nothing meaningful changed
+                const snapshot = getSnapshot()
+                if (snapshot === lastSnapshot) {
+                  Logger.info('✨ FinalGradesByOvFeature: DOM changed but table snapshot unchanged — skipping API')
+                  return
+                }
+                lastSnapshot = snapshot
+                Logger.info('✨ FinalGradesByOvFeature: Detected meaningful DOM change — re-evaluating grade diffs')
                 const journalId = this.#extractJournalId()
                 if (!journalId) return
-                      const [newEntries, newStudents] = await Promise.all([
-                        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-                        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
-                      ])
+                const [newEntries, newStudents] = await Promise.all([
+                  this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+                  this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+                ])
                 this._lastEntries = newEntries
                 const lFeatureLocal = new FinalGradesLFeature(this.api, this.#extractJournalId)
                 const hasLLocal = lFeatureLocal.detect(newEntries)
