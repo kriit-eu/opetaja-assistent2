@@ -1,7 +1,7 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { domService } from '../../../services/DomService.js'
-import { injectFinalGradeCSS, injectOaFinalGradeCSS, markMismatch, clearMismatch } from './OaFinalGradeHighlighter.js'
+import { injectFinalGradeCSS, markMismatch, clearMismatch } from './OaFinalGradeHighlighter.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
   // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
@@ -280,7 +280,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               students = this._lastStudents
               Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId:', journalId)
             } else {
-              ;[entries, students] = await Promise.all([
+              [entries, students] = await Promise.all([
                 this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
                 this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
               ])
@@ -357,7 +357,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         students = this._lastStudents
         Logger.info('[DEBUG] Reusing cached entries/students for journalId:', journalId)
       } else {
-        ;[entries, students] = await Promise.all([
+        [entries, students] = await Promise.all([
           this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
           this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
         ])
@@ -570,7 +570,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             students = this._lastStudents
             Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId:', journalId)
           } else {
-            ;[entries, students] = await Promise.all([
+            [entries, students] = await Promise.all([
               this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
               this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
             ])
@@ -668,7 +668,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                       newStudents = this._lastStudents
                       Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId (DOM change):', journalId)
                     } else {
-                      ;[newEntries, newStudents] = await Promise.all([
+                      [newEntries, newStudents] = await Promise.all([
                         this.api.tahvel.get(
                           `/journals/${journalId}/journalEntriesByDate`,
                           { allStudents: true },
@@ -804,7 +804,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         const parenOvMatches = entry.nameEt.match(/\(\s*ÕV(\d+)(?:,\s*ÕV(\d+))*\s*\)/gi)
         if (parenOvMatches) {
           parenOvMatches.forEach(m => {
-            ;[...m.matchAll(/ÕV(\d+)/gi)].forEach(x => { if (x && x[1]) foundNums.add(x[1]) })
+            [...m.matchAll(/ÕV(\d+)/gi)].forEach(x => { if (x && x[1]) foundNums.add(x[1]) })
           })
         }
         // Also support plain ÕVn mentions elsewhere in the nameEt
@@ -968,7 +968,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       allOvNums.forEach(ovNum => {
         const gradesArr = (outcomeGradesByStudent[journalStudentId] && outcomeGradesByStudent[journalStudentId][ovNum]) || []
         let ovGrade = ''
-        
+
         // Convert all grades to numeric for calculation, including MA→2
           // Convert all grades to numeric for calculation, including MA→2.
           // Treat missing/ungraded/unknown tokens as numeric 2 per requirement.
@@ -992,7 +992,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             // Unknown token -> treat as 2
             return 2
           }).filter(g => g !== null)
-        
+
         // If there are expected assignments for this ÕV, ensure student has submitted all of them.
         // If not all assignments are present, force the ÕV grade to 2 (low) instead of averaging partial data.
         const expectedCount = ovExpectedAssignmentCount[ovNum] || 0
@@ -1019,7 +1019,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           ovGrade = 'MA'
         }
         }
-        
+
         ovGrades[ovNum] = ovGrade
         Logger.info('✨ FinalGradesByOvFeature: Per-ÕV grade calculated', { student: student.name, ovNum, ovGrade, gradesArr, allGradesAsNumeric })
       })
@@ -1227,7 +1227,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             // Check final grade for A/MA tokens
             const fg = String(s.finalGrade || '').trim().toUpperCase()
             if (fg === 'A' || fg === 'MA') return true
-            
+
             // Check per-ÕV grades for A/MA tokens or low numeric values (1-2)
             if (s.ovGrades) {
               return Object.values(s.ovGrades).some(ovGrade => {
@@ -1243,12 +1243,12 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
             return false
           })
-          
+
           const hasNumeric = (output || []).some(s => {
             const fg = String(s.finalGrade || '').trim()
             return /^\d+(?:\.\d+)?$/.test(fg)
           })
-          
+
           modeToApply = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
         }
       }
@@ -1309,10 +1309,11 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
         }
         // If journal assessment explicitly indicates a known mode, prefer that
+        let defaultMode = ''
         if (journalAssessment === 'KUTSEHINDAMISVIIS_M') {
-          var defaultMode = 'mitte'
+          defaultMode = 'mitte'
         } else if (journalAssessment === 'KUTSEHINDAMISVIIS_E') {
-          var defaultMode = 'eristav'
+          defaultMode = 'eristav'
         } else {
           // Check if any per-ÕV grade suggests 'mitte' mode should be used
           // (any grade that is 'A', 'MA', or numeric 1-2 suggests mitte mode)
@@ -1320,7 +1321,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             // Check final grade for A/MA tokens
             const fg = String(s.finalGrade || '').trim().toUpperCase()
             if (fg === 'A' || fg === 'MA') return true
-            
+
             // Check per-ÕV grades for A/MA tokens or low numeric values (1-2)
             if (s.ovGrades) {
               return Object.values(s.ovGrades).some(ovGrade => {
@@ -1336,13 +1337,13 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
             return false
           })
-          
+
           const hasNumeric = (output || []).some(s => {
             const fg = String(s.finalGrade || '').trim()
             return /^\d+(?:\.\d+)?$/.test(fg)
           })
-          
-          var defaultMode = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
+
+          defaultMode = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
         }
 
         if (!existingSelect) {
@@ -1931,9 +1932,9 @@ class FinalGradesByOvFeature extends BaseFeature {
       const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
       if (!table) return
 
-      // Ensure local CSS is injected for OA final-grade mismatch highlights
-      injectFinalGradeCSS()
-      
+  // Ensure local CSS is injected for OA final-grade mismatch highlights
+  injectFinalGradeCSS()
+
       const { finalGradeCols } = this.findColumnIndices(table)
       if (!finalGradeCols || finalGradeCols.length === 0) return
 
@@ -2090,7 +2091,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       )
     }
     statusDiv.textContent = ''
-    
+
     // Ensure grade selection dropdowns are available for L-grade entries
     try {
       this.#ensureLGradeDropdowns()
@@ -2163,7 +2164,7 @@ class FinalGradesByOvFeature extends BaseFeature {
 
         // Recompute highlights/UI when user changes selection without auto-syncing
         try {
-          sel.addEventListener('change', async () => {
+          sel.addEventListener('change', async() => {
             try {
               sel.dataset.userSet = 'true'
             } catch (e) { void e }
@@ -2179,7 +2180,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     } catch (e) {
       Logger.warn('FinalGradesByOvFeature: Error while wiring grading-mode select for L flow', e)
     }
-    
+
     try {
       const journalId = this.#extractJournalId()
       // Find the SISSEKANNE_L entry
@@ -2419,14 +2420,14 @@ class FinalGradesByOvFeature extends BaseFeature {
     try {
       const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
       if (!table) return
-      
+
       // Find journal entry header that contains "Lõpptulemus" or similar final result text
       const headerRow = table.querySelector('thead tr')
       if (!headerRow) return
-      
+
       const headerCells = Array.from(headerRow.children)
       let lGradeColIndex = -1
-      
+
       // Look for header containing final result keywords
       headerCells.forEach((cell, index) => {
         const text = (cell.textContent || '').toLowerCase().trim()
@@ -2434,9 +2435,9 @@ class FinalGradesByOvFeature extends BaseFeature {
           lGradeColIndex = index
         }
       })
-      
+
       if (lGradeColIndex === -1) return
-      
+
       // Process each student row to ensure grade dropdowns exist
       const rows = Array.from(table.querySelectorAll('tbody tr'))
       rows.forEach(row => {
@@ -2444,11 +2445,11 @@ class FinalGradesByOvFeature extends BaseFeature {
           const cells = Array.from(row.children)
           const lGradeCell = cells[lGradeColIndex]
           if (!lGradeCell) return
-          
+
           // Check if the cell already has a grade selection element
           const existingSelect = lGradeCell.querySelector('md-select, select')
           const existingInput = lGradeCell.querySelector('input')
-          
+
           if (!existingSelect && !existingInput) {
             // Create a simple grade selection dropdown
             this.#createLGradeDropdown(lGradeCell, row)
@@ -2466,10 +2467,10 @@ class FinalGradesByOvFeature extends BaseFeature {
   #createLGradeDropdown(cell, row) {
     try {
       // Extract student identifier from row
-      const studentId = row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') || 
+      const studentId = row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') ||
                        (row.dataset ? row.dataset.journalStudent : null)
       if (!studentId) return
-      
+
       // Create a select element for grade selection
       const select = document.createElement('select')
       select.className = 'oa-lgrade-select'
@@ -2481,7 +2482,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         font-size: 14px;
         background: white;
       `
-      
+
       // Add grade options
       const grades = [
         { value: '', text: '-' },
@@ -2493,30 +2494,30 @@ class FinalGradesByOvFeature extends BaseFeature {
         { value: 'A', text: 'A (Arvestatud)' },
         { value: 'MA', text: 'MA (Mittearvestatud)' }
       ]
-      
+
       grades.forEach(grade => {
         const option = document.createElement('option')
         option.value = grade.value
         option.textContent = grade.text
         select.appendChild(option)
       })
-      
+
       // Set current value if one exists in the cell
       const currentText = (cell.textContent || '').trim()
       const currentGrade = this.#extractGradeFromText(currentText)
       if (currentGrade && grades.some(g => g.value === currentGrade)) {
         select.value = currentGrade
       }
-      
+
       // Add change event listener to update the grade
-      select.addEventListener('change', (e) => {
+      select.addEventListener('change', e => {
         this.#handleLGradeChange(studentId, e.target.value, cell)
       })
-      
+
       // Replace cell content with the dropdown
       cell.innerHTML = ''
       cell.appendChild(select)
-      
+
     } catch (e) {
       Logger.warn('FinalGradesByOvFeature: Error creating L-grade dropdown', e)
     }
@@ -2605,14 +2606,14 @@ class FinalGradesByOvFeature extends BaseFeature {
         cell.style.backgroundColor = ''
         return
       }
-      
+
       // Visual feedback while saving
       cell.style.backgroundColor = '#fff3cd'
-      
+
       // Here you could implement actual grade saving logic
       // For now, just update the visual state
       Logger.info('FinalGradesByOvFeature: L-grade changed', { studentId, newGrade })
-      
+
       // Reset background after a delay
       setTimeout(() => {
         cell.style.backgroundColor = '#d4edda' // Light green to indicate saved
@@ -2620,7 +2621,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           cell.style.backgroundColor = ''
         }, 2000)
       }, 500)
-      
+
     } catch (e) {
       Logger.error('FinalGradesByOvFeature: Error handling L-grade change', e)
       cell.style.backgroundColor = '#f8d7da' // Light red to indicate error
