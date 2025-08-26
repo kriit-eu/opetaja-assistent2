@@ -1607,7 +1607,8 @@ class FinalGradesByOvFeature extends BaseFeature {
               }
               // If either token empty, treat as mismatch
               if (!cellToken || !calcToken) {
-                markMismatch(cell, cellToken || '(tühi)', calcToken || '(tühi)')
+                // Pass null for empty current/calculated so markMismatch can avoid marking empty as incorrect
+                markMismatch(cell, cellToken || null, calcToken || null)
                 setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
@@ -1679,7 +1680,8 @@ class FinalGradesByOvFeature extends BaseFeature {
                 return
               }
               if (!cellToken || !calcToken) {
-                markMismatch(cell, cellToken || '(tühi)', calcToken || '(tühi)')
+                // Pass null for empty current/calculated so markMismatch can avoid marking empty as incorrect
+                markMismatch(cell, cellToken || null, calcToken || null)
                 setTooltipOv(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
@@ -2014,7 +2016,8 @@ class FinalGradesByOvFeature extends BaseFeature {
               }
               if (!cellToken || !calcToken) {
                 // missing one side -> mark as red (mismatch)
-                markMismatch(cell, cellToken || '(tühi)', calcToken || '(tühi)')
+                // Pass null for empty values so markMismatch can correctly skip marking empty currents
+                markMismatch(cell, cellToken || null, calcToken || null)
                 setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }

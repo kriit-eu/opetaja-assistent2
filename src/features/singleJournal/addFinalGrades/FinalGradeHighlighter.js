@@ -36,7 +36,18 @@ export default {
 export function markMismatch(cell, current, calculated) {
   try {
     injectFinalGradeCSS()
-    if (cell && cell.classList) cell.classList.add('oa-final-grade-red')
+    // Do not mark as mismatch when there is no current grade (null/empty)
+    // or when the cell is already marked as missing (highlight-missing-grade).
+    if (!current && current !== 0 && current !== '0') {
+      // only set tooltip for missing case if possible, but do not add red border
+      try { if (cell) cell.title = `Arvutatud hinne: ${calculated}` } catch (e) { /* ignore */ }
+      return
+    }
+
+    if (cell && cell.classList && !(cell.classList.contains && cell.classList.contains('highlight-missing-grade'))) {
+      cell.classList.add('oa-final-grade-red')
+    }
+
     try { cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}` } catch (e) { /* ignore */ }
   } catch (e) {
     void e
