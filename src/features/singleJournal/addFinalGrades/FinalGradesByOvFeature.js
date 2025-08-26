@@ -4,6 +4,25 @@ import { domService } from '../../../services/DomService.js'
 import FinalGradesLFeature from './FinalGradesLFeature.js'
 import HighlightFinalGradesFeature from '../highlightFinalGrades/HighlightFinalGradesFeature.js'
 
+// Local CSS injector for final-grade mismatch highlights (border-only red) — keeps OV highlights untouched
+const OA_FINAL_GRADE_STYLE_ID = 'oa-final-grade-style'
+function injectOaFinalGradeCSS() {
+  if (document.getElementById(OA_FINAL_GRADE_STYLE_ID)) return
+  const css = `
+    .oa-final-grade-red {
+      background: transparent !important;
+      box-shadow: none !important;
+      border: 2px solid #ff5252 !important; /* red border (mismatch) */
+      position: relative;
+      cursor: pointer;
+    }
+  `
+  const style = document.createElement('style')
+  style.id = OA_FINAL_GRADE_STYLE_ID
+  style.textContent = css
+  try { document.head.appendChild(style) } catch (e) { document.body.appendChild(style) }
+}
+
 class FinalGradesByOvFeature extends BaseFeature {
   // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
   async #fetchDetailedOutcomeStudents(journalId, outcomeId, students, opts = {}) {
@@ -1033,7 +1052,8 @@ class FinalGradesByOvFeature extends BaseFeature {
         // Locate the journal table
         const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
         if (table) {
-          // Use HighlightFinalGradesFeature to detect column indices
+          // Ensure OA local CSS is available and use HighlightFinalGradesFeature to detect column indices
+          injectOaFinalGradeCSS()
           const hf = new HighlightFinalGradesFeature()
           const { finalGradeCols, ovCols } = hf.findColumnIndices(table)
           // Map ovCols -> ovNum using results.allOvNums; fall back to sequence if lengths mismatch
@@ -1150,23 +1170,23 @@ class FinalGradesByOvFeature extends BaseFeature {
               const clearTooltip = () => { try { cell.title = '' } catch (e) {} }
               // If both empty, consider equal
               if (!cellToken && !calcToken) {
-                cell.classList.remove('highlight-final-grade-red')
+                cell.classList.remove('oa-final-grade-red')
                 clearTooltip()
                 return
               }
               // If either token empty, treat as mismatch
               if (!cellToken || !calcToken) {
-                cell.classList.add('highlight-final-grade-red')
+                cell.classList.add('oa-final-grade-red')
                 setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
               // Compare MA/A directly
               if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
                 if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
-                  cell.classList.add('highlight-final-grade-red')
+                  cell.classList.add('oa-final-grade-red')
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('highlight-final-grade-red')
+                  cell.classList.remove('oa-final-grade-red')
                   clearTooltip()
                 }
                 return
@@ -1177,10 +1197,10 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (cellIsInt && calcIsNum) {
                 const rounded = String(Math.round(Number(calcToken)))
                 if (rounded !== cellToken) {
-                  cell.classList.add('highlight-final-grade-red')
+                  cell.classList.add('oa-final-grade-red')
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('highlight-final-grade-red')
+                  cell.classList.remove('oa-final-grade-red')
                   clearTooltip()
                 }
                 return
@@ -1190,20 +1210,20 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const c1 = Number(parseFloat(calcToken).toFixed(2))
                 const c2 = Number(parseFloat(cellToken).toFixed(2))
                 if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
-                  cell.classList.add('highlight-final-grade-red')
+                  cell.classList.add('oa-final-grade-red')
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('highlight-final-grade-red')
+                  cell.classList.remove('oa-final-grade-red')
                   clearTooltip()
                 }
                 return
               }
               // Fallback: strict comparison
-              if (calcToken !== cellToken) {
-                cell.classList.add('highlight-final-grade-red')
+                if (calcToken !== cellToken) {
+                cell.classList.add('oa-final-grade-red')
                 setTooltip(cellToken, calcToken)
               } else {
-                cell.classList.remove('highlight-final-grade-red')
+                cell.classList.remove('oa-final-grade-red')
                 clearTooltip()
               }
             })
@@ -1222,21 +1242,21 @@ class FinalGradesByOvFeature extends BaseFeature {
               }
               const clearTooltipOv = () => { try { cell.title = '' } catch (e) {} }
               if (!cellToken && !calcToken) {
-                cell.classList.remove('highlight-ov-red')
+                cell.classList.remove('oa-final-grade-red')
                 clearTooltipOv()
                 return
               }
               if (!cellToken || !calcToken) {
-                cell.classList.add('highlight-ov-red')
+                cell.classList.add('oa-final-grade-red')
                 setTooltipOv(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
               if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
                 if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
-                  cell.classList.add('highlight-ov-red')
+                  cell.classList.add('oa-final-grade-red')
                   setTooltipOv(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('highlight-ov-red')
+                  cell.classList.remove('oa-final-grade-red')
                   clearTooltipOv()
                 }
                 return
@@ -1246,10 +1266,10 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (cellIsInt && calcIsNum) {
                 const rounded = String(Math.round(Number(calcToken)))
                 if (rounded !== cellToken) {
-                  cell.classList.add('highlight-ov-red')
+                  cell.classList.add('oa-final-grade-red')
                   setTooltipOv(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('highlight-ov-red')
+                  cell.classList.remove('oa-final-grade-red')
                   clearTooltipOv()
                 }
                 return
@@ -1258,19 +1278,19 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const c1 = Number(parseFloat(calcToken).toFixed(2))
                 const c2 = Number(parseFloat(cellToken).toFixed(2))
                 if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
-                  cell.classList.add('highlight-ov-red')
+                  cell.classList.add('oa-final-grade-red')
                   setTooltipOv(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('highlight-ov-red')
+                  cell.classList.remove('oa-final-grade-red')
                   clearTooltipOv()
                 }
                 return
               }
               if (calcToken !== cellToken) {
-                cell.classList.add('highlight-ov-red')
+                cell.classList.add('oa-final-grade-red')
                 setTooltipOv(cellToken, calcToken)
               } else {
-                cell.classList.remove('highlight-ov-red')
+                cell.classList.remove('oa-final-grade-red')
                 clearTooltipOv()
               }
             })
