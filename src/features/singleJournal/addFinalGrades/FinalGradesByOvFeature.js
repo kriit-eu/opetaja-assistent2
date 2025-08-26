@@ -957,25 +957,21 @@ class FinalGradesByOvFeature extends BaseFeature {
     const output = []
     const summary = []
     Object.entries(studentMap).forEach(([journalStudentId, student]) => {
-      // Final grade: prioritize SISSEKANNE_L, fallback to calculated grade
+      // Final grade: prioritize SISSEKANNE_L, otherwise let grading mode logic handle it
       let finalGrade = ''
       if (finalGradesByStudent[journalStudentId]) {
         finalGrade = finalGradesByStudent[journalStudentId]
         Logger.info('✨ FinalGradesByOvFeature: Using SISSEKANNE_L grade', { student: student.name, finalGrade })
       } else {
-        // Calculate from gradesByStudent (not outcomeGradesByStudent)
+        // Placeholder - grading mode logic will calculate the actual final grade
         const grades = gradesByStudent[journalStudentId] || []
-        if (grades.includes('MA')) {
-          finalGrade = 'MA'
+        const numeric = grades.filter(g => ['1', '2', '3', '4', '5'].includes(g)).map(Number)
+        if (numeric.length) {
+          finalGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
         } else {
-          const numeric = grades.filter(g => ['1', '2', '3', '4', '5'].includes(g)).map(Number)
-          if (numeric.length) {
-            finalGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
-          } else if (grades.includes('A')) {
-            finalGrade = 'A'
-          }
+          finalGrade = ''
         }
-        Logger.info('✨ FinalGradesByOvFeature: Calculated final grade', { student: student.name, finalGrade, grades })
+        Logger.info('✨ FinalGradesByOvFeature: Initial placeholder grade (will be overridden by grading mode)', { student: student.name, finalGrade, grades })
       }
 
       // Per-ÕV grades
@@ -988,7 +984,15 @@ class FinalGradesByOvFeature extends BaseFeature {
         } else {
           const numeric = gradesArr.filter(g => ['1', '2', '3', '4', '5'].includes(g)).map(Number)
           if (numeric.length) {
-            ovGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
+            // Check if any individual grade is ≤ 2 (would force MA in mitte mode)
+            const hasLowGrade = numeric.some(grade => grade <= 2)
+            if (hasLowGrade) {
+              // If any grade is ≤ 2, this ÕV should be MA in mitte mode
+              // For now, calculate average but flag it for grading mode processing
+              ovGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2) + '_hasLowGrade'
+            } else {
+              ovGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
+            }
           } else if (gradesArr.includes('A')) {
             ovGrade = 'A'
           }
@@ -1016,6 +1020,120 @@ class FinalGradesByOvFeature extends BaseFeature {
     })
     Logger.info('✨ FinalGradesByOvFeature: SUMMARY', summary)
     return { output, allOvNums, ovNumToOutcomeId, journalStudentIdToStudentId, hasOvSissekanneI }
+  }
+
+  // Apply grading-mode rules to a previously calculated `results` object in-place.
+  // modes:
+  // - 'mitte' (Mitteeristav hindamine): numeric 3-5 -> A, 2 (and 1) -> MA; final = A if all OV grades are A and none ungraded, otherwise MA
+  // - 'eristav' (Eristav hindamine): A -> 5, MA or ungraded -> 2, final = rounded average of all grades
+  // Assumptions: grade '1' is treated as worst-case and maps to MA under 'mitte'; unknown tokens treated as ungraded or MA when sensible.
+  #applyGradingModeToResults(results, mode) {
+    try {
+      if (!results || !Array.isArray(results.output)) return
+      const out = results.output
+      out.forEach(student => {
+        // Ensure ovGrades object exists
+        student.ovGrades = student.ovGrades || {}
+        if (mode === 'mitte') {
+          // Map per-ÕV
+          Object.keys(student.ovGrades).forEach(ov => {
+            const raw = String(student.ovGrades[ov] || '').trim()
+            let token = ''
+            if (!raw) {
+              token = ''
+            } else if (/^MA$/i.test(raw)) {
+              token = 'MA'
+            } else if (/^A$/i.test(raw)) {
+              token = 'A'
+            } else if (raw.endsWith('_hasLowGrade')) {
+              // This ÕV has individual grades ≤ 2, so force to MA in mitte mode
+              token = 'MA'
+            } else if (/^\d+(?:\.\d+)?$/.test(raw)) {
+              const n = Math.round(Number(raw))
+              if (n >= 3) token = 'A'
+              else token = 'MA'
+            } else {
+              token = raw
+            }
+            student.ovGrades[ov] = token
+          })
+          // Final grade: if there are OV grades, final = A only when all are 'A' and none are ungraded; otherwise MA
+          const ovVals = Object.values(student.ovGrades)
+          if (ovVals.length > 0) {
+            const anyUngraded = ovVals.some(v => !v || String(v).trim() === '')
+            // Treat any token matching 'MA' (case-insensitive) or any numeric value that rounds to 2 (or equals '2') as forcing MA
+            const anyTwoOrMA = ovVals.some(v => {
+              try {
+                if (!v) return false
+                const s = String(v).trim().toUpperCase()
+                if (s === 'MA') return true
+                // numeric check: accept '2', '2.0', '1.9' (rounded), etc. Round to nearest int and check === 2
+                if (/^\d+(?:\.\d+)?$/.test(s)) {
+                  const n = Math.round(Number(s))
+                  return n === 2
+                }
+              } catch (e) {
+                return false
+              }
+              return false
+            })
+            // If any OV is '2' or 'MA', final is MA no matter what
+            if (anyTwoOrMA) {
+              student.finalGrade = 'MA'
+            } else {
+              const allA = ovVals.length > 0 && ovVals.every(v => String(v).toUpperCase() === 'A')
+              student.finalGrade = (allA && !anyUngraded) ? 'A' : 'MA'
+            }
+          } else {
+            // Fallback: map previously computed finalGrade
+            const rawFg = String(student.finalGrade || '').trim()
+            if (!rawFg) student.finalGrade = ''
+            else if (/^A$/i.test(rawFg)) student.finalGrade = 'A'
+            else if (/^MA$/i.test(rawFg)) student.finalGrade = 'MA'
+            else if (/^\d+(?:\.\d+)?$/.test(rawFg)) {
+              const n = Math.round(Number(rawFg))
+              student.finalGrade = (n >= 3) ? 'A' : 'MA'
+            }
+          }
+        } else if (mode === 'eristav') {
+          const numericGrades = []
+          Object.keys(student.ovGrades).forEach(ov => {
+            const raw = String(student.ovGrades[ov] || '').trim()
+            if (!raw) {
+              numericGrades.push(2)
+              student.ovGrades[ov] = '2'
+            } else if (/^A$/i.test(raw)) {
+              numericGrades.push(5)
+              student.ovGrades[ov] = '5'
+            } else if (/^MA$/i.test(raw)) {
+              numericGrades.push(2)
+              student.ovGrades[ov] = '2'
+            } else if (/^\d+(?:\.\d+)?$/.test(raw)) {
+              const n = Math.round(Number(raw))
+              numericGrades.push(n)
+              student.ovGrades[ov] = String(n)
+            } else {
+              // Unknown token -> treat as MA-equivalent
+              numericGrades.push(2)
+              student.ovGrades[ov] = '2'
+            }
+          })
+          if (numericGrades.length > 0) {
+            const avg = numericGrades.reduce((a, b) => a + b, 0) / numericGrades.length
+            student.finalGrade = String(Math.round(avg))
+          } else {
+            // Fallback mapping of precomputed finalGrade
+            const rawFg = String(student.finalGrade || '').trim()
+            if (!rawFg) student.finalGrade = ''
+            else if (/^A$/i.test(rawFg)) student.finalGrade = '5'
+            else if (/^MA$/i.test(rawFg)) student.finalGrade = '2'
+            else if (/^\d+(?:\.\d+)?$/.test(rawFg)) student.finalGrade = String(Math.round(Number(rawFg)))
+          }
+        }
+      })
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error applying grading mode to results', e)
+    }
   }
 
   async #showResults(results, button, opts = { autoSync: true }) {
@@ -1051,6 +1169,64 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
     }
     // Filter output to only show students whose calculated grades differ from existing grades
+    // Ensure grading-mode mapping is applied before computing diffs/sync so that A/MA mappings are used when sending
+    try {
+      const preExistingSelect = document.getElementById('oa-grading-mode-select')
+      let modeToApply = null
+      if (preExistingSelect && preExistingSelect.value) {
+        modeToApply = preExistingSelect.value
+      } else {
+        let journalAssessment = this._journalAssessment || ''
+        if (!journalAssessment) {
+          try {
+            const journalId = this.#extractJournalId()
+            if (journalId) {
+              const j = await this.api.tahvel.get(`/journals/${journalId}`)
+              if (j && j.assessment) journalAssessment = String(j.assessment || '')
+              this._journalAssessment = journalAssessment
+            }
+          } catch (e) {
+            Logger.info('FinalGradesByOvFeature: Could not prefetch journal assessment, will infer', e)
+          }
+        }
+        if (journalAssessment === 'KUTSEHINDAMISVIIS_M') modeToApply = 'mitte'
+        else if (journalAssessment === 'KUTSEHINDAMISVIIS_E') modeToApply = 'eristav'
+        else {
+          // Check if any per-ÕV grade suggests 'mitte' mode should be used
+          // (any grade that is 'A', 'MA', or numeric 1-2 suggests mitte mode)
+          const shouldUseMitte = (output || []).some(s => {
+            // Check final grade for A/MA tokens
+            const fg = String(s.finalGrade || '').trim().toUpperCase()
+            if (fg === 'A' || fg === 'MA') return true
+            
+            // Check per-ÕV grades for A/MA tokens or low numeric values (1-2)
+            if (s.ovGrades) {
+              return Object.values(s.ovGrades).some(ovGrade => {
+                const g = String(ovGrade || '').trim().toUpperCase()
+                if (g === 'A' || g === 'MA') return true
+                // Check if numeric grade is 1 or 2 (would map to MA in mitte mode)
+                if (/^\d+(?:\.\d+)?$/.test(g)) {
+                  const n = Math.round(Number(g))
+                  return n <= 2
+                }
+                return false
+              })
+            }
+            return false
+          })
+          
+          const hasNumeric = (output || []).some(s => {
+            const fg = String(s.finalGrade || '').trim()
+            return /^\d+(?:\.\d+)?$/.test(fg)
+          })
+          
+          modeToApply = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
+        }
+      }
+      if (modeToApply) this.#applyGradingModeToResults(results, modeToApply)
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Failed to apply grading mode before computing diffs', e)
+    }
     const filteredOutput = output.filter(student => {
       if (allOvNums.length > 0) {
         return allOvNums.some(ovNum => {
@@ -1109,16 +1285,35 @@ class FinalGradesByOvFeature extends BaseFeature {
         } else if (journalAssessment === 'KUTSEHINDAMISVIIS_E') {
           var defaultMode = 'eristav'
         } else {
-          // Determine default mode from results: prefer Mitteeristav if any A/MA, else Eristav if any numeric
-          const hasAM = (output || []).some(s => {
+          // Check if any per-ÕV grade suggests 'mitte' mode should be used
+          // (any grade that is 'A', 'MA', or numeric 1-2 suggests mitte mode)
+          const shouldUseMitte = (output || []).some(s => {
+            // Check final grade for A/MA tokens
             const fg = String(s.finalGrade || '').trim().toUpperCase()
-            return fg === 'A' || fg === 'MA'
+            if (fg === 'A' || fg === 'MA') return true
+            
+            // Check per-ÕV grades for A/MA tokens or low numeric values (1-2)
+            if (s.ovGrades) {
+              return Object.values(s.ovGrades).some(ovGrade => {
+                const g = String(ovGrade || '').trim().toUpperCase()
+                if (g === 'A' || g === 'MA') return true
+                // Check if numeric grade is 1 or 2 (would map to MA in mitte mode)
+                if (/^\d+(?:\.\d+)?$/.test(g)) {
+                  const n = Math.round(Number(g))
+                  return n <= 2
+                }
+                return false
+              })
+            }
+            return false
           })
+          
           const hasNumeric = (output || []).some(s => {
             const fg = String(s.finalGrade || '').trim()
             return /^\d+(?:\.\d+)?$/.test(fg)
           })
-          var defaultMode = hasAM ? 'mitte' : (hasNumeric ? 'eristav' : '')
+          
+          var defaultMode = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
         }
 
         if (!existingSelect) {
@@ -1128,12 +1323,15 @@ class FinalGradesByOvFeature extends BaseFeature {
           sel.style.padding = '6px 8px'
           sel.style.fontSize = '14px'
           sel.setAttribute('aria-label', 'Hindamissüsteem')
+          sel.title = 'Vali hindamissüsteem: Mitteeristav või Eristav (mõjutab, kuidas ÕV ja lõpptulemused teisendatakse)'
           const optM = document.createElement('option')
           optM.value = 'mitte'
           optM.textContent = 'Mitteeristav hindamine'
+          optM.title = 'Mitteeristav: numeric 3–5 → A; 1–2 or MA → MA; final: A only if all ÕV are A and none ungraded; otherwise MA'
           const optE = document.createElement('option')
           optE.value = 'eristav'
           optE.textContent = 'Eristav hindamine'
+          optE.title = 'Eristav: A → 5; MA or ungraded → 2; final = rounded average of all grades'
           sel.appendChild(optM)
           sel.appendChild(optE)
           // If we have a clear default and button is not intentionally disabled, set it
@@ -1148,8 +1346,18 @@ class FinalGradesByOvFeature extends BaseFeature {
           if (defaultMode && !(button && button._oaFinalGradesDisabled)) {
             sel.value = defaultMode
           }
-          // Mark user selection when changed so we don't overwrite later
-          sel.addEventListener('change', () => { try { sel.dataset.userSet = 'true' } catch (e) { void e } })
+          // Mark user selection when changed so we don't overwrite later and reapply grading mode
+          sel.addEventListener('change', () => {
+            try {
+              sel.dataset.userSet = 'true'
+            } catch (e) { void e }
+            try {
+              const selected = sel.value
+              this.#applyGradingModeToResults(results, selected)
+              // Re-run showResults to update highlights/UI without auto-sync
+              setTimeout(() => { try { this.#showResults(results, button, { autoSync: false }) } catch (e) { Logger.warn('Failed to re-run showResults after grading mode change', e) } }, 0)
+            } catch (e) { Logger.warn('FinalGradesByOvFeature: Error handling grading-mode change', e) }
+          })
           // Insert the select. If API provided a default, visually emphasise the select's displayed value by making it bold
           try {
             if (button && button.parentNode) {
@@ -1187,6 +1395,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             // Apply initial bold state and keep it in sync with user actions
             applyApiBold()
             sel.addEventListener('change', () => { try { sel.dataset.userSet = 'true'; applyApiBold() } catch (e) { void e } })
+            // Apply initial grading mode to computed results
+            try {
+              const initialMode = (sel.value && sel.value !== '') ? sel.value : defaultMode
+              if (initialMode) this.#applyGradingModeToResults(results, initialMode)
+            } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to apply initial grading mode', e) }
           } catch (e) {
             // fallback
             document.body.appendChild(sel)
@@ -1221,6 +1434,11 @@ class FinalGradesByOvFeature extends BaseFeature {
                 } catch (e) { void e }
                 applyExistingApiBold()
                 existingSelect.addEventListener('change', () => { try { existingSelect.dataset.userSet = 'true'; applyExistingApiBold() } catch (e) { void e } })
+                // Apply initial grading mode mapping if user hasn't changed selection
+                try {
+                  const toApply = existingSelect.value || defaultMode
+                  if (toApply) this.#applyGradingModeToResults(results, toApply)
+                } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to apply grading mode for existing select', e) }
               } else {
                 existingSelect.style.fontWeight = '400'
               }
