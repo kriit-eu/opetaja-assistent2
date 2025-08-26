@@ -979,26 +979,29 @@ class FinalGradesByOvFeature extends BaseFeature {
       allOvNums.forEach(ovNum => {
         const gradesArr = (outcomeGradesByStudent[journalStudentId] && outcomeGradesByStudent[journalStudentId][ovNum]) || []
         let ovGrade = ''
-        if (gradesArr.includes('MA')) {
+        
+        // Convert all grades to numeric for calculation, including MA→2
+        const allGradesAsNumeric = gradesArr.map(g => {
+          if (g === 'MA') return 2
+          if (g === 'A') return 5
+          if (['1', '2', '3', '4', '5'].includes(String(g))) return Number(g)
+          return null // Invalid grade
+        }).filter(g => g !== null)
+        
+        if (allGradesAsNumeric.length > 0) {
+          const average = (allGradesAsNumeric.reduce((a, b) => a + b, 0) / allGradesAsNumeric.length).toFixed(2)
+          // Check if any individual grade is ≤ 2 (important for mitte mode)
+          const hasLowGrade = allGradesAsNumeric.some(grade => grade <= 2)
+          // Store both average and low-grade flag for later processing
+          ovGrade = hasLowGrade ? `${average}_hasLow` : average
+        } else if (gradesArr.includes('A')) {
+          ovGrade = 'A'
+        } else if (gradesArr.includes('MA')) {
           ovGrade = 'MA'
-        } else {
-          const numeric = gradesArr.filter(g => ['1', '2', '3', '4', '5'].includes(g)).map(Number)
-          if (numeric.length) {
-            // Check if any individual grade is ≤ 2 (would force MA in mitte mode)
-            const hasLowGrade = numeric.some(grade => grade <= 2)
-            if (hasLowGrade) {
-              // If any grade is ≤ 2, this ÕV should be MA in mitte mode
-              // For now, calculate average but flag it for grading mode processing
-              ovGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2) + '_hasLowGrade'
-            } else {
-              ovGrade = (numeric.reduce((a, b) => a + b, 0) / numeric.length).toFixed(2)
-            }
-          } else if (gradesArr.includes('A')) {
-            ovGrade = 'A'
-          }
         }
+        
         ovGrades[ovNum] = ovGrade
-        Logger.info('✨ FinalGradesByOvFeature: Per-ÕV grade calculated', { student: student.name, ovNum, ovGrade, gradesArr })
+        Logger.info('✨ FinalGradesByOvFeature: Per-ÕV grade calculated', { student: student.name, ovNum, ovGrade, gradesArr, allGradesAsNumeric })
       })
 
       output.push({
@@ -1045,7 +1048,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               token = 'MA'
             } else if (/^A$/i.test(raw)) {
               token = 'A'
-            } else if (raw.endsWith('_hasLowGrade')) {
+            } else if (raw.includes('_hasLow')) {
               // This ÕV has individual grades ≤ 2, so force to MA in mitte mode
               token = 'MA'
             } else if (/^\d+(?:\.\d+)?$/.test(raw)) {
@@ -1108,6 +1111,12 @@ class FinalGradesByOvFeature extends BaseFeature {
             } else if (/^MA$/i.test(raw)) {
               numericGrades.push(2)
               student.ovGrades[ov] = '2'
+            } else if (raw.includes('_hasLow')) {
+              // In eristav mode, ignore the low grade flag and use the average
+              const average = parseFloat(raw.split('_')[0])
+              const n = Math.round(average)
+              numericGrades.push(n)
+              student.ovGrades[ov] = String(n)
             } else if (/^\d+(?:\.\d+)?$/.test(raw)) {
               const n = Math.round(Number(raw))
               numericGrades.push(n)
