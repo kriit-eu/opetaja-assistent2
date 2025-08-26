@@ -83,12 +83,12 @@ export async function loadFeatures() {
 
   // Load final grades by outcomes feature (always enabled)
   try {
-    const FinalGradesByOvFeature = (await import('../features/singleJournal/addFinalGrades/FinalGradesByOvFeature.js')).default
-    const finalGradesByOvFeature = new FinalGradesByOvFeature()
-    allAvailableFeatures.singleJournal.push(finalGradesByOvFeature)
-    Logger.debug('Feature "FinalGradesByOvFeature" created')
+  const FinalGradesManagementFeature = (await import('../features/singleJournal/addFinalGrades/FinalGradesManagementFeature.js')).default
+  const finalGradesManagementFeature = new FinalGradesManagementFeature()
+  allAvailableFeatures.singleJournal.push(finalGradesManagementFeature)
+  Logger.debug('Feature "FinalGradesManagementFeature" created')
   } catch (error) {
-    Logger.error('Error loading FinalGradesByOvFeature:', error)
+    Logger.error('Error loading FinalGradesManagementFeature:', error)
   }
 
   // Create a copy of the features structure for returning

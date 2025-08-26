@@ -1,7 +1,7 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { domService } from '../../../services/DomService.js'
-import { injectFinalGradeCSS, markMismatch, clearMismatch } from './OaFinalGradeHighlighter.js'
+import { injectFinalGradeCSS, markMismatch, clearMismatch } from './FinalGradeHighlighter.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
   // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
