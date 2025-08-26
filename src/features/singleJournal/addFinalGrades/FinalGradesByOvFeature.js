@@ -1065,7 +1065,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             })
           } else {
             // Best-effort: try to parse numbers from header cells
-            let headerCols = []
+            const headerCols = []
             const headerRows = Array.from(table.querySelectorAll('thead tr'))
             headerRows.forEach(row => {
               let colIdx = 0
@@ -1164,10 +1164,10 @@ class FinalGradesByOvFeature extends BaseFeature {
                 try {
                   cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
                 } catch (e) {
-                  // ignore
+                  void e
                 }
               }
-              const clearTooltip = () => { try { cell.title = '' } catch (e) {} }
+              const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
               // If both empty, consider equal
               if (!cellToken && !calcToken) {
                 cell.classList.remove('oa-final-grade-red')
@@ -1238,9 +1238,9 @@ class FinalGradesByOvFeature extends BaseFeature {
               const setTooltipOv = (current, calculated) => {
                 try {
                   cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
-                } catch (e) {}
+                } catch (e) { void e }
               }
-              const clearTooltipOv = () => { try { cell.title = '' } catch (e) {} }
+              const clearTooltipOv = () => { try { cell.title = '' } catch (e) { void e } }
               if (!cellToken && !calcToken) {
                 cell.classList.remove('oa-final-grade-red')
                 clearTooltipOv()

@@ -243,9 +243,9 @@ class FinalGradesLFeature {
               const cellToken = extractGradeToken(cell.getAttribute('data-grade') || cell.textContent || '')
               const calcToken = extractGradeToken(String((student.finalGrade || '')).toString())
               const setTooltip = (current, calculated) => {
-                try { cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}` } catch (e) {}
+                try { cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}` } catch (e) { void e }
               }
-              const clearTooltip = () => { try { cell.title = '' } catch (e) {} }
+              const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
 
               if (!cellToken && !calcToken) {
                 cell.classList.remove('oa-final-grade-red')
