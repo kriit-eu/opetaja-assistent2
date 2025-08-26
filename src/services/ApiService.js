@@ -24,6 +24,9 @@ class ApiService {
     this.authToken = config.authToken || ''
   }
 
+  // Track pending in-flight GET requests to avoid duplicate identical network calls
+  static pendingRequests = {}
+
   /**
    * Set the base URL for API requests
    * @param {string} url - The base URL for the API
@@ -201,7 +204,35 @@ class ApiService {
         )
       }
 
-      const response = await fetch(urlString, requestOptions)
+      // For GET requests, try to dedupe identical in-flight requests so multiple
+      // callers don't trigger duplicate network traffic. We key by method+url.
+      let response
+      if (method === 'GET') {
+        const reqKey = `${method}_${urlString}`
+        if (ApiService.pendingRequests[reqKey]) {
+          if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Joining pending request: ${reqKey}`)
+          response = await ApiService.pendingRequests[reqKey]
+        } else {
+          // Create a fetch promise and store it
+          const fetchPromise = (async () => {
+            try {
+              const r = await fetch(urlString, requestOptions)
+              if (!r.ok) throw r
+              return r
+            } catch (err) {
+              throw err
+            }
+          })()
+          ApiService.pendingRequests[reqKey] = fetchPromise
+          try {
+            response = await fetchPromise
+          } finally {
+            delete ApiService.pendingRequests[reqKey]
+          }
+        }
+      } else {
+        response = await fetch(urlString, requestOptions)
+      }
 
       if (!response.ok) {
         // Try to get error text if available
