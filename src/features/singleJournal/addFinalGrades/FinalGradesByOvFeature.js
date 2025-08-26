@@ -292,13 +292,22 @@ class FinalGradesByOvFeature extends BaseFeature {
               btn.style.background = '#d32f2f'
               return
             }
-            const [entries, students] = await Promise.all([
-              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
-            ])
-            Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
-            Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
-            this._lastEntries = entries
+            let entries, students
+            if (this._lastJournalId && this._lastJournalId === journalId && this._lastEntries && this._lastStudents) {
+              entries = this._lastEntries
+              students = this._lastStudents
+              Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId:', journalId)
+            } else {
+              ;[entries, students] = await Promise.all([
+                this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+                this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+              ])
+              Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
+              Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
+              this._lastEntries = entries
+              this._lastStudents = students
+              this._lastJournalId = journalId
+            }
             const results = await this.#calculateFinalGrades(entries, students)
             Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
             await this.#showResults(results, btn)
@@ -360,12 +369,22 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
       // Fetch entries and students to check for ÕV columns or SISSEKANNE_L
       Logger.info('[DEBUG] Fetching entries and students for journalId:', journalId)
-      const [entries, students] = await Promise.all([
-        this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-        this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
-      ])
-      Logger.info('[DEBUG] Entries fetched:', entries)
-      Logger.info('[DEBUG] Students fetched:', students)
+      let entries, students
+      if (this._lastJournalId && this._lastJournalId === journalId && this._lastEntries && this._lastStudents) {
+        entries = this._lastEntries
+        students = this._lastStudents
+        Logger.info('[DEBUG] Reusing cached entries/students for journalId:', journalId)
+      } else {
+        ;[entries, students] = await Promise.all([
+          this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+          this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+        ])
+        Logger.info('[DEBUG] Entries fetched:', entries)
+        Logger.info('[DEBUG] Students fetched:', students)
+        this._lastEntries = entries
+        this._lastStudents = students
+        this._lastJournalId = journalId
+      }
       const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
       const hasSissekanneL = lFeature.detect(entries)
       Logger.info('[DEBUG] hasSissekanneL:', hasSissekanneL)
@@ -559,13 +578,22 @@ class FinalGradesByOvFeature extends BaseFeature {
             btn.style.background = '#d32f2f'
             return
           }
-          const [entries, students] = await Promise.all([
-            this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
-            this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
-          ])
-          Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
-          Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
-          this._lastEntries = entries
+          let entries, students
+          if (this._lastJournalId && this._lastJournalId === journalId && this._lastEntries && this._lastStudents) {
+            entries = this._lastEntries
+            students = this._lastStudents
+            Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId:', journalId)
+          } else {
+            ;[entries, students] = await Promise.all([
+              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+            ])
+            Logger.info('✨ FinalGradesByOvFeature: API entries fetched:', entries)
+            Logger.info('✨ FinalGradesByOvFeature: API students fetched:', students)
+            this._lastEntries = entries
+            this._lastStudents = students
+            this._lastJournalId = journalId
+          }
           const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
           const hasSissekanneL = lFeature.detect(entries)
           Logger.info('[DEBUG] Delegated click: hasSissekanneL:', hasSissekanneL)
@@ -650,19 +678,28 @@ class FinalGradesByOvFeature extends BaseFeature {
                 Logger.info('✨ FinalGradesByOvFeature: Detected meaningful DOM change — re-evaluating grade diffs')
                 const journalId = this.#extractJournalId()
                 if (!journalId) return
-                    const [newEntries, newStudents] = await Promise.all([
-                      this.api.tahvel.get(
-                        `/journals/${journalId}/journalEntriesByDate`,
-                        { allStudents: true },
-                        { cache: false }
-                      ),
-                      this.api.tahvel.get(
-                        `/journals/${journalId}/journalStudents`,
-                        { allStudents: true },
-                        { cache: false }
-                      )
-                    ])
-                this._lastEntries = newEntries
+                    let newEntries, newStudents
+                    if (this._lastJournalId && this._lastJournalId === journalId && this._lastEntries && this._lastStudents) {
+                      newEntries = this._lastEntries
+                      newStudents = this._lastStudents
+                      Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId (DOM change):', journalId)
+                    } else {
+                      ;[newEntries, newStudents] = await Promise.all([
+                        this.api.tahvel.get(
+                          `/journals/${journalId}/journalEntriesByDate`,
+                          { allStudents: true },
+                          { cache: false }
+                        ),
+                        this.api.tahvel.get(
+                          `/journals/${journalId}/journalStudents`,
+                          { allStudents: true },
+                          { cache: false }
+                        )
+                      ])
+                      this._lastEntries = newEntries
+                      this._lastStudents = newStudents
+                      this._lastJournalId = journalId
+                    }
                 const lFeatureLocal = new FinalGradesLFeature(this.api, this.#extractJournalId)
                 const hasLLocal = lFeatureLocal.detect(newEntries)
                 let newResults
@@ -1047,6 +1084,82 @@ class FinalGradesByOvFeature extends BaseFeature {
   // If ÕV columns exist, automatically sync grades silently (no status message unless error)
   if (allOvNums.length > 0) {
       container.innerHTML = ''
+      // Create or update grading-mode dropdown next to the button.
+      try {
+        // Do not change user's selection or when button intentionally disabled
+        const existingSelect = document.getElementById('oa-grading-mode-select')
+        // Determine default mode, preferring journal-level assessment when available.
+        let journalAssessment = this._journalAssessment || ''
+        if (!journalAssessment) {
+          try {
+            const journalId = this.#extractJournalId()
+            if (journalId) {
+              const j = await this.api.tahvel.get(`/journals/${journalId}`)
+              if (j && j.assessment) journalAssessment = String(j.assessment || '')
+              this._journalAssessment = journalAssessment
+            }
+          } catch (e) {
+            // ignore and fall back to computed grades
+            Logger.info('FinalGradesByOvFeature: Could not fetch journal assessment, falling back to grade-based default', e)
+          }
+        }
+        // If journal assessment explicitly indicates a known mode, prefer that
+        if (journalAssessment === 'KUTSEHINDAMISVIIS_M') {
+          var defaultMode = 'mitte'
+        } else if (journalAssessment === 'KUTSEHINDAMISVIIS_E') {
+          var defaultMode = 'eristav'
+        } else {
+          // Determine default mode from results: prefer Mitteeristav if any A/MA, else Eristav if any numeric
+          const hasAM = (output || []).some(s => {
+            const fg = String(s.finalGrade || '').trim().toUpperCase()
+            return fg === 'A' || fg === 'MA'
+          })
+          const hasNumeric = (output || []).some(s => {
+            const fg = String(s.finalGrade || '').trim()
+            return /^\d+(?:\.\d+)?$/.test(fg)
+          })
+          var defaultMode = hasAM ? 'mitte' : (hasNumeric ? 'eristav' : '')
+        }
+
+        if (!existingSelect) {
+          const sel = document.createElement('select')
+          sel.id = 'oa-grading-mode-select'
+          sel.style.marginLeft = '8px'
+          sel.style.padding = '6px 8px'
+          sel.style.fontSize = '14px'
+          sel.setAttribute('aria-label', 'Hindamissüsteem')
+          const optM = document.createElement('option')
+          optM.value = 'mitte'
+          optM.textContent = 'Mitteeristav hindamine'
+          const optE = document.createElement('option')
+          optE.value = 'eristav'
+          optE.textContent = 'Eristav hindamine'
+          sel.appendChild(optM)
+          sel.appendChild(optE)
+          // If we have a clear default and button is not intentionally disabled, set it
+          if (defaultMode && !(button && button._oaFinalGradesDisabled)) {
+            sel.value = defaultMode
+          }
+          // Mark user selection when changed so we don't overwrite later
+          sel.addEventListener('change', () => { try { sel.dataset.userSet = 'true' } catch (e) { void e } })
+          try {
+            if (button && button.parentNode) button.parentNode.insertBefore(sel, button.nextSibling)
+            else document.body.appendChild(sel)
+          } catch (e) {
+            // fallback
+            document.body.appendChild(sel)
+          }
+        } else {
+          // existing select - only set default if user hasn't changed it and button not intentionally disabled
+          try {
+            if (!existingSelect.dataset.userSet && defaultMode && !(button && button._oaFinalGradesDisabled)) {
+              existingSelect.value = defaultMode
+            }
+          } catch (e) { void e }
+        }
+      } catch (e) {
+        Logger.warn('FinalGradesByOvFeature: Failed to create/update grading-mode select', e)
+      }
       // --- Highlight mismatched cells in the journal table ---
       try {
         // Locate the journal table
