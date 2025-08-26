@@ -805,6 +805,8 @@ class FinalGradesByOvFeature extends BaseFeature {
     // Map ÕV number using outcomeOrderNr+1 for SISSEKANNE_O (robust to all nameEt formats)
     // This ensures correct mapping regardless of how ÕV is tagged in nameEt
     const ovNumToOutcomeId = {} // Map ÕV number (as string) to curriculumModuleOutcomes from SISSEKANNE_O
+    // Track how many SISSEKANNE_I assignment entries reference each ÕV — used to count expected assignments
+    const ovExpectedAssignmentCount = {}
     entries.forEach(entry => {
       if (entry.entryType === 'SISSEKANNE_O' && typeof entry.outcomeOrderNr === 'number') {
         const ovNum = String(entry.outcomeOrderNr + 1)
@@ -814,20 +816,25 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
       // Support ÕVn in nameEt for SISSEKANNE_I, including patterns like (ÕV1) or (ÕV1, ÕV2)
       if (entry.entryType === 'SISSEKANNE_I' && entry.nameEt) {
-        // Find all ÕV numbers in parentheses, e.g. (ÕV1), (ÕV2), (ÕV1, ÕV2)
+        // Extract all ÕV numbers referenced in this SISSEKANNE_I name and count each unique ÕV once per entry
+        const foundNums = new Set()
+        // Find all occurrences like (ÕV1, ÕV2) and extract numbers
         const parenOvMatches = entry.nameEt.match(/\(\s*ÕV(\d+)(?:,\s*ÕV(\d+))*\s*\)/gi)
         if (parenOvMatches) {
-          hasOvSissekanneI = true
-          // (allOvNumsInParen removed as it was never used)
           parenOvMatches.forEach(m => {
-            // just trigger hasOvSissekanneI, no need to collect
-            [...m.matchAll(/ÕV(\d+)/gi)].map(x => x[1])
+            ;[...m.matchAll(/ÕV(\d+)/gi)].forEach(x => { if (x && x[1]) foundNums.add(x[1]) })
           })
         }
-        // Also support plain ÕVn in nameEt
-        const ovMatch = entry.nameEt.match(/ÕV(\d+)/i)
-        if (ovMatch && ovMatch[1]) {
+        // Also support plain ÕVn mentions elsewhere in the nameEt
+        const plainMatches = entry.nameEt.match(/ÕV(\d+)/gi)
+        if (plainMatches) {
+          plainMatches.forEach(m => { const n = (m.match(/\d+/) || [])[0]; if (n) foundNums.add(n) })
+        }
+        if (foundNums.size > 0) {
           hasOvSissekanneI = true
+          foundNums.forEach(n => {
+            ovExpectedAssignmentCount[String(n)] = (ovExpectedAssignmentCount[String(n)] || 0) + 1
+          })
         }
       }
     })
@@ -981,15 +988,45 @@ class FinalGradesByOvFeature extends BaseFeature {
         let ovGrade = ''
         
         // Convert all grades to numeric for calculation, including MA→2
-        const allGradesAsNumeric = gradesArr.map(g => {
-          if (g === 'MA') return 2
-          if (g === 'A') return 5
-          if (['1', '2', '3', '4', '5'].includes(String(g))) return Number(g)
-          return null // Invalid grade
-        }).filter(g => g !== null)
+          // Convert all grades to numeric for calculation, including MA→2.
+          // Treat missing/ungraded/unknown tokens as numeric 2 per requirement.
+          const allGradesAsNumeric = gradesArr.map(g => {
+            // Normalize
+            if (g === null || g === undefined || String(g).trim() === '') {
+              // Missing/ungraded -> treat as 2
+              return 2
+            }
+            if (g === 'MA') {
+              return 2
+            }
+            if (g === 'A') {
+              return 5
+            }
+            const s = String(g).trim()
+            if (/^\d+(?:\.\d+)?$/.test(s)) {
+              const n = Number(s)
+              if (n >= 1 && n <= 5) return n
+            }
+            // Unknown token -> treat as 2
+            return 2
+          }).filter(g => g !== null)
         
-        if (allGradesAsNumeric.length > 0) {
-          const average = (allGradesAsNumeric.reduce((a, b) => a + b, 0) / allGradesAsNumeric.length).toFixed(2)
+        // If there are expected assignments for this ÕV, ensure student has submitted all of them.
+        // If not all assignments are present, force the ÕV grade to 2 (low) instead of averaging partial data.
+        const expectedCount = ovExpectedAssignmentCount[ovNum] || 0
+        const presentCount = gradesArr.filter(g => !(g === null || g === undefined || String(g).trim() === '')).length
+        if (expectedCount > 0 && presentCount < expectedCount) {
+          // Mark as low and fixed value 2.00 to reflect incomplete grading
+          ovGrade = '2.00_hasLow'
+        } else {
+          // If all expected assignments are present (or we don't know expected count), pad missing as 2 and average
+          if (expectedCount > allGradesAsNumeric.length) {
+            const missing = expectedCount - allGradesAsNumeric.length
+            for (let i = 0; i < missing; i++) allGradesAsNumeric.push(2)
+          }
+
+          if (allGradesAsNumeric.length > 0) {
+            const average = (allGradesAsNumeric.reduce((a, b) => a + b, 0) / allGradesAsNumeric.length).toFixed(2)
           // Check if any individual grade is ≤ 2 (important for mitte mode)
           const hasLowGrade = allGradesAsNumeric.some(grade => grade <= 2)
           // Store both average and low-grade flag for later processing
@@ -998,6 +1035,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           ovGrade = 'A'
         } else if (gradesArr.includes('MA')) {
           ovGrade = 'MA'
+        }
         }
         
         ovGrades[ovNum] = ovGrade
