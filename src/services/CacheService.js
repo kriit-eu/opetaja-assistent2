@@ -16,6 +16,9 @@ const CACHE_EXPIRATION = {
 // In-memory cache for the current page session
 const memoryCache = {}
 
+// Track pending in-flight fetch promises to dedupe concurrent identical requests
+const pendingFetches = {}
+
 // Size thresholds for logging cache statistics (not limits)
 const CACHE_SIZE_WARNING = 1000000 // 1MB
 const CACHE_SIZE_LARGE = 5000000 // 5MB
@@ -151,38 +154,57 @@ const cacheService = {
 
     // Cache miss or expired - fetch fresh data
     if (Logger.isDebugMode()) Logger.debug(`Fetching fresh data for ${key}`)
+
+    // If there's already a pending fetch for this key, return its promise to dedupe
+    if (pendingFetches[cacheKey]) {
+      if (Logger.isDebugMode()) Logger.debug(`Joining pending fetch for ${key}`)
+      return await pendingFetches[cacheKey]
+    }
+
+    // Start a new fetch and store the promise in pendingFetches
+    const fetchPromise = (async () => {
+      try {
+        const data = await fetchFn()
+
+        // Store in both caches
+        const timestamp = Date.now()
+        const cacheItem = { data, timestamp }
+
+        // Store in memory cache
+        if (useMemoryCache) {
+          memoryCache[cacheKey] = cacheItem
+        }
+
+        // Check the size of the data for logging purposes
+        const serializedData = JSON.stringify(cacheItem)
+        const dataSize = serializedData.length
+
+        // Log warnings for very large items, but store them anyway
+        if (dataSize > CACHE_SIZE_LARGE) {
+          Logger.warning(`Cache item for ${key} is very large (${Math.round(dataSize / 1024)}KB).`)
+        } else if (dataSize > CACHE_SIZE_WARNING) {
+          Logger.debug(`Cache item for ${key} is large (${Math.round(dataSize / 1024)}KB).`)
+        }
+
+        // Store full data in persistent cache - we have unlimitedStorage now
+        chrome.storage.local.set({ [cacheKey]: cacheItem })
+
+        return data
+      } finally {
+        // Clean up pending fetch regardless of success/failure
+        delete pendingFetches[cacheKey]
+      }
+    })()
+
+    pendingFetches[cacheKey] = fetchPromise
+
     try {
-      const data = await fetchFn()
-
-      // Store in both caches
-      const timestamp = Date.now()
-      const cacheItem = { data, timestamp }
-
-      // Store in memory cache
-      if (useMemoryCache) {
-        memoryCache[cacheKey] = cacheItem
-      }
-
-      // Check the size of the data for logging purposes
-      const serializedData = JSON.stringify(cacheItem)
-      const dataSize = serializedData.length
-
-      // Log warnings for very large items, but store them anyway
-      if (dataSize > CACHE_SIZE_LARGE) {
-        Logger.warning(`Cache item for ${key} is very large (${Math.round(dataSize / 1024)}KB).`)
-      } else if (dataSize > CACHE_SIZE_WARNING) {
-        Logger.debug(`Cache item for ${key} is large (${Math.round(dataSize / 1024)}KB).`)
-      }
-
-      // Store full data in persistent cache - we have unlimitedStorage now
-      chrome.storage.local.set({ [cacheKey]: cacheItem })
-
-      // Always return the original unsanitized data
-      return data
+      return await fetchPromise
     } catch (error) {
-      Logger.error(`Error fetching data for ${key}:`, error)
+      // Bubble up the error after cleanup in finally above
       throw error
     }
+    
   },
 
   /**
