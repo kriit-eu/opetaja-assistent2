@@ -917,7 +917,7 @@ export class DiscrepanciesTable {
 
     // Also detect final-grade header and empty final-grade cells even if highlight classes are missing
     try {
-      let finalGradeHeaderIndices = []
+      const finalGradeHeaderIndices = []
       const headerRows = document.querySelectorAll('table.journalTable thead tr')
       headerRows.forEach(row => {
         let colIdx = 0
