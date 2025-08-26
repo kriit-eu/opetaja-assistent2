@@ -90,6 +90,12 @@ class FinalGradesByOvFeature extends BaseFeature {
   }
 
   async #syncOvGrades({ results, ovNumToOutcomeId, filteredOutput, container, statusDiv = null, button = null }) {
+    // Prevent concurrent sync runs across different handlers/buttons
+    if (this._oaSyncRunning) {
+      Logger.info('FinalGradesByOvFeature: Sync already in progress, skipping second invocation')
+      return false
+    }
+    this._oaSyncRunning = true
     let allSuccess = true
     try {
       const journalId = this.#extractJournalId()
@@ -155,6 +161,20 @@ class FinalGradesByOvFeature extends BaseFeature {
             const mapped = this.#mapGradeToSchema(grade)
             if (!mapped) return null
             const existing = freshGradesMap[lookupKey]
+            // If an existing grade is present and it matches the mapped grade, skip to avoid a no-op update
+            try {
+              if (existing && existing.grade) {
+                const existingCode = existing.grade.code || (existing.grade.value ? `KUTSEHINDAMINE_${String(existing.grade.value)}` : null)
+                const existingValue = existing.grade.value != null ? String(existing.grade.value) : null
+                if (existingCode === mapped.code || existingValue === String(mapped.value)) {
+                  Logger.info('FinalGradesByOvFeature: Skipping no-op ÕV update (existing equals calculated)', { studentId, ovNum, existingCode, mappedCode: mapped.code })
+                  return null
+                }
+              }
+            } catch (e) {
+              // ignore comparison errors and proceed to include the student
+              Logger.warn('FinalGradesByOvFeature: Error comparing existing grade, will include update', e)
+            }
             const gradeObj = {
               code: mapped.code,
               gradingSchemaRowId: null,
@@ -229,6 +249,9 @@ class FinalGradesByOvFeature extends BaseFeature {
       if (statusDiv) statusDiv.textContent = 'Viga saatmisel.'
       throw err
     }
+    finally {
+      try { this._oaSyncRunning = false } catch (e) { void e }
+    }
   }
   constructor() {
     super('finalGradesByOv', () => true, null) // Activate on any page for testing
@@ -261,6 +284,12 @@ class FinalGradesByOvFeature extends BaseFeature {
         Logger.info('[DEBUG] Attaching direct click handler to button')
         btn.addEventListener('click', async() => {
           Logger.info('✨ FinalGradesByOvFeature: Direct button click detected')
+          // Prevent re-entrancy if a delegated handler or another click is already processing
+          if (btn._oaRunning) {
+            Logger.info('✨ FinalGradesByOvFeature: Direct click ignored, operation already running')
+            return
+          }
+          btn._oaRunning = true
           btn.disabled = true
           btn.textContent = 'Laen...'
           btn.style.background = '#ff9800'
@@ -300,6 +329,8 @@ class FinalGradesByOvFeature extends BaseFeature {
             btn.textContent = 'Viga!'
             btn.style.background = '#d32f2f'
           } finally {
+            // Clear running flag so future clicks can proceed (if not intentionally disabled)
+            try { btn._oaRunning = false } catch (e) { void e }
             setTimeout(() => {
               try {
                 if (!btn._oaFinalGradesDisabled) {
@@ -550,6 +581,12 @@ class FinalGradesByOvFeature extends BaseFeature {
       const delegatedHandler = async e => {
         const btn = e.target.closest('.oa-final-grades-btn')
         if (!btn) return
+        // Ignore if another handler is already processing this button
+        if (btn._oaRunning) {
+          Logger.info('✨ FinalGradesByOvFeature: Delegated click ignored, operation already running')
+          return
+        }
+        btn._oaRunning = true
         Logger.info('✨ FinalGradesByOvFeature: Delegated button click detected')
         btn.disabled = true
         btn.textContent = 'Laen...'
@@ -609,6 +646,8 @@ class FinalGradesByOvFeature extends BaseFeature {
           btn.textContent = 'Viga!'
           btn.style.background = '#d32f2f'
         } finally {
+          // Clear running flag so future clicks can proceed (if not intentionally disabled)
+          try { btn._oaRunning = false } catch (e) { void e }
           setTimeout(() => {
             try {
               if (!btn._oaFinalGradesDisabled) {
