@@ -1137,14 +1137,56 @@ class FinalGradesByOvFeature extends BaseFeature {
           sel.appendChild(optM)
           sel.appendChild(optE)
           // If we have a clear default and button is not intentionally disabled, set it
+          const apiProvided = !!(journalAssessment && journalAssessment !== '')
+          // If journal assessment is known from API, mark the corresponding option so we can indicate it
+          try {
+            if (apiProvided) {
+              const opt = sel.querySelector(`option[value="${defaultMode}"]`)
+              if (opt) opt.dataset.apiDefault = 'true'
+            }
+          } catch (e) { void e }
           if (defaultMode && !(button && button._oaFinalGradesDisabled)) {
             sel.value = defaultMode
           }
           // Mark user selection when changed so we don't overwrite later
           sel.addEventListener('change', () => { try { sel.dataset.userSet = 'true' } catch (e) { void e } })
+          // Insert the select. If API provided a default, visually emphasise the select's displayed value by making it bold
           try {
-            if (button && button.parentNode) button.parentNode.insertBefore(sel, button.nextSibling)
-            else document.body.appendChild(sel)
+            if (button && button.parentNode) {
+              button.parentNode.insertBefore(sel, button.nextSibling)
+              try {
+                // Make button and select inline so they appear on the same line
+                if (button && button.style) {
+                  button.style.display = 'inline-block'
+                  button.style.verticalAlign = 'middle'
+                  button.style.marginRight = '8px'
+                }
+                sel.style.display = 'inline-block'
+                sel.style.verticalAlign = 'middle'
+              } catch (e) { void e }
+            } else {
+              document.body.appendChild(sel)
+            }
+            const applyApiBold = () => {
+              try {
+                if (!apiProvided) {
+                  sel.style.fontWeight = '400'
+                  return
+                }
+                if (defaultMode && sel.value === defaultMode) sel.style.fontWeight = '700'
+                else sel.style.fontWeight = '400'
+              } catch (e) { void e }
+            }
+            // Mark the API-provided option for debugging and potential future styling
+            try {
+              if (apiProvided) {
+                const opt = sel.querySelector(`option[value="${defaultMode}"]`)
+                if (opt) opt.dataset.apiDefault = 'true'
+              }
+            } catch (e) { void e }
+            // Apply initial bold state and keep it in sync with user actions
+            applyApiBold()
+            sel.addEventListener('change', () => { try { sel.dataset.userSet = 'true'; applyApiBold() } catch (e) { void e } })
           } catch (e) {
             // fallback
             document.body.appendChild(sel)
@@ -1155,6 +1197,34 @@ class FinalGradesByOvFeature extends BaseFeature {
             if (!existingSelect.dataset.userSet && defaultMode && !(button && button._oaFinalGradesDisabled)) {
               existingSelect.value = defaultMode
             }
+            // If assessment came from API, mark option and bold the select's displayed value when it matches the API default
+            try {
+              const apiProvidedLocal = !!(journalAssessment && journalAssessment !== '')
+              if (apiProvidedLocal) {
+                const opt = existingSelect.querySelector(`option[value="${defaultMode}"]`)
+                if (opt) opt.dataset.apiDefault = 'true'
+                const applyExistingApiBold = () => {
+                  try {
+                    if (defaultMode && existingSelect.value === defaultMode) existingSelect.style.fontWeight = '700'
+                    else existingSelect.style.fontWeight = '400'
+                  } catch (e) { void e }
+                }
+                // Ensure select and button sit inline
+                try {
+                  existingSelect.style.display = 'inline-block'
+                  existingSelect.style.verticalAlign = 'middle'
+                  if (button && button.style) {
+                    button.style.display = 'inline-block'
+                    button.style.verticalAlign = 'middle'
+                    button.style.marginRight = '8px'
+                  }
+                } catch (e) { void e }
+                applyExistingApiBold()
+                existingSelect.addEventListener('change', () => { try { existingSelect.dataset.userSet = 'true'; applyExistingApiBold() } catch (e) { void e } })
+              } else {
+                existingSelect.style.fontWeight = '400'
+              }
+            } catch (e) { void e }
           } catch (e) { void e }
         }
       } catch (e) {
