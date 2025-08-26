@@ -1,7 +1,6 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { domService } from '../../../services/DomService.js'
-import FinalGradesLFeature from './FinalGradesLFeature.js'
 import HighlightFinalGradesFeature from '../highlightFinalGrades/HighlightFinalGradesFeature.js'
 
 // Local CSS injector for final-grade mismatch highlights (border-only red) — keeps OV highlights untouched
@@ -385,10 +384,9 @@ class FinalGradesByOvFeature extends BaseFeature {
         this._lastStudents = students
         this._lastJournalId = journalId
       }
-      const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
-      const hasSissekanneL = lFeature.detect(entries)
+      const hasSissekanneL = this.detectLGrades(entries)
       Logger.info('[DEBUG] hasSissekanneL:', hasSissekanneL)
-      const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
+      const results = hasSissekanneL ? this.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
       Logger.info('[DEBUG] Results:', results)
       if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
         Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected, feature will not activate')
@@ -465,16 +463,21 @@ class FinalGradesByOvFeature extends BaseFeature {
       // --- NEW: Calculate grades on page load (without auto-sync) ---
       try {
         Logger.info('✨ FinalGradesByOvFeature: Calculating grades on page load')
-        const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
-        const hasSissekanneL = lFeature.detect(entries)
-        const resultsOnLoad = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
+        const hasSissekanneL = this.detectLGrades(entries)
+        const resultsOnLoad = hasSissekanneL ? this.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
         // Call showResults with autoSync=false so we only compute filteredOutput and update button state/UI
         if (hasSissekanneL) {
           // Use the L feature's showResults which accepts autoSync flag
-          await lFeature.showResults(resultsOnLoad, button, entries, { autoSync: false })
+          await this.showLGradeResults(resultsOnLoad, button, entries, { autoSync: false })
+          // Ensure L-grade dropdowns are available on initial load
+          try {
+            this.#ensureLGradeDropdowns()
+          } catch (e) {
+            Logger.warn('FinalGradesByOvFeature: Failed to ensure L-grade dropdowns on load', e)
+          }
           // Attach L-specific DOM observer so the L-button is kept up-to-date on meaningful DOM changes
           try {
-            const lObserver = lFeature.attachDomObserver(button, entries)
+            const lObserver = this.attachDomObserver(button, entries)
             // store observer so it can be disconnected later if needed
             this._lObserver = lObserver
           } catch (e) {
@@ -594,10 +597,9 @@ class FinalGradesByOvFeature extends BaseFeature {
             this._lastStudents = students
             this._lastJournalId = journalId
           }
-          const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
-          const hasSissekanneL = lFeature.detect(entries)
+          const hasSissekanneL = this.detectLGrades(entries)
           Logger.info('[DEBUG] Delegated click: hasSissekanneL:', hasSissekanneL)
-          const results = hasSissekanneL ? lFeature.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
+          const results = hasSissekanneL ? this.extractFinalGrades(entries, students) : await this.#calculateFinalGrades(entries, students)
           Logger.info('[DEBUG] Delegated click: results:', results)
           if (!hasSissekanneL && (!results.allOvNums || results.allOvNums.length === 0)) {
             Logger.info('✨ FinalGradesByOvFeature: No ÕV columns or SISSEKANNE_L detected on button click, aborting')
@@ -613,7 +615,7 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
           Logger.info('✨ FinalGradesByOvFeature: Results calculated:', results)
           if (hasSissekanneL) {
-            await lFeature.showResults(results, btn, entries)
+            await this.showLGradeResults(results, btn, entries)
           } else {
             await this.#showResults(results, btn)
           }
@@ -629,8 +631,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (!btn._oaFinalGradesDisabled) {
                 btn.disabled = false
                 // Set button text based on latest SISSEKANNE_L detection and whether any ÕV grades already exist
-                const lFeature = new FinalGradesLFeature(this.api, this.#extractJournalId)
-                const hasL = lFeature.detect(this._lastEntries || [])
+                const hasL = this.detectLGrades(this._lastEntries || [])
                 if (hasL) {
                   btn.textContent = 'Lisa lõpptulemuse hinded'
                 } else {
@@ -700,11 +701,10 @@ class FinalGradesByOvFeature extends BaseFeature {
                       this._lastStudents = newStudents
                       this._lastJournalId = journalId
                     }
-                const lFeatureLocal = new FinalGradesLFeature(this.api, this.#extractJournalId)
-                const hasLLocal = lFeatureLocal.detect(newEntries)
+                const hasLLocal = this.detectLGrades(newEntries)
                 let newResults
                 if (hasLLocal) {
-                  newResults = lFeatureLocal.extractFinalGrades(newEntries, newStudents)
+                  newResults = this.extractFinalGrades(newEntries, newStudents)
                 } else {
                   newResults = await this.#calculateFinalGrades(newEntries, newStudents)
                 }
@@ -722,8 +722,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                       button.title = ''
                       try {
                         // Decide proper label based on whether L-flow is present
-                          const lFeatureCheck = new FinalGradesLFeature(this.api, this.#extractJournalId)
-                          const hasLNow = lFeatureCheck.detect(this._lastEntries || [])
+                          const hasLNow = this.detectLGrades(this._lastEntries || [])
                           if (hasLNow) {
                             button.textContent = 'Lisa lõpptulemuse hinded'
                           } else {
@@ -1798,6 +1797,931 @@ class FinalGradesByOvFeature extends BaseFeature {
       existingStatusDiv.remove()
     }
     Logger.info('✨ FinalGradesByOvFeature: Table rendering skipped as requested')
+  }
+
+  // ============= L-GRADE (SISSEKANNE_L) FUNCTIONALITY =============
+  // Merged from FinalGradesLFeature.js to consolidate similar logic
+
+  detectLGrades(entries) {
+    return entries.some(entry => entry.entryType === 'SISSEKANNE_L')
+  }
+
+  extractFinalGrades(entries, students) {
+    const studentMap = {}
+    students.forEach(s => {
+      let name, idcode, studentId, journalStudentId
+      if (s.student && s.student.idcode) {
+        name = s.student.fullname || `${s.student.firstname} ${s.student.lastname}`
+        idcode = s.student.idcode
+        studentId = s.student.id
+        journalStudentId = s.id
+      } else {
+        name = s.fullname || `${s.firstname} ${s.lastname}`
+        idcode = s.idcode || 'N/A'
+        studentId = s.studentId || s.id
+        journalStudentId = s.id
+      }
+      studentMap[journalStudentId] = { name, idcode, studentId }
+    })
+
+    // Only use grades from SISSEKANNE_I and SISSEKANNE_T for calculation
+    const gradesT = {} // Will store arrays of grades for each student
+    const gradesI = {} // Will store arrays of grades for each student
+
+    entries.forEach(entry => {
+      if (entry.entryType === 'SISSEKANNE_T' || entry.entryType === 'SISSEKANNE_I') {
+        // 1. Extract from journalStudentResults (if present)
+        if (entry.journalStudentResults) {
+          Logger.info(`✨ FinalGradesLFeature: Processing ${entry.entryType} entry (journalStudentResults)`, entry.journalStudentResults)
+          Object.entries(entry.journalStudentResults).forEach(([journalStudentId, resultsArr]) => {
+            if (Array.isArray(resultsArr)) {
+              resultsArr.forEach(result => {
+                if (result.grade && result.grade.code) {
+                  const grade = result.grade.code.replace('KUTSEHINDAMINE_', '')
+                  if (['1', '2', '3', '4', '5'].includes(grade)) {
+                    if (entry.entryType === 'SISSEKANNE_T') {
+                      if (!gradesT[journalStudentId]) gradesT[journalStudentId] = []
+                      gradesT[journalStudentId].push(parseInt(grade))
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T grade for student ${journalStudentId}: ${grade}`)
+                    } else if (entry.entryType === 'SISSEKANNE_I') {
+                      if (!gradesI[journalStudentId]) gradesI[journalStudentId] = []
+                      gradesI[journalStudentId].push(parseInt(grade))
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I grade for student ${journalStudentId}: ${grade}`)
+                    }
+                  } else if (['A', 'MA'].includes(grade)) {
+                    const key = journalStudentId + '_str'
+                    if (entry.entryType === 'SISSEKANNE_T') {
+                      if (!gradesT[key]) gradesT[key] = []
+                      gradesT[key].push(grade)
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T string grade for student ${journalStudentId}: ${grade}`)
+                    } else if (entry.entryType === 'SISSEKANNE_I') {
+                      if (!gradesI[key]) gradesI[key] = []
+                      gradesI[key].push(grade)
+                      Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I string grade for student ${journalStudentId}: ${grade}`)
+                    }
+                  }
+                }
+              })
+            }
+          })
+        }
+        // 2. Extract from journalEntryStudents (if present)
+        if (Array.isArray(entry.journalEntryStudents)) {
+          Logger.info(`✨ FinalGradesLFeature: Processing ${entry.entryType} entry (journalEntryStudents)`, entry.journalEntryStudents)
+          entry.journalEntryStudents.forEach(js => {
+            if (js.grade && js.grade.code) {
+              const grade = js.grade.code.replace('KUTSEHINDAMINE_', '')
+              const journalStudentId = js.journalStudent
+              if (['1', '2', '3', '4', '5'].includes(grade)) {
+                if (entry.entryType === 'SISSEKANNE_T') {
+                  if (!gradesT[journalStudentId]) gradesT[journalStudentId] = []
+                  gradesT[journalStudentId].push(parseInt(grade))
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
+                } else if (entry.entryType === 'SISSEKANNE_I') {
+                  if (!gradesI[journalStudentId]) gradesI[journalStudentId] = []
+                  gradesI[journalStudentId].push(parseInt(grade))
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
+                }
+              } else if (['A', 'MA'].includes(grade)) {
+                const key = journalStudentId + '_str'
+                if (entry.entryType === 'SISSEKANNE_T') {
+                  if (!gradesT[key]) gradesT[key] = []
+                  gradesT[key].push(grade)
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_T string grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
+                } else if (entry.entryType === 'SISSEKANNE_I') {
+                  if (!gradesI[key]) gradesI[key] = []
+                  gradesI[key].push(grade)
+                  Logger.info(`✨ FinalGradesLFeature: Added SISSEKANNE_I string grade for student ${journalStudentId} (journalEntryStudents): ${grade}`)
+                }
+              }
+            }
+          })
+        }
+      }
+    })
+
+    Logger.info('✨ FinalGradesLFeature: All SISSEKANNE_T grades', gradesT)
+    Logger.info('✨ FinalGradesLFeature: All SISSEKANNE_I grades', gradesI)
+
+    const output = []
+    Object.entries(studentMap).forEach(([journalStudentId, student]) => {
+      const tGrades = gradesT[journalStudentId] || []
+      const iGrades = gradesI[journalStudentId] || []
+      const allGrades = [...tGrades, ...iGrades]
+      const allStringGrades = [...(gradesT[journalStudentId + '_str'] || []), ...(gradesI[journalStudentId + '_str'] || [])]
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL SISSEKANNE_T grades:`, tGrades)
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL SISSEKANNE_I grades:`, iGrades)
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL COMBINED grades:`, allGrades)
+      Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) ALL STRING grades:`, allStringGrades)
+      let finalGrade = ''
+      if (allStringGrades.includes('MA')) {
+        finalGrade = 'MA'
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: at least one MA → MA`)
+      } else if (allStringGrades.length > 0 && allStringGrades.every(g => g === 'A')) {
+        finalGrade = 'A'
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: all A → A`)
+      } else if (allGrades.length > 0) {
+        const sum = allGrades.reduce((a, b) => a + b, 0)
+        const avg = sum / allGrades.length
+        finalGrade = String(Math.round(avg))
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: combined avg ${avg} → ${finalGrade}`)
+      } else {
+        Logger.info(`✨ FinalGradesLFeature: Student ${journalStudentId} (${student.name}) FINAL: no grades`)
+      }
+      output.push({
+        name: student.name,
+        idcode: student.idcode,
+        finalGrade,
+        journalStudentId,
+        studentId: student.studentId
+      })
+    })
+    Logger.info('✨ FinalGradesLFeature: output', output)
+    return { output }
+  }
+
+  // Highlight cells in the journal table where the current L-grade differs from our calculated grade
+  _highlightIncorrectCurrentGrades(results) {
+    try {
+      if (!results || !results.output || !Array.isArray(results.output)) return
+      const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
+      if (!table) return
+
+      // Ensure local CSS is injected for OA final-grade mismatch highlights
+      injectOaFinalGradeCSS()
+      const hf = new HighlightFinalGradesFeature()
+      const { finalGradeCols } = hf.findColumnIndices(table)
+      if (!finalGradeCols || finalGradeCols.length === 0) return
+
+      const extractGradeToken = txt => {
+        if (!txt) return ''
+        const s = String(txt || '')
+          .replace(/\u00A0/g, ' ')
+          .replace(/[,\s]+(?=\d{1,2}$)/, '.')
+          .trim()
+        const tokens = []
+        Array.from(s.matchAll(/\bMA\b/ig)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
+        Array.from(s.matchAll(/\bA\b/ig)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
+        Array.from(s.matchAll(/\b([1-5](?:[.,]\d+)?)\b/g)).forEach(m => tokens.push({ type: 'NUM', value: m[1].replace(',', '.'), index: m.index }))
+        if (tokens.length) {
+          tokens.sort((a, b) => (a.index || 0) - (b.index || 0))
+          const lastTok = tokens[tokens.length - 1]
+          if (lastTok.type === 'MA') return 'MA'
+          if (lastTok.type === 'A') return 'A'
+          if (lastTok.type === 'NUM') return lastTok.value
+        }
+        return ''
+      }
+
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+
+      const rowHasAcademicLeave = r => {
+        try {
+          return Array.from(r.querySelectorAll('span')).some(s => (s.textContent || '').trim() === 'AP')
+        } catch (e) {
+          return false
+        }
+      }
+
+      const resultMap = {}
+      results.output.forEach(r => {
+        if (r && r.journalStudentId != null) resultMap[String(r.journalStudentId).trim()] = r
+      })
+
+      rows.forEach((row, rowIdx) => {
+        try {
+          if (rowHasAcademicLeave(row)) return
+          const cells = Array.from(row.children).filter(n => n.nodeType === 1)
+
+          const ds = (row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') || (row.dataset ? row.dataset.journalStudent : null) || '').toString()
+          let student = null
+          if (ds && resultMap[ds]) student = resultMap[ds]
+
+          if (!student) {
+            const txt = (row.textContent || '')
+            student = results.output.find(r => {
+              const name = (r.name || '').trim()
+              const idcode = (r.idcode || '').trim()
+              if (name && txt.includes(name)) return true
+              if (idcode && txt.includes(idcode)) return true
+              return false
+            }) || null
+          }
+
+          if (!student) student = results.output[rowIdx] || null
+          if (!student) return
+
+          finalGradeCols.forEach(colIdx => {
+            const cell = cells[colIdx]
+            if (!cell) return
+            try {
+              const cellToken = extractGradeToken(cell.getAttribute('data-grade') || cell.textContent || '')
+              const calcToken = extractGradeToken(String((student.finalGrade || '')).toString())
+              const setTooltip = (current, calculated) => {
+                try { cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}` } catch (e) { void e }
+              }
+              const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
+
+              if (!cellToken && !calcToken) {
+                cell.classList.remove('oa-final-grade-red')
+                clearTooltip()
+                return
+              }
+              if (!cellToken || !calcToken) {
+                // missing one side -> mark as red (mismatch)
+                cell.classList.add('oa-final-grade-red')
+                setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
+                return
+              }
+              if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
+                if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
+                  cell.classList.add('oa-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('oa-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              const cellIsInt = /^[1-5]$/.test(cellToken)
+              const calcIsNum = /^[1-5](?:\.\d+)?$/.test(calcToken)
+              if (cellIsInt && calcIsNum) {
+                const rounded = String(Math.round(Number(calcToken)))
+                if (rounded !== cellToken) {
+                  cell.classList.add('oa-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('oa-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              if (calcIsNum && /^[1-5](?:\.\d+)?$/.test(cellToken)) {
+                const c1 = Number(parseFloat(calcToken).toFixed(2))
+                const c2 = Number(parseFloat(cellToken).toFixed(2))
+                if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
+                  cell.classList.add('oa-final-grade-red')
+                  setTooltip(cellToken, calcToken)
+                } else {
+                  cell.classList.remove('oa-final-grade-red')
+                  clearTooltip()
+                }
+                return
+              }
+              if (calcToken !== cellToken) {
+                cell.classList.add('oa-final-grade-red')
+                setTooltip(cellToken, calcToken)
+              } else {
+                cell.classList.remove('oa-final-grade-red')
+                clearTooltip()
+              }
+            } catch (e) {
+              // ignore per-cell errors
+            }
+          })
+        } catch (e) {
+          // ignore per-row errors
+        }
+      })
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error while highlighting incorrect current grades', e)
+    }
+  }
+
+  async showLGradeResults(results, button, lastEntries, opts = { autoSync: true }) {
+    // Only sync grades and show a status message, do not render a table
+    let container = document.getElementById('oa-final-grades-results')
+    if (!container) {
+      container = domService.createAndInsertElement('div', { id: 'oa-final-grades-results' }, '', button, 'afterend')
+    }
+    container.innerHTML = ''
+    let statusDiv = document.getElementById('oa-sync-lopp-status')
+    if (!statusDiv) {
+      statusDiv = domService.createAndInsertElement(
+        'div',
+        { id: 'oa-sync-lopp-status', style: { margin: '8px 0', color: '#1976d2', fontWeight: 'bold' } },
+        '',
+        container,
+        'afterend'
+      )
+    }
+    statusDiv.textContent = ''
+    
+    // Ensure grade selection dropdowns are available for L-grade entries
+    try {
+      this.#ensureLGradeDropdowns()
+      // Ensure grading-mode select is present next to the L-button so users can pick 'mitte'/'eristav'
+      try {
+        this.#attachGradingModeSelectToButton(button)
+      } catch (e) {
+        Logger.warn('FinalGradesByOvFeature: Failed to attach grading-mode select to L button', e)
+      }
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Failed to ensure L-grade dropdowns', e)
+    }
+
+    // Apply grading-mode selection defaults and ensure the mode is applied to computed results
+    try {
+      const sel = document.getElementById('oa-grading-mode-select')
+      let journalAssessment = this._journalAssessment || ''
+      if (sel) {
+        // Determine default mode similar to #showResults logic
+        if (!journalAssessment) {
+          try {
+            const journalId = this.#extractJournalId()
+            if (journalId) {
+              const j = await this.api.tahvel.get(`/journals/${journalId}`)
+              if (j && j.assessment) journalAssessment = String(j.assessment || '')
+              this._journalAssessment = journalAssessment
+            }
+          } catch (e) {
+            Logger.info('FinalGradesByOvFeature: Could not prefetch journal assessment for L flow, will infer', e)
+          }
+        }
+
+        let defaultMode = ''
+        if (journalAssessment === 'KUTSEHINDAMISVIIS_M') defaultMode = 'mitte'
+        else if (journalAssessment === 'KUTSEHINDAMISVIIS_E') defaultMode = 'eristav'
+        else {
+          const shouldUseMitte = (results.output || []).some(s => {
+            const fg = String(s.finalGrade || '').trim().toUpperCase()
+            if (fg === 'A' || fg === 'MA') return true
+            if (s.ovGrades) {
+              return Object.values(s.ovGrades).some(ovGrade => {
+                const g = String(ovGrade || '').trim().toUpperCase()
+                if (g === 'A' || g === 'MA') return true
+                if (/^\d+(?:\.\d+)?$/.test(g)) {
+                  const n = Math.round(Number(g))
+                  return n <= 2
+                }
+                return false
+              })
+            }
+            return false
+          })
+          const hasNumeric = (results.output || []).some(s => {
+            const fg = String(s.finalGrade || '').trim()
+            return /^\d+(?:\.\d+)?$/.test(fg)
+          })
+          defaultMode = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
+        }
+
+        // Only set default if user hasn't selected and button isn't intentionally disabled
+        try {
+          if (!sel.dataset.userSet && defaultMode && !(button && button._oaFinalGradesDisabled)) sel.value = defaultMode
+        } catch (e) { void e }
+
+        // Apply initial grading mode to results so subsequent logic uses mapped finalGrade
+        try {
+          const initialMode = (sel.value && sel.value !== '') ? sel.value : defaultMode
+          if (initialMode) this.#applyGradingModeToResults(results, initialMode)
+        } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to apply initial grading mode for L flow', e) }
+
+        // Recompute highlights/UI when user changes selection without auto-syncing
+        try {
+          sel.addEventListener('change', async () => {
+            try {
+              sel.dataset.userSet = 'true'
+            } catch (e) { void e }
+            try {
+              const selected = sel.value
+              this.#applyGradingModeToResults(results, selected)
+              // Re-run L show results in non-auto mode to refresh UI/highlights only
+              try { await this.showLGradeResults(results, button, lastEntries, { autoSync: false }) } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to refresh L UI after grading mode change', e) }
+            } catch (e) { Logger.warn('FinalGradesByOvFeature: Error handling grading-mode change in L flow', e) }
+          })
+        } catch (e) { void e }
+      }
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error while wiring grading-mode select for L flow', e)
+    }
+    
+    try {
+      const journalId = this.#extractJournalId()
+      // Find the SISSEKANNE_L entry
+      const lEntry = (lastEntries || []).find(e => e.entryType === 'SISSEKANNE_L')
+      if (!lEntry) {
+        statusDiv.textContent = 'Lõpptulemus puudub.'
+        return
+      }
+      // Prefer using provided lastEntries to avoid unnecessary API calls when possible
+      let currentEntry = null
+      if (lastEntries && Array.isArray(lastEntries)) {
+        currentEntry = lastEntries.find(e => e.id === lEntry.id) || null
+      }
+      // If we don't have a usable currentEntry (or it lacks journalEntryStudents), fetch fresh from API
+      if (!currentEntry || !Array.isArray(currentEntry.journalEntryStudents)) {
+        currentEntry = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${lEntry.id}`, {}, { cache: false })
+        Logger.info('✨ FinalGradesLFeature: Fetched current entry from API', currentEntry)
+      } else {
+        Logger.info('✨ FinalGradesLFeature: Using current entry from lastEntries', currentEntry)
+      }
+      // Build journalEntryStudents array from our filtered calculated grades
+      const lGrades = {}
+      if (currentEntry && Array.isArray(currentEntry.journalEntryStudents)) {
+        currentEntry.journalEntryStudents.forEach(js => {
+          if (js && js.journalStudent != null && js.grade && js.grade.code) {
+            const code = js.grade.code
+            lGrades[String(js.journalStudent)] = code.replace('KUTSEHINDAMINE_', '').toUpperCase()
+          }
+        })
+      }
+      const filteredOutput = results.output.filter(r => {
+        const key = String(r.journalStudentId).trim()
+        const current = lGrades[key]
+        if (!current) return r.finalGrade && r.finalGrade !== ''
+        return (r.finalGrade && String(r.finalGrade).toUpperCase()) !== current
+      })
+      // Update UI highlights for incorrect current L grades (visual aid)
+      try {
+        this._highlightIncorrectCurrentGrades(results)
+      } catch (e) {
+        Logger.warn('FinalGradesByOvFeature: Failed to update current grade highlights', e)
+      }
+      // If autoSync is disabled, we only compute filteredOutput and update button state/UI
+      if (!opts.autoSync) {
+        try {
+          if (!button) return filteredOutput
+          if (!Array.isArray(filteredOutput) || filteredOutput.length === 0) {
+            // No changes -> disable button and show clear label/title
+            try {
+              button.disabled = true
+              button.style.opacity = '0.6'
+              button.title = 'Kõik lõpptulemuse hinded ühtivad juba olemasolevate hinnetega'
+              // Prefer keeping a marker both on the button and globally
+              button._oaFinalGradesDisabled = true
+              window._oaFinalGradesDisabled = true
+              // Use a clearer disabled text
+              try {
+                button.textContent = 'Kõik hinded on õiged'
+              } catch (inner) { Logger.warn('FinalGradesByOvFeature: Ignored inner error setting button text', inner) }
+            } catch (innerErr) {
+              Logger.warn('FinalGradesByOvFeature: Failed to set disabled button state', innerErr)
+            }
+            Logger.info('✨ FinalGradesByOvFeature: Button disabled on page load because no L changes detected')
+          } else {
+            // enable button if previously disabled
+            try {
+              window._oaFinalGradesDisabled = false
+              button._oaFinalGradesDisabled = false
+              button.disabled = false
+              button.style.opacity = ''
+              button.title = ''
+              // Restore proper label and primary blue background
+              try {
+                // When there are changes to apply, present the update action label
+                button.textContent = 'Uuenda õpiväljundite hinded'
+                button.style.background = 'rgb(21, 101, 192)'
+              } catch (innerErr) {
+                Logger.warn('FinalGradesByOvFeature: Failed to restore button text/style', innerErr)
+              }
+            } catch (e) {
+              Logger.warn('FinalGradesByOvFeature: Failed to enable button', e)
+            }
+            // Decide label: if there are existing L grades, present update action; otherwise present add action
+            try {
+              const hasExistingL = this.#hasAnyLGrades(currentEntry ? [currentEntry] : (lastEntries || []))
+              if (hasExistingL) {
+                button.textContent = 'Uuenda õpiväljundite hinded'
+              } else {
+                button.textContent = 'Lisa lõpptulemuse hinded'
+              }
+              button.style.background = 'rgb(21, 101, 192)'
+            } catch (innerErr) {
+              Logger.warn('FinalGradesByOvFeature: Failed deciding button label', innerErr)
+            }
+            Logger.info('✨ FinalGradesByOvFeature: Button enabled on page load — L changes detected')
+          }
+        } catch (e) {
+          Logger.warn('FinalGradesByOvFeature: Error while updating button state on page load', e)
+        }
+        return filteredOutput
+      }
+      Logger.info(
+        '✨ FinalGradesByOvFeature: filtered results.output journalStudentIds',
+        filteredOutput.map(r => r.journalStudentId)
+      )
+      // Fetch student statuses for filtered students so we can apply OPPURSTAATUS_A rule
+      const uniqueStudentIds = Array.from(new Set(filteredOutput.map(r => r.studentId).filter(Boolean)))
+      const studentStatusMap = {}
+      await Promise.all(uniqueStudentIds.map(async id => {
+        try {
+          const det = await this.api.tahvel.get(`/students/${id}`, {}, { cache: false })
+          studentStatusMap[String(id)] = det && det.status ? det.status : null
+        } catch (e) {
+          Logger.error('✨ FinalGradesByOvFeature: Failed to fetch student details, defaulting to include', { studentId: id, err: e })
+          studentStatusMap[String(id)] = null
+        }
+      }))
+      const mappedStudents = filteredOutput
+        .map(r => {
+          // If student is on status A (OPPURSTAATUS_A) only allow adding if finalGrade is not MA, 1 or 2
+          const status = studentStatusMap[String(r.studentId)]
+          const gradeStr = String(r.finalGrade || '').toUpperCase()
+          if (status === 'OPPURSTAATUS_A' && (gradeStr === 'MA' || gradeStr === '1' || gradeStr === '2')) {
+            Logger.info('✨ FinalGradesByOvFeature: Skipping L grade for OPPURSTAATUS_A student due to disallowed grade', { journalStudentId: r.journalStudentId, studentId: r.studentId, grade: gradeStr })
+            return null
+          }
+          const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
+          const grade = r.finalGrade
+          let code = null,
+            value = '',
+            value2 = '',
+            nameEt = '',
+            nameEn = ''
+          const valid = true
+          if (['1', '2', '3', '4', '5'].includes(grade)) {
+            code = `KUTSEHINDAMINE_${grade}`
+            value = grade
+            value2 = grade
+            const gradeNames = {
+              5: { nameEt: 'Väga hea', nameEn: 'Very good' },
+              4: { nameEt: 'Hea', nameEn: 'Good' },
+              3: { nameEt: 'Rahuldav', nameEn: 'Satisfactory' },
+              2: { nameEt: 'Puudulik', nameEn: 'Insufficient' },
+              1: { nameEt: 'Nõrk', nameEn: 'Weak' }
+            }
+            nameEt = gradeNames[grade]?.nameEt || ''
+            nameEn = gradeNames[grade]?.nameEn || ''
+          } else if (grade === 'MA') {
+            code = 'KUTSEHINDAMINE_MA'
+            value = 'MA'
+            value2 = 'ma'
+            nameEt = 'Mittearvestatud'
+            nameEn = 'Failed'
+          } else if (grade === 'A') {
+            code = 'KUTSEHINDAMINE_A'
+            value = 'A'
+            value2 = 'a'
+            nameEt = 'Arvestatud'
+            nameEn = 'Passed'
+          } else {
+            return null
+          }
+          if (existing) {
+            return {
+              ...existing,
+              journalStudent: String(r.journalStudentId),
+              grade: {
+                code,
+                gradingSchemaRowId: null,
+                value,
+                value2,
+                extraval1: null,
+                extraval2: null,
+                nameEt,
+                nameEn,
+                valid
+              },
+              removeStudentHistory: true
+            }
+          } else {
+            return {
+              id: undefined,
+              journalStudent: String(r.journalStudentId),
+              absence: null,
+              grade: {
+                code,
+                gradingSchemaRowId: null,
+                value,
+                value2,
+                extraval1: null,
+                extraval2: null,
+                nameEt,
+                nameEn,
+                valid: true
+              },
+              verbalGrade: null,
+              removeStudentHistory: true,
+              addInfo: null,
+              isLessonAbsence: false,
+              hasOverlappingLessonAbsence: false,
+              isPraise: false,
+              isRemark: false,
+              lessonAbsences: {},
+              studentName: null,
+              studentGroup: null,
+              journalEntryStudentHistories: [],
+              hasWholeDayAcceptedAbsence: false,
+              wholeDayAbsenceCode: null
+            }
+          }
+        })
+        .filter(Boolean)
+      // Deduplicate by journalStudent (last one wins), filter out null/undefined journalStudent
+      const seen = new Map()
+      mappedStudents.forEach(js => {
+        if (js && js.journalStudent != null) {
+          seen.set(String(js.journalStudent), js)
+        }
+      })
+      const journalEntryStudents = Array.from(seen.values()).filter(js => js && js.journalStudent != null)
+      Logger.info('✨ FinalGradesByOvFeature: journalEntryStudents to send', journalEntryStudents)
+      // Build payload using the current entry from API
+      const payload = {
+        ...currentEntry,
+        journalEntryStudents
+      }
+      Logger.info('✨ FinalGradesByOvFeature: Sending SISSEKANNE_L PUT', { url: `/journals/${journalId}/journalEntry/${lEntry.id}`, payload })
+      await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${lEntry.id}`, payload)
+      setTimeout(() => window.location.reload(), 1000)
+    } catch (err) {
+      statusDiv.textContent = 'Viga saatmisel.'
+    }
+  }
+
+  // Ensure that L-grade (SISSEKANNE_L) entries have proper grade selection dropdowns in journal table cells
+  #ensureLGradeDropdowns() {
+    try {
+      const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
+      if (!table) return
+      
+      // Find journal entry header that contains "Lõpptulemus" or similar final result text
+      const headerRow = table.querySelector('thead tr')
+      if (!headerRow) return
+      
+      const headerCells = Array.from(headerRow.children)
+      let lGradeColIndex = -1
+      
+      // Look for header containing final result keywords
+      headerCells.forEach((cell, index) => {
+        const text = (cell.textContent || '').toLowerCase().trim()
+        if (text.includes('lõpptulemus') || text.includes('final') || text.includes('kokkuvõte')) {
+          lGradeColIndex = index
+        }
+      })
+      
+      if (lGradeColIndex === -1) return
+      
+      // Process each student row to ensure grade dropdowns exist
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+      rows.forEach(row => {
+        try {
+          const cells = Array.from(row.children)
+          const lGradeCell = cells[lGradeColIndex]
+          if (!lGradeCell) return
+          
+          // Check if the cell already has a grade selection element
+          const existingSelect = lGradeCell.querySelector('md-select, select')
+          const existingInput = lGradeCell.querySelector('input')
+          
+          if (!existingSelect && !existingInput) {
+            // Create a simple grade selection dropdown
+            this.#createLGradeDropdown(lGradeCell, row)
+          }
+        } catch (e) {
+          // Ignore per-row errors
+        }
+      })
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error ensuring L-grade dropdowns', e)
+    }
+  }
+
+  // Create a grade selection dropdown for an L-grade table cell
+  #createLGradeDropdown(cell, row) {
+    try {
+      // Extract student identifier from row
+      const studentId = row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') || 
+                       (row.dataset ? row.dataset.journalStudent : null)
+      if (!studentId) return
+      
+      // Create a select element for grade selection
+      const select = document.createElement('select')
+      select.className = 'oa-lgrade-select'
+      select.style.cssText = `
+        width: 80px;
+        padding: 4px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+        background: white;
+      `
+      
+      // Add grade options
+      const grades = [
+        { value: '', text: '-' },
+        { value: '5', text: '5 (Väga hea)' },
+        { value: '4', text: '4 (Hea)' },
+        { value: '3', text: '3 (Rahuldav)' },
+        { value: '2', text: '2 (Puudulik)' },
+        { value: '1', text: '1 (Nõrk)' },
+        { value: 'A', text: 'A (Arvestatud)' },
+        { value: 'MA', text: 'MA (Mittearvestatud)' }
+      ]
+      
+      grades.forEach(grade => {
+        const option = document.createElement('option')
+        option.value = grade.value
+        option.textContent = grade.text
+        select.appendChild(option)
+      })
+      
+      // Set current value if one exists in the cell
+      const currentText = (cell.textContent || '').trim()
+      const currentGrade = this.#extractGradeFromText(currentText)
+      if (currentGrade && grades.some(g => g.value === currentGrade)) {
+        select.value = currentGrade
+      }
+      
+      // Add change event listener to update the grade
+      select.addEventListener('change', (e) => {
+        this.#handleLGradeChange(studentId, e.target.value, cell)
+      })
+      
+      // Replace cell content with the dropdown
+      cell.innerHTML = ''
+      cell.appendChild(select)
+      
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error creating L-grade dropdown', e)
+    }
+  }
+
+  // Ensure the grading-mode select (`oa-grading-mode-select`) exists and is placed next to the provided button.
+  // If it already exists elsewhere on the page we simply move it next to the button to reuse the same control.
+  #attachGradingModeSelectToButton(button) {
+    try {
+      if (!button) return
+      const existing = document.getElementById('oa-grading-mode-select')
+      if (existing) {
+        // Move existing select to be immediately after the button if it's not already there
+        try {
+          if (existing.nextSibling !== button.nextSibling || existing.parentElement !== button.parentElement) {
+            button.insertAdjacentElement('afterend', existing)
+          }
+          // ensure moved select appears bold per UI preference
+          try { existing.style.fontWeight = 'bold' } catch (e) { void e }
+        } catch (e) {
+          // fallback: no-op
+        }
+        return
+      }
+
+      // Create a grading-mode select identical to the ÕV select so labels and titles match exactly
+      const sel = document.createElement('select')
+      sel.id = 'oa-grading-mode-select'
+  sel.style.marginLeft = '8px'
+  sel.style.padding = '6px 8px'
+  sel.style.fontSize = '14px'
+  // Make the control visually bold to improve prominence
+  sel.style.fontWeight = 'bold'
+      sel.setAttribute('aria-label', 'Hindamissüsteem')
+      sel.title = 'Vali hindamissüsteem: Mitteeristav või Eristav (mõjutab, kuidas ÕV ja lõpptulemused teisendatakse)'
+      const optM = document.createElement('option')
+      optM.value = 'mitte'
+      optM.textContent = 'Mitteeristav hindamine'
+      optM.title = 'Mitteeristav: numeric 3–5 → A; 1–2 or MA → MA; final: A only if all ÕV are A and none ungraded; otherwise MA'
+      const optE = document.createElement('option')
+      optE.value = 'eristav'
+      optE.textContent = 'Eristav hindamine'
+      optE.title = 'Eristav: A → 5; MA or ungraded → 2; final = rounded average of all grades'
+      sel.appendChild(optM)
+      sel.appendChild(optE)
+
+      // Insert the select after the button. Keep inline styling similar to main flow so appearance matches.
+      try {
+        if (button && button.parentNode) {
+          button.parentNode.insertBefore(sel, button.nextSibling)
+          try {
+            if (button && button.style) {
+              button.style.display = 'inline-block'
+              button.style.verticalAlign = 'middle'
+              button.style.marginRight = '8px'
+            }
+            sel.style.display = 'inline-block'
+            sel.style.verticalAlign = 'middle'
+          } catch (e) { void e }
+        } else {
+          document.body.appendChild(sel)
+        }
+      } catch (e) {
+        // fallback: append to body
+        try { document.body.appendChild(sel) } catch (ee) { void ee }
+      }
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error while creating/moving grading-mode select', e)
+    }
+  }
+
+  // Extract grade value from text content
+  #extractGradeFromText(text) {
+    if (!text) return ''
+    const cleaned = text.trim().toUpperCase()
+    if (['1', '2', '3', '4', '5'].includes(cleaned)) return cleaned
+    if (cleaned === 'A' || cleaned === 'MA') return cleaned
+    return ''
+  }
+
+  // Handle grade selection change
+  async #handleLGradeChange(studentId, newGrade, cell) {
+    try {
+      if (!newGrade) {
+        // Clear grade - could implement grade removal logic here
+        cell.style.backgroundColor = ''
+        return
+      }
+      
+      // Visual feedback while saving
+      cell.style.backgroundColor = '#fff3cd'
+      
+      // Here you could implement actual grade saving logic
+      // For now, just update the visual state
+      Logger.info('FinalGradesByOvFeature: L-grade changed', { studentId, newGrade })
+      
+      // Reset background after a delay
+      setTimeout(() => {
+        cell.style.backgroundColor = '#d4edda' // Light green to indicate saved
+        setTimeout(() => {
+          cell.style.backgroundColor = ''
+        }, 2000)
+      }, 500)
+      
+    } catch (e) {
+      Logger.error('FinalGradesByOvFeature: Error handling L-grade change', e)
+      cell.style.backgroundColor = '#f8d7da' // Light red to indicate error
+    }
+  }
+
+  // Attach a DOM observer that re-evaluates L-grade diffs and updates the provided button
+  // Uses a lightweight visible-text snapshot to avoid API calls for minor/no-op mutations
+  attachDomObserver(button, initialEntries) {
+    try {
+      const tableEl = document.querySelector('.journalTableContainer') || document.querySelector('#main-content')
+      if (!tableEl) return null
+      let debounceTimer = null
+      let lastSnapshot = null
+      const getSnapshot = () => {
+        try {
+          const txt = (tableEl && tableEl.innerText) ? tableEl.innerText.trim() : ''
+          return txt ? txt.slice(0, 20000) : ''
+        } catch (e) {
+          return ''
+        }
+      }
+      // Initialize snapshot from provided initialEntries if available
+      if (initialEntries) {
+        try {
+          const fakeEl = { innerText: JSON.stringify(initialEntries).slice(0, 20000) }
+          lastSnapshot = (fakeEl.innerText || '').trim()
+        } catch (e) {
+          lastSnapshot = null
+        }
+      }
+      const onChange = () => {
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(async() => {
+          try {
+            const snapshot = getSnapshot()
+            if (snapshot === lastSnapshot) {
+              Logger.info('✨ FinalGradesByOvFeature: DOM changed but table snapshot unchanged — skipping API')
+              return
+            }
+            lastSnapshot = snapshot
+            Logger.info('✨ FinalGradesByOvFeature: Detected meaningful DOM change — re-evaluating L diffs')
+            const journalId = this.#extractJournalId()
+            if (!journalId) return
+            const [newEntries, newStudents] = await Promise.all([
+              this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+              this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+            ])
+            this._lastEntries = newEntries
+            const newResults = this.extractFinalGrades(newEntries, newStudents)
+            await this.showLGradeResults(newResults, button, newEntries, { autoSync: false })
+            Logger.info('✨ FinalGradesByOvFeature: Button state updated after DOM change')
+          } catch (err) {
+            Logger.warn('✨ FinalGradesByOvFeature: Error while re-evaluating after DOM change', err)
+          }
+        }, 250)
+      }
+      const mo = new MutationObserver(onChange)
+      mo.observe(tableEl, { childList: true, subtree: true, attributes: true })
+      return mo
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Failed to attach DOM observer for table changes', e)
+      return null
+    }
+  }
+
+  // Helper: detect whether there are any existing SISSEKANNE_L grades in provided entries
+  // Returns true if at least one journalEntryStudents array contains a grade code
+  #hasAnyLGrades(entries) {
+    try {
+      if (!entries || !Array.isArray(entries)) return false
+      for (const entry of entries) {
+        if (entry && entry.entryType === 'SISSEKANNE_L') {
+          const jes = entry.journalEntryStudents
+          if (Array.isArray(jes) && jes.length > 0) {
+            for (const js of jes) {
+              if (js && js.grade && js.grade.code) return true
+            }
+          }
+        }
+      }
+    } catch (e) {
+      Logger.warn('FinalGradesByOvFeature: Error while checking for existing L grades', e)
+    }
+    return false
   }
 
   // Helper: detect whether any SISSEKANNE_O outcome grades exist in the provided entries
