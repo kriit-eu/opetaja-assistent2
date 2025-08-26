@@ -1,26 +1,7 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { domService } from '../../../services/DomService.js'
-import HighlightFinalGradesFeature from '../highlightFinalGrades/HighlightFinalGradesFeature.js'
-
-// Local CSS injector for final-grade mismatch highlights (border-only red) — keeps OV highlights untouched
-const OA_FINAL_GRADE_STYLE_ID = 'oa-final-grade-style'
-function injectOaFinalGradeCSS() {
-  if (document.getElementById(OA_FINAL_GRADE_STYLE_ID)) return
-  const css = `
-    .oa-final-grade-red {
-      background: transparent !important;
-      box-shadow: none !important;
-      border: 2px solid #ff5252 !important; /* red border (mismatch) */
-      position: relative;
-      cursor: pointer;
-    }
-  `
-  const style = document.createElement('style')
-  style.id = OA_FINAL_GRADE_STYLE_ID
-  style.textContent = css
-  try { document.head.appendChild(style) } catch (e) { document.body.appendChild(style) }
-}
+import { injectFinalGradeCSS, injectOaFinalGradeCSS, markMismatch, clearMismatch } from './OaFinalGradeHighlighter.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
   // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
@@ -255,8 +236,8 @@ class FinalGradesByOvFeature extends BaseFeature {
   }
 
   shouldActivate(url) {
-    // Only activate on /journal/<id>/edit URLs
-    const match = url.match(/\/journal\/(\d+)\/edit/)
+    // Activate on /journal/<id>/edit and also on /journal/<id> (non-edit view) for broader coverage
+    const match = url.match(/\/journal\/(\d+)(?:\/edit)?/)
     const result = !!match && super.shouldActivate(url)
     Logger.info('✨ FinalGradesByOvFeature: shouldActivate called', { url, result })
     if (!result && url.match(/\/journal\/(\d+)/)) {
@@ -266,6 +247,8 @@ class FinalGradesByOvFeature extends BaseFeature {
   }
 
   async onActivate() {
+    // Console log to ensure visibility in page devtools (extension Logger may be quiet)
+    try { console.log('✨ FinalGradesByOvFeature: onActivate called', window.location.href) } catch (e) { void e }
     Logger.info('✨ FinalGradesByOvFeature: onActivate called')
     Logger.info('✨ FinalGradesByOvFeature: Current URL:', window.location.href)
 
@@ -1499,10 +1482,10 @@ class FinalGradesByOvFeature extends BaseFeature {
         // Locate the journal table
         const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
         if (table) {
-          // Ensure OA local CSS is available and use HighlightFinalGradesFeature to detect column indices
-          injectOaFinalGradeCSS()
-          const hf = new HighlightFinalGradesFeature()
-          const { finalGradeCols, ovCols } = hf.findColumnIndices(table)
+          // Ensure OA local CSS is available and detect column indices using local helper
+          // (avoid depending on HighlightFinalGradesFeature which isn't imported here)
+          injectFinalGradeCSS()
+          const { finalGradeCols, ovCols } = this.findColumnIndices(table)
           // Map ovCols -> ovNum using results.allOvNums; fall back to sequence if lengths mismatch
           const sortedOvCols = (ovCols || []).slice().sort((a, b) => a - b)
           const ovColToNum = {}
@@ -1617,23 +1600,23 @@ class FinalGradesByOvFeature extends BaseFeature {
               const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
               // If both empty, consider equal
               if (!cellToken && !calcToken) {
-                cell.classList.remove('oa-final-grade-red')
+                clearMismatch(cell)
                 clearTooltip()
                 return
               }
               // If either token empty, treat as mismatch
               if (!cellToken || !calcToken) {
-                cell.classList.add('oa-final-grade-red')
+                markMismatch(cell, cellToken || '(tühi)', calcToken || '(tühi)')
                 setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
               // Compare MA/A directly
               if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
                 if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltip()
                 }
                 return
@@ -1644,10 +1627,10 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (cellIsInt && calcIsNum) {
                 const rounded = String(Math.round(Number(calcToken)))
                 if (rounded !== cellToken) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltip()
                 }
                 return
@@ -1657,20 +1640,20 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const c1 = Number(parseFloat(calcToken).toFixed(2))
                 const c2 = Number(parseFloat(cellToken).toFixed(2))
                 if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltip()
                 }
                 return
               }
               // Fallback: strict comparison
                 if (calcToken !== cellToken) {
-                cell.classList.add('oa-final-grade-red')
+                markMismatch(cell, cellToken, calcToken)
                 setTooltip(cellToken, calcToken)
               } else {
-                cell.classList.remove('oa-final-grade-red')
+                clearMismatch(cell)
                 clearTooltip()
               }
             })
@@ -1682,6 +1665,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (!cell) return
               const cellToken = extractGradeToken(cell.textContent || '')
               const calcToken = extractGradeToken(String((student.ovGrades && student.ovGrades[ovNum]) ? student.ovGrades[ovNum] : ''))
+              // (debug logs removed)
               const setTooltipOv = (current, calculated) => {
                 try {
                   cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
@@ -1689,21 +1673,21 @@ class FinalGradesByOvFeature extends BaseFeature {
               }
               const clearTooltipOv = () => { try { cell.title = '' } catch (e) { void e } }
               if (!cellToken && !calcToken) {
-                cell.classList.remove('oa-final-grade-red')
+                clearMismatch(cell)
                 clearTooltipOv()
                 return
               }
               if (!cellToken || !calcToken) {
-                cell.classList.add('oa-final-grade-red')
+                markMismatch(cell, cellToken || '(tühi)', calcToken || '(tühi)')
                 setTooltipOv(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
               if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
                 if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltipOv(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltipOv()
                 }
                 return
@@ -1713,10 +1697,10 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (cellIsInt && calcIsNum) {
                 const rounded = String(Math.round(Number(calcToken)))
                 if (rounded !== cellToken) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltipOv(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltipOv()
                 }
                 return
@@ -1725,19 +1709,19 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const c1 = Number(parseFloat(calcToken).toFixed(2))
                 const c2 = Number(parseFloat(cellToken).toFixed(2))
                 if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltipOv(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltipOv()
                 }
                 return
               }
               if (calcToken !== cellToken) {
-                cell.classList.add('oa-final-grade-red')
+                markMismatch(cell, cellToken, calcToken)
                 setTooltipOv(cellToken, calcToken)
               } else {
-                cell.classList.remove('oa-final-grade-red')
+                clearMismatch(cell)
                 clearTooltipOv()
               }
             })
@@ -1948,9 +1932,9 @@ class FinalGradesByOvFeature extends BaseFeature {
       if (!table) return
 
       // Ensure local CSS is injected for OA final-grade mismatch highlights
-      injectOaFinalGradeCSS()
-      const hf = new HighlightFinalGradesFeature()
-      const { finalGradeCols } = hf.findColumnIndices(table)
+      injectFinalGradeCSS()
+      
+      const { finalGradeCols } = this.findColumnIndices(table)
       if (!finalGradeCols || finalGradeCols.length === 0) return
 
       const extractGradeToken = txt => {
@@ -2023,22 +2007,22 @@ class FinalGradesByOvFeature extends BaseFeature {
               const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
 
               if (!cellToken && !calcToken) {
-                cell.classList.remove('oa-final-grade-red')
+                clearMismatch(cell)
                 clearTooltip()
                 return
               }
               if (!cellToken || !calcToken) {
                 // missing one side -> mark as red (mismatch)
-                cell.classList.add('oa-final-grade-red')
+                markMismatch(cell, cellToken || '(tühi)', calcToken || '(tühi)')
                 setTooltip(cellToken || '(tühi)', calcToken || '(tühi)')
                 return
               }
               if (/^MA$/i.test(calcToken) || /^MA$/i.test(cellToken) || /^A$/i.test(calcToken) || /^A$/i.test(cellToken)) {
                 if (calcToken.toUpperCase() !== cellToken.toUpperCase()) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltip()
                 }
                 return
@@ -2048,10 +2032,10 @@ class FinalGradesByOvFeature extends BaseFeature {
               if (cellIsInt && calcIsNum) {
                 const rounded = String(Math.round(Number(calcToken)))
                 if (rounded !== cellToken) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltip()
                 }
                 return
@@ -2060,19 +2044,19 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const c1 = Number(parseFloat(calcToken).toFixed(2))
                 const c2 = Number(parseFloat(cellToken).toFixed(2))
                 if (Number.isNaN(c1) || Number.isNaN(c2) || Math.abs(c1 - c2) > 0.01) {
-                  cell.classList.add('oa-final-grade-red')
+                  markMismatch(cell, cellToken, calcToken)
                   setTooltip(cellToken, calcToken)
                 } else {
-                  cell.classList.remove('oa-final-grade-red')
+                  clearMismatch(cell)
                   clearTooltip()
                 }
                 return
               }
               if (calcToken !== cellToken) {
-                cell.classList.add('oa-final-grade-red')
+                markMismatch(cell, cellToken, calcToken)
                 setTooltip(cellToken, calcToken)
               } else {
-                cell.classList.remove('oa-final-grade-red')
+                clearMismatch(cell)
                 clearTooltip()
               }
             } catch (e) {
@@ -2740,6 +2724,42 @@ class FinalGradesByOvFeature extends BaseFeature {
       Logger.warn('FinalGradesByOvFeature: Error while checking for existing ÕV grades', e)
     }
     return false
+  }
+
+  // Find column indices for final grade and ÕV columns in the journal table
+  // Copied from HighlightFinalGradesFeature to avoid dependency
+  findColumnIndices(table) {
+    const headerRows = Array.from(table.querySelectorAll('thead tr'))
+    const finalGradeCols = []
+    const ovCols = []
+    const debugHeaders = []
+    headerRows.forEach(row => {
+      let colIdx = 0
+      Array.from(row.children).forEach(th => {
+        const colspan = parseInt(th.getAttribute('colspan') || '1', 10)
+        const rawText = th.innerText || th.textContent
+        // Normalize: replace all whitespace (including line breaks) with single space, trim, lowercase
+        const normalized = (rawText || '').replace(/\s+/g, ' ').trim().toLowerCase()
+        let ovMatch = false
+        let finalMatch = false
+        // ÕV: match 'õv', 'õv1', 'õv2', 'õv 2', 'õv_2', 'õv-2', 'õv2 forward', or contains 'õpiväljund'
+        if (/^õv(\d+)?([ _-]?.*)?$/i.test(normalized) || normalized.includes('õpiväljund')) {
+          ovMatch = true
+          for (let i = 0; i < colspan; i++) ovCols.push(colIdx + i)
+        }
+        // Final grade: match 'lõpptulemus', 'lõpptulemus 1', 'lõpptulemus_2', etc.
+        if (/lõpptulemus/.test(normalized)) {
+          finalMatch = true
+          for (let i = 0; i < colspan; i++) finalGradeCols.push(colIdx + i)
+        }
+        debugHeaders.push(`[${colIdx}] "${rawText.trim()}" => "${normalized}" | OV: ${ovMatch} | FINAL: ${finalMatch} | colspan=${colspan}`)
+        colIdx += colspan
+      })
+    })
+    if (Logger.isDebugMode()) Logger.info('✨ FinalGradesByOvFeature: header debug:', debugHeaders.join(' | '))
+    if (Logger.isDebugMode()) Logger.info('✨ FinalGradesByOvFeature: detected final grade columns:', finalGradeCols)
+    if (Logger.isDebugMode()) Logger.info('✨ FinalGradesByOvFeature: detected ÕV columns:', ovCols)
+    return { finalGradeCols: Array.from(new Set(finalGradeCols)), ovCols: Array.from(new Set(ovCols)) }
   }
 }
 export default FinalGradesByOvFeature
