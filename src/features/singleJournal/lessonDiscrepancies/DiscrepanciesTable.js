@@ -222,13 +222,63 @@ export class DiscrepanciesTable {
         // Check for all highlight types and missing grades
         const ovCells = document.querySelectorAll('.highlight-ov-red')
         const ovYellowCells = document.querySelectorAll('.highlight-ov-yellow')
-        const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
-        const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
+  const finalGradeRedCells = document.querySelectorAll('.highlight-final-grade-red')
+  const finalGradeYellowCells = document.querySelectorAll('.highlight-final-grade-yellow')
+  // OA-specific mismatches are marked with .oa-final-grade-red by FinalGrades feature
+  const oaFinalGradeMismatchCells = document.querySelectorAll('.oa-final-grade-red')
+        // Additionally detect whether the journal table contains ÕV columns at all (headers)
+        let hasOvColumns = false
+        try {
+          const headerCells = document.querySelectorAll('table.journalTable thead th')
+          hasOvColumns = Array.from(headerCells).some(th => {
+            const txt = (th.textContent || th.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase()
+            return /^õv(\d+)?([ _-]?.*)?$/.test(txt) || txt.includes('õpiväljund')
+          })
+        } catch (e) {
+          hasOvColumns = false
+        }
+        // Detect final-grade header column indices and check for empty final-grade cells
+        let finalGradeHeaderIndices = []
+        let hasMissingFinals = false
+        try {
+          const headerRows = document.querySelectorAll('table.journalTable thead tr')
+          headerRows.forEach(row => {
+            let colIdx = 0
+            Array.from(row.children).forEach(th => {
+              const colspan = parseInt(th.getAttribute('colspan') || '1', 10) || 1
+              const rawText = th.textContent || th.innerText || ''
+              const normalized = (rawText || '').replace(/\s+/g, ' ').trim().toLowerCase()
+              if (/lõpptulemus/.test(normalized)) {
+                for (let i = 0; i < colspan; i++) finalGradeHeaderIndices.push(colIdx + i)
+              }
+              colIdx += colspan
+            })
+          })
+          if (finalGradeHeaderIndices.length > 0) {
+            const bodyRows = document.querySelectorAll('table.journalTable tbody tr')
+            Array.from(bodyRows).some(row => {
+              const cells = Array.from(row.children).filter(n => n.nodeType === 1)
+              return finalGradeHeaderIndices.some(idx => {
+                const c = cells[idx]
+                if (!c) return false
+                if (!(c.textContent || '').trim()) {
+                  hasMissingFinals = true
+                  return true
+                }
+                return false
+              })
+          })
+          }
+        } catch (e) {
+          finalGradeHeaderIndices = []
+          hasMissingFinals = false
+        }
         const highlighted = document.querySelector('.highlight-missing-grade')
         const missingGradesMessage = highlighted ? 'Mõnedel iseseisevatel töödel on hinded puudu' : null
-        // Should we show the notifications section?
-        // eslint-disable-next-line max-len
-        const shouldShowNotifications = !!missingGradesMessage || ovCells.length > 0 || ovYellowCells.length > 0 || finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0
+  // Should we show the notifications section?
+  // Include OA-specific incorrect final-grade highlights (oa-final-grade-red) in decision
+  // eslint-disable-next-line max-len
+  const shouldShowNotifications = !!missingGradesMessage || ovCells.length > 0 || ovYellowCells.length > 0 || finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0 || oaFinalGradeMismatchCells.length > 0
         let notificationsSection = ''
         if (shouldShowNotifications) {
           notificationsSection = `
@@ -257,47 +307,96 @@ export class DiscrepanciesTable {
           notifications.querySelectorAll('.oa2-banner-ov').forEach(b => b.remove())
           notifications.querySelectorAll('.oa2-banner-final-grade').forEach(b => b.remove())
           // Inject ÕV banner if needed
-          if (ovYellowCells.length > 0) {
-            const ovBanner = document.createElement('div')
-            ovBanner.className = 'oa2-banner oa2-banner--yellow oa2-banner-ov'
-            ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund (tähtaeg läheneb)!'
-            const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
-            if (hindedHeader && hindedHeader.nextSibling) {
-              notifications.insertBefore(ovBanner, hindedHeader.nextSibling)
-            } else {
-              notifications.appendChild(ovBanner)
-            }
-          } else if (ovCells.length > 0) {
-            const ovBanner = document.createElement('div')
-            ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
-            ovBanner.textContent = 'Mõnedel õpilastel puudub õpiväljund!'
-            const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
-            if (hindedHeader && hindedHeader.nextSibling) {
-              notifications.insertBefore(ovBanner, hindedHeader.nextSibling)
-            } else {
-              notifications.appendChild(ovBanner)
+          // If there are missing final-grade cells (even if not highlighted), show missing-final banner
+          if (hasMissingFinals && notifications) {
+            const text = hasOvColumns ? 'Mõnedel õpilastel puudub õpiväljund' : 'Mõnedel õpilastel puudub lõpptulemus'
+            if (!this.#bannerExists(notifications, text)) {
+              const missingFinalBanner = document.createElement('div')
+              missingFinalBanner.className = 'oa2-banner oa2-banner--red oa2-banner-final-grade'
+              missingFinalBanner.textContent = text
+              const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+              if (hindedHeader && hindedHeader.nextSibling) {
+                notifications.insertBefore(missingFinalBanner, hindedHeader.nextSibling)
+              } else {
+                notifications.appendChild(missingFinalBanner)
+              }
             }
           }
-          // Inject final grade banner if needed
-          if (finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0) {
-            const fgBanner = document.createElement('div')
-            fgBanner.className = 'oa2-banner oa2-banner-final-grade'
-            if (finalGradeYellowCells.length > 0) {
-              fgBanner.classList.add('oa2-banner--yellow')
-              fgBanner.textContent = 'Mõnedel õpilastel puudub Lõpptulemus (tähtaeg läheneb)!'
-            } else if (finalGradeRedCells.length > 0) {
-              fgBanner.classList.add('oa2-banner--red')
-              fgBanner.textContent = 'Mõnedel õpilastel puudub Lõpptulemus!'
+          if (ovYellowCells.length > 0) {
+            const text = 'Mõnedel õpilastel puudub õpiväljund (tähtaeg läheneb)!'
+            if (!this.#bannerExists(notifications, text)) {
+              const ovBanner = document.createElement('div')
+              ovBanner.className = 'oa2-banner oa2-banner--yellow oa2-banner-ov'
+              ovBanner.textContent = text
+              const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+              if (hindedHeader && hindedHeader.nextSibling) {
+                notifications.insertBefore(ovBanner, hindedHeader.nextSibling)
+              } else {
+                notifications.appendChild(ovBanner)
+              }
             }
-            const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
-            // Place after ÕV banner if present, else after Hinded header
-            const ovBanner = notifications.querySelector('.oa2-banner-ov')
-            if (ovBanner && ovBanner.nextSibling) {
-              notifications.insertBefore(fgBanner, ovBanner.nextSibling)
-            } else if (hindedHeader && hindedHeader.nextSibling) {
-              notifications.insertBefore(fgBanner, hindedHeader.nextSibling)
-            } else {
-              notifications.appendChild(fgBanner)
+          } else if (ovCells.length > 0) {
+            const text = 'Mõnedel õpilastel puudub õpiväljund'
+            if (!this.#bannerExists(notifications, text)) {
+              const ovBanner = document.createElement('div')
+              ovBanner.className = 'oa2-banner oa2-banner--red oa2-banner-ov'
+              ovBanner.textContent = text
+              const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+              if (hindedHeader && hindedHeader.nextSibling) {
+                notifications.insertBefore(ovBanner, hindedHeader.nextSibling)
+              } else {
+                notifications.appendChild(ovBanner)
+              }
+            }
+          }
+          // Inject final/ÕV-related banner if needed
+          // If there are ÕV columns or highlights present, prefer an ÕV-specific incorrect banner when mismatches exist
+          const hasOvHighlights = ovCells.length > 0 || ovYellowCells.length > 0 || hasOvColumns
+          const hasFinalHighlights = finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0
+          if (hasOvHighlights && (oaFinalGradeMismatchCells.length > 0 || hasFinalHighlights)) {
+            const text = 'Mõnedel õpilastel on vale õpiväljundid!'
+            if (!this.#bannerExists(notifications, text)) {
+              const ovFgBanner = document.createElement('div')
+              ovFgBanner.className = 'oa2-banner oa2-banner-final-grade oa2-banner--red'
+              // When ÕV columns/highlights exist and mismatches found, show ÕV-specific incorrect message (plural)
+              ovFgBanner.textContent = text
+              const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+              const ovBanner = notifications.querySelector('.oa2-banner-ov')
+              if (ovBanner && ovBanner.nextSibling) {
+                notifications.insertBefore(ovFgBanner, ovBanner.nextSibling)
+              } else if (hindedHeader && hindedHeader.nextSibling) {
+                notifications.insertBefore(ovFgBanner, hindedHeader.nextSibling)
+              } else {
+                notifications.appendChild(ovFgBanner)
+              }
+            }
+          } else if (oaFinalGradeMismatchCells.length > 0 || finalGradeRedCells.length > 0 || finalGradeYellowCells.length > 0) {
+            let text = null
+            if (oaFinalGradeMismatchCells.length > 0) {
+              text = hasOvColumns ? 'Mõnedel õpilastel on vale õpiväljundid!' : 'Mõnedel õpilastel on vale lõpptulemus'
+            } else if (finalGradeYellowCells.length > 0) {
+              text = 'Mõnedel õpilastel puudub Lõpptulemus (tähtaeg läheneb)!'
+            } else if (finalGradeRedCells.length > 0) {
+              text = 'Mõnedel õpilastel puudub lõpptulemus'
+            }
+            if (text && !this.#bannerExists(notifications, text)) {
+              const fgBanner = document.createElement('div')
+              fgBanner.className = 'oa2-banner oa2-banner-final-grade'
+              // If OA-specific mismatches present, show incorrect-final message (red)
+              if (oaFinalGradeMismatchCells.length > 0) fgBanner.classList.add('oa2-banner--red')
+              if (finalGradeYellowCells.length > 0) fgBanner.classList.add('oa2-banner--yellow')
+              if (finalGradeRedCells.length > 0) fgBanner.classList.add('oa2-banner--red')
+              fgBanner.textContent = text
+              const hindedHeader = Array.from(notifications.children).find(el => el.textContent && el.textContent.includes('Hinded'))
+              // Place after ÕV banner if present, else after Hinded header
+              const ovBanner = notifications.querySelector('.oa2-banner-ov')
+              if (ovBanner && ovBanner.nextSibling) {
+                notifications.insertBefore(fgBanner, ovBanner.nextSibling)
+              } else if (hindedHeader && hindedHeader.nextSibling) {
+                notifications.insertBefore(fgBanner, hindedHeader.nextSibling)
+              } else {
+                notifications.appendChild(fgBanner)
+              }
             }
           }
         }
@@ -759,6 +858,16 @@ export class DiscrepanciesTable {
     const style = 'display:inline-flex;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);'
     return `<div style="${style}">${currentPill}${correctPill}</div>`
   }
+  // Helper to check whether a banner with the exact text already exists in the notifications node
+  #bannerExists(notifications, text) {
+    if (!notifications || !text) return false
+    try {
+      const banners = notifications.querySelectorAll('.oa2-banner, .oa2-banner-final-grade, .oa2-banner-ov')
+      return Array.from(banners).some(b => (b.textContent || '').trim() === text.trim())
+    } catch (e) {
+      return false
+    }
+  }
 
   // Add this method to update the banner after highlighting
   updateMissingGradesBanner(missingGradesMessage) {
@@ -773,8 +882,76 @@ export class DiscrepanciesTable {
         Hinded
       </div>
     </div>`
-    if (missingGradesMessage) {
+    // If missing grades message provided, show it.
+    if (missingGradesMessage && !this.#bannerExists(notifications, missingGradesMessage)) {
       notifications.innerHTML += `<div class='oa2-banner oa2-banner--red'>${missingGradesMessage}</div>`
     }
+
+    // Check for OA final-grade mismatches (visual markers added by FinalGrades feature)
+    try {
+      const oaMismatches = document.querySelectorAll('.oa-final-grade-red')
+      if (oaMismatches && oaMismatches.length > 0) {
+        const text = 'Mõnedel õpilastel on vale lõpptulemus!'
+        if (!this.#bannerExists(notifications, text)) {
+          notifications.innerHTML += `<div class='oa2-banner oa2-banner--red oa2-banner-final-grade'>${text}</div>`
+        }
+      }
+    } catch (e) { /* ignore DOM errors */ }
+
+    // Also detect missing final-grade highlights (empty final grade cells highlighted by HighlightFinalGradesFeature)
+    try {
+      const finalRed = document.querySelectorAll('.highlight-final-grade-red')
+      const finalYellow = document.querySelectorAll('.highlight-final-grade-yellow')
+      if (finalRed && finalRed.length > 0) {
+        const text = 'Mõnedel õpilastel puudub lõpptulemus'
+        if (!this.#bannerExists(notifications, text)) {
+          notifications.innerHTML += `<div class='oa2-banner oa2-banner--red oa2-banner-final-grade'>${text}</div>`
+        }
+      } else if (finalYellow && finalYellow.length > 0) {
+        const text = 'Mõnedel õpilastel puudub Lõpptulemus (tähtaeg läheneb)!'
+        if (!this.#bannerExists(notifications, text)) {
+          notifications.innerHTML += `<div class='oa2-banner oa2-banner--yellow oa2-banner-final-grade'>${text}</div>`
+        }
+      }
+    } catch (e) { /* ignore DOM errors */ }
+
+    // Also detect final-grade header and empty final-grade cells even if highlight classes are missing
+    try {
+      const finalGradeHeaderIndices = []
+      const headerRows = document.querySelectorAll('table.journalTable thead tr')
+      headerRows.forEach(row => {
+        let colIdx = 0
+        Array.from(row.children).forEach(th => {
+          const colspan = parseInt(th.getAttribute('colspan') || '1', 10) || 1
+          const txt = (th.textContent || th.innerText || '').replace(/\s+/g, ' ').trim().toLowerCase()
+          if (/lõpptulemus/.test(txt)) {
+            for (let i = 0; i < colspan; i++) finalGradeHeaderIndices.push(colIdx + i)
+          }
+          colIdx += colspan
+        })
+      })
+      if (finalGradeHeaderIndices.length > 0) {
+        const bodyRows = document.querySelectorAll('table.journalTable tbody tr')
+        let hasMissingFinals = false
+        Array.from(bodyRows).some(row => {
+          const cells = Array.from(row.children).filter(n => n.nodeType === 1)
+          return finalGradeHeaderIndices.some(idx => {
+            const c = cells[idx]
+            if (!c) return false
+            if (!(c.textContent || '').trim()) {
+              hasMissingFinals = true
+              return true
+            }
+            return false
+          })
+        })
+        if (hasMissingFinals) {
+          const text = 'Mõnedel õpilastel puudub lõpptulemus'
+          if (!this.#bannerExists(notifications, text)) {
+            notifications.innerHTML += `<div class='oa2-banner oa2-banner--red oa2-banner-final-grade'>${text}</div>`
+          }
+        }
+      }
+    } catch (e) { /* ignore DOM errors */ }
   }
 }

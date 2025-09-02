@@ -214,7 +214,7 @@ class ApiService {
           response = await ApiService.pendingRequests[reqKey]
         } else {
           // Create a fetch promise and store it
-          const fetchPromise = (async () => {
+          const fetchPromise = (async() => {
             try {
               const r = await fetch(urlString, requestOptions)
               if (!r.ok) throw r
