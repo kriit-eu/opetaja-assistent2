@@ -1535,8 +1535,43 @@ class JournalListSyncFeature extends BaseFeature {
       if (base.endsWith('/hois_back')) endpoint = '/journals'
 
       // Detect studyYear id from the page if possible (heuristics)
-      const detectStudyYear = () => {
+      const detectStudyYear = async () => {
         try {
+          // First try the new reliable method: fetch current study year from API
+          try {
+            // Determine correct endpoint to avoid duplicating '/hois_back'
+            const base = (this.api && this.api.tahvel && this.api.tahvel.baseUrl) ? String(this.api.tahvel.baseUrl) : ''
+            let studyYearsEndpoint = '/hois_back/autocomplete/studyYears'
+            if (base.endsWith('/hois_back')) studyYearsEndpoint = '/autocomplete/studyYears'
+            
+            const studyYearsResponse = await this.api.tahvel.get(studyYearsEndpoint, {}, { 
+              cache: true, 
+              cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
+            })
+            
+            if (Array.isArray(studyYearsResponse)) {
+              const currentDate = new Date()
+              
+              // Find the study year that contains the current date
+              const currentStudyYear = studyYearsResponse.find(sy => {
+                if (!sy.startDate || !sy.endDate) return false
+                const startDate = new Date(sy.startDate)
+                const endDate = new Date(sy.endDate)
+                return currentDate >= startDate && currentDate <= endDate
+              })
+              
+              if (currentStudyYear && currentStudyYear.id) {
+                if (Logger.isDebugMode()) {
+                  Logger.debug(`Found current study year from API: ${currentStudyYear.id} (${currentStudyYear.nameEt})`)
+                }
+                return currentStudyYear.id
+              }
+            }
+          } catch (apiError) {
+            Logger.debug('Failed to fetch study year from API, falling back to DOM detection:', apiError.message)
+          }
+
+          // Fallback to original DOM-based detection methods
           // Common global states used by SPA apps
           const globals = [window.__INITIAL_STATE, window.__PRELOADED_STATE, window.__TAHVEL, window.__TAHVEL_STATE, window.appState]
           for (const g of globals) {
@@ -1580,7 +1615,7 @@ class JournalListSyncFeature extends BaseFeature {
         return null
       }
 
-      const studyYear = detectStudyYear()
+      const studyYear = await detectStudyYear()
 
       // Use query params matching example; size=20 by default
       const params = { onlyMyJournals: true, sort: '2, 5, 3', size: 50, page: 0 }
