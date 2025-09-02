@@ -162,7 +162,7 @@ const cacheService = {
     }
 
     // Start a new fetch and store the promise in pendingFetches
-    const fetchPromise = (async () => {
+    const fetchPromise = (async() => {
       try {
         const data = await fetchFn()
 
@@ -204,7 +204,7 @@ const cacheService = {
       // Bubble up the error after cleanup in finally above
       throw error
     }
-    
+
   },
 
   /**
