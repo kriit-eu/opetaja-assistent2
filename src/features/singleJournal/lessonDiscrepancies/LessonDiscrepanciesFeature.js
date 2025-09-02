@@ -3,7 +3,7 @@ import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
 import { DiscrepanciesTable } from './DiscrepanciesTable.js'
-import { showAddConfirmationOverlay } from './AddEntryConfirmationOverlay.js'
+import { showAddConfirmationOverlay, showMessageOverlay } from './AddEntryConfirmationOverlay.js'
 
 // HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
@@ -2604,7 +2604,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       }
 
-      // Attempt server-side auto-fix first: fetch detailed entry and add MAHT_i when missing
+      // Attempt server-side capacity fix first: fetch detailed entry and PUT modified payload
       try {
         const journalId = this.#currentJournalId || this.#extractJournalId()
         if (journalId && actualEntryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
@@ -2612,26 +2612,56 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           // Fetch fresh detailed entry (no cache)
           const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
           if (detailedEntry) {
-            const currentTypes = Array.isArray(detailedEntry.journalEntryCapacityTypes)
-              ? detailedEntry.journalEntryCapacityTypes
+            // Create a safe copy for PUT: remove UI-only fields and normalize types
+            const safeCopy = { ...detailedEntry }
+            // Normalize teacher IDs to numbers
+            if (Array.isArray(safeCopy.journalEntryTeachers)) {
+              safeCopy.journalEntryTeachers = safeCopy.journalEntryTeachers.map(id => (typeof id === 'string' ? Number(id) : id))
+            } else {
+              safeCopy.journalEntryTeachers = []
+            }
+
+            // Ensure capacity types is an array
+            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
+              ? safeCopy.journalEntryCapacityTypes.slice()
               : []
-            // Only attempt to add MAHT_i for independent-work entries or when capacity is missing
-            if (!currentTypes.includes('MAHT_i')) {
-              Logger.info(`[${this.name}] Attempting server-side fix: adding MAHT_i to entry ${actualEntryId}`)
-              const updated = {
-                // Spread the detailedEntry but ensure we don't accidentally include read-only metadata
-                ...detailedEntry,
-                journalEntryCapacityTypes: [...currentTypes, 'MAHT_i']
+
+            // Remove UI-only fields
+            delete safeCopy.teacherSelection
+            delete safeCopy._links
+            delete safeCopy.journalStudent
+
+            // Business rule: if both MAHT_a and MAHT_i present for a lesson entry, remove MAHT_i (auditoorne wins)
+            if (safeCopy.entryType === 'SISSEKANNE_T' && safeCopy.journalEntryCapacityTypes.includes('MAHT_a') && safeCopy.journalEntryCapacityTypes.includes('MAHT_i')) {
+              Logger.info(`[${this.name}] Normalizing capacity types for entry ${actualEntryId}: removing MAHT_i since MAHT_a is present`)
+              safeCopy.journalEntryCapacityTypes = safeCopy.journalEntryCapacityTypes.filter(t => t !== 'MAHT_i')
+            }
+
+            // For independent work entries, ensure MAHT_i is present; remove MAHT_a if present
+            if (safeCopy.entryType === 'SISSEKANNE_I') {
+              const has_i = safeCopy.journalEntryCapacityTypes.includes('MAHT_i')
+              if (!has_i) {
+                Logger.info(`[${this.name}] Adding MAHT_i for independent work entry ${actualEntryId}`)
+                // Remove MAHT_a if present
+                safeCopy.journalEntryCapacityTypes = safeCopy.journalEntryCapacityTypes.filter(t => t !== 'MAHT_a')
+                safeCopy.journalEntryCapacityTypes.push('MAHT_i')
               }
-              // Perform PUT to update the entry
+            }
+
+            // If there is any change compared to server copy, perform PUT
+            const needsPut = JSON.stringify(safeCopy) !== JSON.stringify(detailedEntry)
+            if (needsPut) {
               try {
-                await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, updated)
+                Logger.debug(`[${this.name}] Performing PUT for entry ${actualEntryId} with payload:`, safeCopy)
+                await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+
                 // Clear cache and refresh local journal data
                 try {
                   await cacheService.clearJournalCache(journalId)
                 } catch (cErr) {
                   Logger.debug(`[${this.name}] cache clear error after PUT:`, cErr)
                 }
+
                 // Re-fetch journal data to reflect changes
                 try {
                   const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
@@ -2643,15 +2673,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 // Refresh the discrepancies display
                 await this.#refreshTableWithRetry()
 
-                // Inform user and exit early since fix was applied server-side
-                alert('Paranda: lisatud iseseisva õppe mahutüüp (MAHT_i). Palun kontrolli muudatusi päevikus.')
+                // Inform user briefly and exit early since fix was applied server-side
+                try { await showMessageOverlay({ title: 'Parandus salvestatud', message: 'Muudatused on salvestatud serverisse. Palun kontrollige päevikut.', duration: 4000 }) } catch {}
                 return
               } catch (putErr) {
-                Logger.error(`[${this.name}] Failed to PUT updated entry ${actualEntryId}:`, putErr)
-                // Fall through to UI-based fix if server-side update fails
+                Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId}:`, putErr)
+                // Fall through to UI-based flow as a fallback
               }
             } else {
-              Logger.debug(`[${this.name}] Entry ${actualEntryId} already contains MAHT_i, skipping server-side fix`)
+              Logger.debug(`[${this.name}] No normalization needed for entry ${actualEntryId}; skipping server PUT`)
             }
           }
         }
