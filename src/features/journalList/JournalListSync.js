@@ -159,8 +159,9 @@ class JournalListSyncFeature extends BaseFeature {
       'a[href^="/#/journal/"]'
     ]
 
-    // Match the journal list page URL pattern and pass required selectors
-    super('journalListSync', /#\/journals\?_menu/, journalLinkSelectors)
+  // Match the journal list page URL pattern and pass required selectors
+  // Accept modern variants like '#/journals' and '#/journals?...'
+  super('journalListSync', /#\/journals/, journalLinkSelectors)
 
     // Initialize state
     this.differences = null
@@ -185,10 +186,10 @@ class JournalListSyncFeature extends BaseFeature {
    */
   onActivate(elements) {
     this.isActive = true
-    // Only activate if the URL is exactly 'journals?_menu'
+    // Only activate on journals page (accept variants like 'journals?…')
     const url = window.location.hash.replace(/^#\/?/, '').split('&')[0]
-    if (url !== 'journals?_menu') {
-      Logger.debug('JournalListSync not activated: URL does not match journals?_menu')
+    if (!url.startsWith('journals')) {
+      Logger.debug('JournalListSync not activated: URL does not match journals')
       return
     }
 
