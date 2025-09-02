@@ -932,14 +932,75 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #handleAddMissingEntry(date, start, count, timetableData = {}) {
-    try {
-      const addButton = await this.#findAndClickAddButton()
-      if (!addButton) throw new Error('Lisa sissekanne not found')
+    // Always create journal entry via backend POST. Modal-based fallback removed.
+    const journalId = this.#currentJournalId || this.#extractJournalId()
+    if (!journalId) {
+      Logger.error(`[${this.name}] Journal ID not found for creating missing entry`) 
+      throw new Error('Journal ID not found')
+    }
 
-      await this.#waitForDialogContentLoaded()
-      await this.#fillAddForm(date, start, count, timetableData)
+    // Use primary teacher from journal info if available
+    const teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id ?? this.#lastJournalData?.info?.teachers?.[0]?.id ?? null
+
+    // Build entry date ISO (normalize to 06:10:00 UTC if only date is provided)
+    let entryDateISO = null
+    try {
+      if (typeof date === 'string' && /T\d{2}:\d{2}:\d{2}Z$/.test(date)) {
+        entryDateISO = date
+      } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
+        const [d, m, y] = date.split('.')
+        entryDateISO = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 6, 10, 0)).toISOString()
+      } else {
+        const parsed = new Date(date)
+        if (!isNaN(parsed.getTime())) {
+          entryDateISO = new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate(), 6, 10, 0)).toISOString()
+        }
+      }
+    } catch (err) {
+      Logger.debug(`[${this.name}] date parsing error for POST payload`, err)
+    }
+
+    if (!entryDateISO) {
+      entryDateISO = new Date().toISOString()
+    }
+
+    const payload = {
+      startLessonNr: Number(timetableData.timetablestart || timetableData.timetableStart || start || 1),
+      lessons: Number(timetableData.timetablecount || timetableData.timetableCount || count || 1),
+      entryType: LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE,
+      nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
+      studyPeriodEvent: null,
+      journalOmoduleTheme: null,
+      entryDate: entryDateISO,
+      journalEntryStudents: [],
+      journalEntryCapacityTypes: ['MAHT_a'],
+      journalEntryTeachers: teacherId ? [String(teacherId)] : []
+    }
+
+    Logger.info(`[${this.name}] Creating journal entry via API`, { journalId, payload })
+
+    try {
+      const result = await this.api.tahvel.post(`/journals/${journalId}/journalEntry`, payload)
+
+      // Clear cache and refresh data/UI
+      try {
+        await cacheService.clearJournalCache(journalId)
+      } catch (cErr) {
+        Logger.debug(`[${this.name}] cache clear error after POST:`, cErr)
+      }
+
+      try {
+        const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
+        this.#lastJournalData = journalData
+      } catch (reErr) {
+        Logger.debug(`[${this.name}] failed to refresh journal data after POST:`, reErr)
+      }
+
+      await this.#refreshTableWithRetry()
+      return result
     } catch (error) {
-      Logger.error(`[${this.name}] missing entry error`, error)
+      Logger.error(`[${this.name}] Failed to create journal entry via POST`, error)
+      throw error
     }
   }
 
