@@ -22,6 +22,114 @@ import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
+   * Resolve a journal link element and extract journal ID from it.
+   * Accepts anchor elements, elements inside anchors (like span.linked-name),
+   * or elements with data attributes containing the ID.
+   * @param {Element} el - Element matched by selector
+   * @returns {Object|null} { href, id } or null if not resolvable
+   */
+  _resolveJournalFromElement(el) {
+    if (!el) return null
+    // If it's an anchor
+    if (el.tagName && el.tagName.toLowerCase() === 'a') {
+      const href = el.getAttribute('href') || el.getAttribute('ng-href') || ''
+      const idMatch = String(href).match(/\/journal\/(\d+)/)
+      if (idMatch && idMatch[1]) return { href, id: parseInt(idMatch[1], 10) }
+      // fallback: href may contain query param like /#/journal/123
+      const anchorMatch = String(href).match(/#\/?journal\/(\d+)/)
+      if (anchorMatch && anchorMatch[1]) return { href, id: parseInt(anchorMatch[1], 10) }
+      return { href, id: null }
+    }
+
+    // If it's inside an anchor (like span.linked-name), walk up to find anchor
+    let parent = el
+    while (parent && parent !== document.body) {
+      if (parent.tagName && parent.tagName.toLowerCase() === 'a') {
+        return this._resolveJournalFromElement(parent)
+      }
+      parent = parent.parentNode
+    }
+
+    // If element has data attributes with an id
+    if (el.dataset && el.dataset.journalId) {
+      return { href: null, id: parseInt(el.dataset.journalId, 10) }
+    }
+
+    // Additional heuristics: check for router/link attributes on the element itself
+    const routerAttrs = ['ng-reflect-router-link', 'routerlink', 'ng-href', 'data-href', 'href', 'onclick']
+    for (const attr of routerAttrs) {
+      try {
+        const val = el.getAttribute && el.getAttribute(attr)
+        if (val) {
+          // Try to extract journal id from the attribute value
+          const m = String(val).match(/#?\/?(?:#\/)?(?:journal\/)?(\d{3,7})/)
+          if (m && m[1]) {
+            Logger.debug(`Resolved journal id from attribute '${attr}': ${m[1]}`)
+            return { href: val, id: parseInt(m[1], 10) }
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    // If this element is inside a table row, try to find an anchor in the same row
+    try {
+      const tr = el.closest ? el.closest('tr') : null
+      if (tr) {
+        const anchors = tr.querySelectorAll && tr.querySelectorAll('a')
+        if (anchors && anchors.length > 0) {
+          for (const a of anchors) {
+            const resolved = this._resolveJournalFromElement(a)
+            if (resolved && resolved.id) return resolved
+          }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // As a last resort, inspect sibling anchors inside same parent
+    try {
+      const parentEl = el.parentNode
+      if (parentEl && parentEl.querySelectorAll) {
+        const anchors = parentEl.querySelectorAll('a')
+        for (const a of anchors) {
+          const resolved = this._resolveJournalFromElement(a)
+          if (resolved && resolved.id) return resolved
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // Final fallback: scan element.outerHTML for journal id patterns
+    try {
+      const outer = el && el.outerHTML ? String(el.outerHTML) : ''
+      if (outer) {
+        const m1 = outer.match(/journal\/(\d{3,7})/)
+        if (m1 && m1[1]) {
+          Logger.debug(`Resolved journal id from outerHTML pattern journal/ID: ${m1[1]}`)
+          return { href: null, id: parseInt(m1[1], 10) }
+        }
+        const m2 = outer.match(/#\/?journal\/(\d{3,7})/)
+        if (m2 && m2[1]) {
+          Logger.debug(`Resolved journal id from outerHTML pattern #/journal/ID: ${m2[1]}`)
+          return { href: null, id: parseInt(m2[1], 10) }
+        }
+        const m3 = outer.match(/journalId\W*[:=]\W*"?(\d{3,7})"?/) || outer.match(/data[-_]journal[-_]id\W*[:=]\W*"?(\d{3,7})"?/) || outer.match(/data[-_]id\W*[:=]\W*"?(\d{3,7})"?/)
+        if (m3 && m3[1]) {
+          Logger.debug(`Resolved journal id from outerHTML generic id pattern: ${m3[1]}`)
+          return { href: null, id: parseInt(m3[1], 10) }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    return null
+  }
+  /**
    * Extract assignment entry date differences from Kriit response
    */
   extractEntryDateDifferences() {
@@ -150,13 +258,29 @@ class JournalListSyncFeature extends BaseFeature {
   constructor() {
     // Define selectors for journal links - using the most reliable selector first
     const journalLinkSelectors = [
-      // Primary selector that works reliably
+      // Primary selector that works reliably in older layout
       '#main-content md-table-container td:nth-child(2) > a',
 
       // Fallback selectors in case the primary one doesn't work
       '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
       '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
-      'a[href^="/#/journal/"]'
+      'a[href^="/#/journal/"]',
+
+      // Newer layout variations: look for links with data-test or contain '/journal/' in href
+  'a[data-test*="journal"]',
+  'a[href*="/journal/"]',
+  // New Tahvel markup: journal name may be inside a span.linked-name inside a clickable cell
+  'span.linked-name',
+      // Clickable row/element attributes used by Angular/JS frameworks
+      '[ng-reflect-router-link*="/journal/"]',
+      '[routerlink*="/journal/"]',
+      '[data-href*="/journal/"]',
+      '[onclick*="/journal/"]',
+      '[data-journal-id]',
+      '[role="link"]',
+      '[tabindex][onclick]',
+      '#main-content a',
+      'md-table-container a'
     ]
 
   // Match the journal list page URL pattern and pass required selectors
@@ -291,15 +415,87 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.updateUI()
 
+      // First try to fetch the journal list from Tahvel REST API as it's more reliable
+      let apiJournalList = null
+      try {
+        apiJournalList = await this.fetchJournalsFromApi()
+        if (Logger.isDebugMode()) Logger.debug(`Fetched ${apiJournalList ? apiJournalList.length : 0} journals from Tahvel API`)
+      } catch (err) {
+        Logger.debug('Failed to fetch journals from API, will fallback to DOM scanning:', err.message)
+        apiJournalList = null
+      }
+
+      // If API provided a non-empty list, use it and skip DOM scanning
+      if (apiJournalList && apiJournalList.length > 0) {
+        Logger.debug('Using API-provided journal list for data collection')
+        // Map API items into a minimal journalLinks-like structure for compatibility
+        // We create placeholder objects that collectJournalData knows how to handle when passed as apiJournalList
+        const mapped = apiJournalList.map(item => ({ __apiJournal: true, id: item.id, nameEt: item.nameEt || item.name || item.nameEt, studentCount: item.studentCount || 0, canEdit: item.canEdit }))
+        // Collect data using API-provided journal ids
+        const journalData = await this.collectJournalData(mapped)
+        // Continue with Kriit call and outcome sync
+        if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
+          Logger.warning('No journal data to send to Kriit (API path)')
+          this.isLoading = false
+          this.differences = []
+          this.updateUI()
+          return
+        }
+
+        this.isLoading = true
+        this.error = null
+        this.differences = []
+        await this.proceedWithKriitApiCall(journalData)
+        await this.sendOutcomeEntriesToKriit()
+        return
+      }
+
       // Always get the latest journal links from the DOM to handle filtering/sorting
       const journalLinkSelectors = [
         '#main-content md-table-container td:nth-child(2) > a',
         '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
         '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
-        'a[href^="/#/journal/"]'
+        'a[href^="/#/journal/"]',
+        'a[data-test*="journal"]',
+        'a[href*="/journal/"]',
+        // New Tahvel markup: visible journal name may be inside a non-anchor element
+        'span.linked-name',
+        // Clickable row/element attributes used by Angular/JS frameworks
+        '[ng-reflect-router-link*="/journal/"]',
+        '[routerlink*="/journal/"]',
+        '[data-href*="/journal/"]',
+        '[onclick*="/journal/"]',
+        '[data-journal-id]',
+        '[role="link"]',
+        '[tabindex][onclick]',
+        '#main-content a',
+        'md-table-container a'
       ]
-      this.journalLinks = document.querySelectorAll(journalLinkSelectors.join(', '))
-      Logger.debug(`Re-scanned for journal links, found ${this.journalLinks.length}`)
+
+      // Debug: scan each selector and log how many matched — helps find the right one on modern pages
+      let totalFound = 0
+      journalLinkSelectors.forEach(sel => {
+        try {
+          const n = document.querySelectorAll(sel).length
+          Logger.debug(`Selector scan: '${sel}' -> ${n} nodes`)
+          totalFound += n
+        } catch (err) {
+          Logger.debug(`Selector scan error for '${sel}': ${err.message}`)
+        }
+      })
+
+      // Re-scan using our selectors. If nothing is found but we already had journalLinks
+      // provided by the observer (for example span.linked-name nodes), keep the
+      // previously-discovered NodeList instead of overwriting it with an empty list.
+      const scannedNodes = document.querySelectorAll(journalLinkSelectors.join(', '))
+      Logger.debug(`Re-scanned for journal links, found ${scannedNodes.length} (total scanned nodes: ${totalFound})`)
+
+      if (scannedNodes.length === 0 && this.journalLinks && this.journalLinks.length > 0) {
+        Logger.debug('No scanned nodes found — keeping previously-observed journalLinks')
+        // keep this.journalLinks as-is (observer provided them)
+      } else {
+        this.journalLinks = scannedNodes
+      }
 
       // Verify that we have journal links
       if (!this.journalLinks || this.journalLinks.length === 0) {
@@ -310,8 +506,8 @@ class JournalListSyncFeature extends BaseFeature {
         return
       }
 
-      // Collect data from Tahvel
-      const journalData = await this.collectJournalData()
+  // Collect data from Tahvel (DOM path)
+  const journalData = await this.collectJournalData()
       // Store Tahvel assignments for due date diff feature
       if (!window.journalListSync) window.journalListSync = {}
 
@@ -375,26 +571,48 @@ class JournalListSyncFeature extends BaseFeature {
       }
 
       Logger.debug(`Using ${this.journalLinks.length} journal links for data collection`)
+    // Support passing in an API-provided list of journals as argument
+    const usingApiList = Array.isArray(arguments[0]) && arguments[0].length > 0
+    const apiList = usingApiList ? arguments[0] : null
 
-      const journalPromises = Array.from(this.journalLinks).map(async link => {
-        const href = link.getAttribute('href') || link.getAttribute('ng-href') || ''
-        let id = null
-        const idMatch = href.match(/\/journal\/([0-9]+)/)
-        if (idMatch && idMatch[1]) {
-          id = parseInt(idMatch[1], 10)
-        } else {
-          const parts = href.split('/')
-          if (parts.length >= 4) {
-            id = parseInt(parts[3], 10)
+    const journalPromises = (apiList ? apiList : Array.from(this.journalLinks)).map(async link => {
+      // If this is an API-provided item, it has minimal shape: { __apiJournal: true, id, nameEt }
+      let resolved = null
+      let id = null
+      let href = ''
+      let name = ''
+
+      if (link && link.__apiJournal) {
+        id = link.id
+        name = link.nameEt || link.name || ''
+        // leave href empty – we'll fetch full journal info below
+      } else {
+        // Resolve href/id from anchor or a child element (e.g. span.linked-name)
+        resolved = this._resolveJournalFromElement(link)
+        id = resolved && resolved.id ? resolved.id : null
+        href = resolved && resolved.href ? resolved.href : (link.getAttribute ? (link.getAttribute('href') || link.getAttribute('ng-href') || '') : '')
+        name = (link.textContent || (link.innerText || '')).trim()
+      }
+
+        if (!id) {
+          // Try to parse from href fallback
+          const idMatch = String(href).match(/\/journal\/([0-9]+)/)
+          if (idMatch && idMatch[1]) {
+            id = parseInt(idMatch[1], 10)
+          } else {
+            const parts = String(href).split('/')
+            if (parts.length >= 4) {
+              const maybe = parseInt(parts[3], 10)
+              if (!isNaN(maybe)) id = maybe
+            }
           }
         }
 
         if (!id) {
-          Logger.warning(`Could not extract journal ID from href: ${href}`)
+          const snippet = link && link.outerHTML ? link.outerHTML.replace(/\s+/g, ' ').slice(0,300) : String(link)
+          Logger.warning(`Could not extract journal ID from element or href: ${href} / element snippet: ${snippet}`)
           return null
         }
-
-        const name = link.textContent.trim()
 
         try {
           const [journalInfo, journalEntries, journalEntriesWithGrades, journalStudents] = await Promise.all([
@@ -554,8 +772,19 @@ class JournalListSyncFeature extends BaseFeature {
           return null
         }
       })
-
       const results = await Promise.all(journalPromises)
+      // Pre-flight summary: how many journal IDs were resolved vs failed
+      try {
+        const resolvedCount = results.filter(r => r !== null).length
+        const failed = results.filter(r => r === null)
+        Logger.debug(`Pre-flight: Resolved ${resolvedCount}/${results.length} journal entries (failed: ${failed.length})`)
+        if (failed.length > 0 && Logger.isDebugMode()) {
+          const samples = Array.from(this.journalLinks).map(el => el.outerHTML ? el.outerHTML.replace(/\s+/g, ' ').slice(0,200) : String(el)).slice(0,5)
+          Logger.debug('Sample observed elements (first 5):', samples)
+        }
+      } catch (err) {
+        // ignore logging errors
+      }
       // Flatten the results as some journals may return arrays of group entries
       const journalData = results.filter(r => r !== null).flatMap(result => (Array.isArray(result) ? result : [result]))
 
@@ -1291,6 +1520,91 @@ class JournalListSyncFeature extends BaseFeature {
         cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
       }
     )
+  }
+
+  /**
+   * Fetch journal list directly from Tahvel REST API (hois_back/journals)
+   * Returns an array of journal items or null on failure
+   */
+  async fetchJournalsFromApi() {
+    try {
+      if (Logger.isDebugMode()) Logger.debug('Attempting to fetch journals via Tahvel REST API /hois_back/journals')
+      // Determine correct endpoint to avoid duplicating '/hois_back'
+      const base = (this.api && this.api.tahvel && this.api.tahvel.baseUrl) ? String(this.api.tahvel.baseUrl) : ''
+      let endpoint = '/hois_back/journals'
+      if (base.endsWith('/hois_back')) endpoint = '/journals'
+
+      // Detect studyYear id from the page if possible (heuristics)
+      const detectStudyYear = () => {
+        try {
+          // Common global states used by SPA apps
+          const globals = [window.__INITIAL_STATE, window.__PRELOADED_STATE, window.__TAHVEL, window.__TAHVEL_STATE, window.appState]
+          for (const g of globals) {
+            if (g && typeof g === 'object') {
+              for (const key of ['studyYear', 'study_year', 'studyYearId', 'studyYearId']) {
+                if (typeof g[key] !== 'undefined' && g[key] !== null) {
+                  const v = parseInt(g[key], 10)
+                  if (!isNaN(v)) return v
+                }
+              }
+            }
+          }
+
+          // Meta tag <meta name="studyYear" content="726">
+          const meta = document.querySelector('meta[name="studyYear"]')
+          if (meta && meta.content) {
+            const v = parseInt(meta.content, 10)
+            if (!isNaN(v)) return v
+          }
+
+          // Data attributes
+          const el = document.querySelector('[data-studyyear], [data-study-year]')
+          if (el) {
+            const v = parseInt(el.getAttribute('data-studyyear') || el.getAttribute('data-study-year'), 10)
+            if (!isNaN(v)) return v
+          }
+
+          // Search in script tags for studyYear-like tokens
+          const scripts = document.querySelectorAll('script')
+          for (const s of scripts) {
+            const txt = s.textContent
+            if (!txt) continue
+            const m = txt.match(/studyYear\W*[:=]\W*(\d{2,6})/i)
+            if (m && m[1]) return parseInt(m[1], 10)
+            const m2 = txt.match(/study_year\W*[:=]\W*(\d{2,6})/i)
+            if (m2 && m2[1]) return parseInt(m2[1], 10)
+          }
+        } catch (err) {
+          // ignore
+        }
+        return null
+      }
+
+      const studyYear = detectStudyYear()
+
+      // Use query params matching example; size=20 by default
+      const params = { onlyMyJournals: true, sort: '2, 5, 3', size: 50, page: 0 }
+      if (studyYear) {
+        params.studyYear = studyYear
+        if (Logger.isDebugMode()) Logger.debug('Detected studyYear for journals API:', studyYear)
+      } else {
+        if (Logger.isDebugMode()) Logger.debug('No studyYear detected; calling journals API without studyYear param')
+      }
+
+      const response = await this.api.tahvel.get(endpoint, params, { cache: true, cacheExpiration: 5 * 60 * 1000 })
+
+      if (!response || !response.content || !Array.isArray(response.content)) {
+        if (Logger.isDebugMode()) Logger.debug('Unexpected /hois_back/journals response format', response)
+        return null
+      }
+
+      // Map response items to a minimal shape used by collectJournalData when using API path
+      const mapped = response.content.map(item => ({ id: item.id, nameEt: item.nameEt || item.name || '', studentCount: item.studentCount || 0, canEdit: item.canEdit }))
+      return mapped
+    } catch (error) {
+      Logger.debug('Error fetching journals from API:', error && error.message ? error.message : error)
+      return null
+    }
   }
 
   /**
