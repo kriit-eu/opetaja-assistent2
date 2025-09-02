@@ -2475,6 +2475,62 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       }
 
+      // Attempt server-side auto-fix first: fetch detailed entry and add MAHT_i when missing
+      try {
+        const journalId = this.#currentJournalId || this.#extractJournalId()
+        if (journalId && actualEntryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
+          const detailUrl = `/journals/${journalId}/journalEntry/${actualEntryId}`
+          // Fetch fresh detailed entry (no cache)
+          const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
+          if (detailedEntry) {
+            const currentTypes = Array.isArray(detailedEntry.journalEntryCapacityTypes)
+              ? detailedEntry.journalEntryCapacityTypes
+              : []
+            // Only attempt to add MAHT_i for independent-work entries or when capacity is missing
+            if (!currentTypes.includes('MAHT_i')) {
+              Logger.info(`[${this.name}] Attempting server-side fix: adding MAHT_i to entry ${actualEntryId}`)
+              const updated = {
+                // Spread the detailedEntry but ensure we don't accidentally include read-only metadata
+                ...detailedEntry,
+                journalEntryCapacityTypes: [...currentTypes, 'MAHT_i']
+              }
+              // Perform PUT to update the entry
+              try {
+                await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, updated)
+                // Clear cache and refresh local journal data
+                try {
+                  await cacheService.clearJournalCache(journalId)
+                } catch (cErr) {
+                  Logger.debug(`[${this.name}] cache clear error after PUT:`, cErr)
+                }
+                // Re-fetch journal data to reflect changes
+                try {
+                  const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
+                  this.#lastJournalData = journalData
+                } catch (reErr) {
+                  Logger.debug(`[${this.name}] failed to refresh journal data after PUT:`, reErr)
+                }
+
+                // Refresh the discrepancies display
+                await this.#refreshTableWithRetry()
+
+                // Inform user and exit early since fix was applied server-side
+                alert('Paranda: lisatud iseseisva õppe mahutüüp (MAHT_i). Palun kontrolli muudatusi päevikus.')
+                return
+              } catch (putErr) {
+                Logger.error(`[${this.name}] Failed to PUT updated entry ${actualEntryId}:`, putErr)
+                // Fall through to UI-based fix if server-side update fails
+              }
+            } else {
+              Logger.debug(`[${this.name}] Entry ${actualEntryId} already contains MAHT_i, skipping server-side fix`)
+            }
+          }
+        }
+      } catch (srvErr) {
+        Logger.debug(`[${this.name}] Server-side fix attempt failed:`, srvErr)
+        // Continue to fallback UI flow
+      }
+
       const element = await this.#findJournalEntryElement(actualEntryId, date, duplicateIndex)
       if (!element) {
         // Enhanced error logging
