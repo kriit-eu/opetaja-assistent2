@@ -550,14 +550,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
     }
 
-    // Try multiple selectors to find journal entry rows
-    let allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
-    if (allRows.length === 0) {
-      allRows = document.querySelectorAll('tr[onclick*="editJournalEntry"]')
-    }
-    if (allRows.length === 0) {
-      // Fallback: look for any clickable table rows
-      allRows = document.querySelectorAll('tr[ng-click], tr[onclick]')
+    // Try multiple selectors to find journal entry rows.
+    // New page layout may render entries inside #entryTable or table.tahvel-table
+    const rowSelectors = [
+      'tr[ng-click*="editJournalEntry"]',
+      'tr[onclick*="editJournalEntry"]',
+      '#entryTable tr',
+      'table.tahvel-table tr',
+      'tr[ng-click], tr[onclick]'
+    ]
+
+    let allRows = []
+    for (const sel of rowSelectors) {
+      const nodes = document.querySelectorAll(sel)
+      if (nodes && nodes.length > 0) {
+        allRows = nodes
+        break
+      }
     }
 
     if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
@@ -809,6 +818,34 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             type: 'string'
           })
         }
+      }
+    }
+
+    // Normalize common dataset key variants so callers can use either camelCase or
+    // lowercase keys. The DiscrepanciesTable currently emits data attributes using
+    // `data-${key.toLowerCase()}` which yields dataset keys like `entryid` and
+    // `timetablestart`. Other code paths expect camelCase names like `entryId` or
+    // `timetableStart`. Create aliases for the most common keys to avoid
+    // undefined values at call sites.
+    const aliasMap = {
+      entryid: 'entryId',
+      duplicateindex: 'duplicateIndex',
+      startlesson: 'startLesson',
+      timetablestart: 'timetableStart',
+      timetablecount: 'timetableCount',
+      currentstart: 'currentStart',
+      currentcount: 'currentCount',
+      lessoncount: 'lessonCount',
+      timestart: 'timeStart',
+      timeend: 'timeEnd'
+    }
+
+    for (const [lower, camel] of Object.entries(aliasMap)) {
+      if (Object.prototype.hasOwnProperty.call(parsedData, lower) && parsedData[camel] === undefined) {
+        parsedData[camel] = parsedData[lower]
+      }
+      if (Object.prototype.hasOwnProperty.call(parsedData, camel) && parsedData[lower] === undefined) {
+        parsedData[lower] = parsedData[camel]
       }
     }
 
@@ -1294,7 +1331,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
       }
 
-      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
+      const allRows = document.querySelectorAll(
+        'tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], #entryTable tr, table.tahvel-table tr, tr[ng-click], tr[onclick]'
+      )
       const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
 
       Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
