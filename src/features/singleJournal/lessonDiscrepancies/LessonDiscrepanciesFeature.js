@@ -3,6 +3,7 @@ import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
 import { DiscrepanciesTable } from './DiscrepanciesTable.js'
+import { showAddConfirmationOverlay } from './AddEntryConfirmationOverlay.js'
 
 // HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
@@ -932,77 +933,60 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #handleAddMissingEntry(date, start, count, timetableData = {}) {
-    // Always create journal entry via backend POST. Modal-based fallback removed.
-    const journalId = this.#currentJournalId || this.#extractJournalId()
-    if (!journalId) {
-      Logger.error(`[${this.name}] Journal ID not found for creating missing entry`) 
-      throw new Error('Journal ID not found')
-    }
-
-    // Use primary teacher from journal info if available
-    const teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id ?? this.#lastJournalData?.info?.teachers?.[0]?.id ?? null
-
-    // Build entry date ISO (normalize to 06:10:00 UTC if only date is provided)
-    let entryDateISO = null
+    // Show a confirmation overlay that previews what will be inserted and
+    // provides a button to open the modal and pre-fill it.
     try {
-      if (typeof date === 'string' && /T\d{2}:\d{2}:\d{2}Z$/.test(date)) {
-        entryDateISO = date
-      } else if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
-        const [d, m, y] = date.split('.')
-        entryDateISO = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 6, 10, 0)).toISOString()
-      } else {
-        const parsed = new Date(date)
-        if (!isNaN(parsed.getTime())) {
-          entryDateISO = new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate(), 6, 10, 0)).toISOString()
-        }
-      }
+      await this.#showAddConfirmationOverlay({ date, start, count, timetableData })
     } catch (err) {
-      Logger.debug(`[${this.name}] date parsing error for POST payload`, err)
-    }
-
-    if (!entryDateISO) {
-      entryDateISO = new Date().toISOString()
-    }
-
-    const payload = {
-      startLessonNr: Number(timetableData.timetablestart || timetableData.timetableStart || start || 1),
-      lessons: Number(timetableData.timetablecount || timetableData.timetableCount || count || 1),
-      entryType: LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE,
-      nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
-      studyPeriodEvent: null,
-      journalOmoduleTheme: null,
-      entryDate: entryDateISO,
-      journalEntryStudents: [],
-      journalEntryCapacityTypes: ['MAHT_a'],
-      journalEntryTeachers: teacherId ? [String(teacherId)] : []
-    }
-
-    Logger.info(`[${this.name}] Creating journal entry via API`, { journalId, payload })
-
-    try {
-      const result = await this.api.tahvel.post(`/journals/${journalId}/journalEntry`, payload)
-
-      // Clear cache and refresh data/UI
-      try {
-        await cacheService.clearJournalCache(journalId)
-      } catch (cErr) {
-        Logger.debug(`[${this.name}] cache clear error after POST:`, cErr)
-      }
-
-      try {
-        const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
-        this.#lastJournalData = journalData
-      } catch (reErr) {
-        Logger.debug(`[${this.name}] failed to refresh journal data after POST:`, reErr)
-      }
-
-      await this.#refreshTableWithRetry()
-      return result
-    } catch (error) {
-      Logger.error(`[${this.name}] Failed to create journal entry via POST`, error)
-      throw error
+      Logger.error(`[${this.name}] Error showing add confirmation overlay`, err)
     }
   }
+
+  // Create and show a lightweight confirmation overlay. When user clicks
+  // "Open form" the add-entry modal is opened and pre-filled via existing
+  // helpers (#findAndClickAddButton and #fillAddForm).
+  async #showAddConfirmationOverlay({ date, start, count, timetableData = {} } = {}) {
+    const teacherLabel = this.#lastJournalData?.info?.journalTeachers?.[0]?.displayName || this.#lastJournalData?.info?.journalTeachers?.[0]?.name || '—'
+
+    await showAddConfirmationOverlay({
+      date,
+      start,
+      count,
+      timetableData,
+      teacherLabel,
+      onConfirm: async () => {
+        const journalId = this.#currentJournalId || this.#extractJournalId()
+        if (!journalId) throw new Error('Journal ID puudub')
+
+        const effectiveStart = timetableData.timetablestart ?? timetableData.timetableStart ?? start ?? 1
+        const effectiveCount = timetableData.timetablecount ?? timetableData.timetableCount ?? count ?? 1
+        const teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+
+        const payload = {
+          startLessonNr: Number(effectiveStart),
+          lessons: Number(effectiveCount),
+          entryType: LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE,
+          nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
+          studyPeriodEvent: null,
+          journalOmoduleTheme: null,
+          entryDate: (new Date(date)).toISOString(),
+          journalEntryStudents: [],
+          journalEntryCapacityTypes: ['MAHT_a'],
+          journalEntryTeachers: teacherId ? [teacherId] : []
+        }
+
+        const url = `/journals/${journalId}/journalEntry`
+        Logger.info(`[${this.name}] Sending create journal entry POST`, { url, payload })
+
+        const res = await this.api.tahvel.post(url, payload)
+        try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
+        try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after create', e) }
+        return res
+      }
+    })
+  }
+
+  // ...existing code...
 
   /**
    * @param {string} date - Entry date
@@ -1014,7 +998,87 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
+      // Preferred flow: perform a server-side fetch -> modify -> PUT to update the entry
+      const journalId = this.#currentJournalId || this.#extractJournalId()
+      if (journalId && actualEntryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
+        try {
+          const detailUrl = `/journals/${journalId}/journalEntry/${actualEntryId}`
+          Logger.info(`[${this.name}] Fetching current entry for server-side edit`, { detailUrl })
+          const current = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
 
+          if (!current) throw new Error('failed to fetch current entry')
+
+          // Build a safe PUT payload by copying server object and applying minimal changes
+          const putPayload = { ...current }
+
+          // Apply changes if provided by the button data (timetable suggested values)
+          // Only change startLessonNr, lessons and entryDate/nameEt when the parsed data differs
+          if (this.#isValidValue(data.timetablestart) && Number(data.timetablestart) !== Number(current.startLessonNr)) {
+            putPayload.startLessonNr = Number(data.timetablestart)
+          }
+          if (this.#isValidValue(data.timetablecount) && Number(data.timetablecount) !== Number(current.lessons)) {
+            putPayload.lessons = Number(data.timetablecount)
+          }
+
+          // Normalize entryDate to ISO if date is provided
+          if (date) {
+            const iso = (new Date(date)).toISOString()
+            if (iso !== current.entryDate) putPayload.entryDate = iso
+          }
+
+          // Ensure entryType stays correct (it should already), but keep nameEt consistent with timetable if available
+          if (data.name) putPayload.nameEt = data.name
+
+          // Normalize teacher ids: use current first teacher or the journal's first teacher
+          const teacherIdFromJournal = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+          if (!Array.isArray(putPayload.journalEntryTeachers) || putPayload.journalEntryTeachers.length === 0) {
+            putPayload.journalEntryTeachers = teacherIdFromJournal ? [Number(teacherIdFromJournal)] : []
+          } else {
+            // Ensure teachers are numbers
+            putPayload.journalEntryTeachers = putPayload.journalEntryTeachers.map(t => Number(t))
+          }
+
+          // Ensure capacity types are an array (don't introduce UI-only fields)
+          if (!Array.isArray(putPayload.journalEntryCapacityTypes)) {
+            putPayload.journalEntryCapacityTypes = putPayload.journalEntryCapacityTypes ? [putPayload.journalEntryCapacityTypes] : ['MAHT_a']
+          }
+
+          // Remove fields that are UI-only or could cause server errors
+          delete putPayload.teacherSelection
+          delete putPayload._links
+
+          Logger.info(`[${this.name}] Sending PUT to update journal entry`, { url: detailUrl, payload: putPayload })
+
+          try {
+            const putRes = await this.api.tahvel.put(detailUrl, putPayload)
+            try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
+            try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after PUT', e) }
+            return putRes
+          } catch (putErr) {
+            // Try to extract response body for better diagnostics
+            try {
+              if (putErr?.response && typeof putErr.response.json === 'function') {
+                const body = await putErr.response.json()
+                Logger.error(`[${this.name}] PUT failed for entry ${actualEntryId} - response body:`, body)
+              } else if (putErr?.response && typeof putErr.response.text === 'function') {
+                const body = await putErr.response.text()
+                Logger.error(`[${this.name}] PUT failed for entry ${actualEntryId} - response text:`, body)
+              } else {
+                Logger.error(`[${this.name}] PUT failed for entry ${actualEntryId}`, putErr)
+              }
+            } catch (bodyErr) {
+              Logger.error(`[${this.name}] PUT failed and response body could not be read`, bodyErr)
+            }
+
+            // Fall through to UI modal fallback below
+          }
+        } catch (fetchErr) {
+          Logger.error(`[${this.name}] Failed to prepare server-side edit for entry ${actualEntryId}`, fetchErr)
+          // Fall through to UI modal fallback below
+        }
+      }
+
+      // Fallback UX: open the edit modal and prefill fields if server-side flow is not possible or failed
       const element = await this.#findJournalEntryElement(actualEntryId, date, duplicateIndex)
       if (!element) {
         Logger.error(`[${this.name}] Entry element not found for ID=${actualEntryId}, date=${date}, duplicateIndex=${duplicateIndex}`)
@@ -1061,10 +1125,29 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const effectiveStart = timetableData.timetablestart || timetableData.timetableStart || start
     const effectiveCount = timetableData.timetablecount || timetableData.timetableCount || count
 
-    await Promise.all([
-      this.#fillFieldWithVisualFeedback(['md-select[ng-model*="entryType"]'], LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE, 'Entry type'),
-      this.#fillFieldWithVisualFeedback(['md-datepicker input'], formattedDate, 'Date')
-    ])
+    // Fill entry type (md-select)
+    try {
+      const entryTypeField = this.#findVisibleElement(['md-select[ng-model*="entryType"]'])
+      if (entryTypeField) {
+        await this.#selectMdSelectOption(entryTypeField, LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE)
+      } else {
+        Logger.warning(`[${this.name}] Entry type field not found`)
+      }
+    } catch (err) {
+      Logger.error(`[${this.name}] Error setting entry type`, err)
+    }
+
+    // Fill date input
+    try {
+      const dateField = this.#findVisibleElement(['md-datepicker input'])
+      if (dateField) {
+        await this.#fillInputField(dateField, formattedDate)
+      } else {
+        Logger.warning(`[${this.name}] Date field not found`)
+      }
+    } catch (err) {
+      Logger.error(`[${this.name}] Error setting date field`, err)
+    }
 
     await Promise.all([
       this.#fillStartLessonField(String(effectiveStart)),
@@ -1114,35 +1197,44 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   #setFieldState(field, state) {
-    const colors = {
-      processing: '#DAA520',
-      success: '#006400',
-      error: '#dc3545'
-    }
-    field.style.border = `3px solid ${colors[state]}`
+    // Visual highlighting disabled. Keep method to avoid breaking callers.
+    return
   }
 
   async #fillFieldWithVisualFeedback(selectors, value, logName) {
+    // Removed: visual feedback helper replaced by direct calls to lower-level helpers.
+    // Kept as a placeholder to avoid breaking references during refactor (should be removed).
     const field = this.#findVisibleElement(selectors)
     if (!field) {
       Logger.warning(`[${this.name}] ${logName} field not found`)
       return false
     }
 
-    this.#setFieldState(field, 'processing')
-    const success = field.tagName.toLowerCase() === 'md-select' ? await this.#selectMdSelectOption(field, value) : await this.#fillInputField(field, value)
-    this.#setFieldState(field, success ? 'success' : 'error')
-    return success
+    if (field.tagName.toLowerCase() === 'md-select') {
+      return await this.#selectMdSelectOption(field, value)
+    }
+
+    return await this.#fillInputField(field, value)
   }
 
   async #fillStartLessonField(value) {
     const selectors = ['md-select[aria-label*="Algustund"]', 'md-select[ng-model*="startLessonNr"]', '#select_89']
-    return this.#fillFieldWithVisualFeedback(selectors, value, 'Start lesson')
+    const field = this.#findVisibleElement(selectors)
+    if (!field) {
+      Logger.warning(`[${this.name}] Start lesson field not found`)
+      return false
+    }
+    return await this.#selectMdSelectOption(field, value)
   }
 
   async #fillLessonCountField(value) {
     const selectors = ['input[aria-label="lessons"]', 'input[ng-model*="lessons"]', '#input_69']
-    return this.#fillFieldWithVisualFeedback(selectors, value, 'Lesson count')
+    const field = this.#findVisibleElement(selectors)
+    if (!field) {
+      Logger.warning(`[${this.name}] Lesson count field not found`)
+      return false
+    }
+    return await this.#fillInputField(field, value)
   }
 
   async #fillInputField(field, value) {
@@ -1667,38 +1759,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #checkAuditoriumLearningCheckbox() {
-    /** @type {HTMLElement} */
-    const checkbox = document.querySelector('md-checkbox[ng-model*="selectedCapacityTypes"][aria-label="Auditoorne õpe"]')
-
-    if (checkbox && this.#isElementVisible(checkbox)) {
-      this.#setFieldState(checkbox, 'processing')
-      checkbox.click()
-      const isChecked = checkbox.getAttribute('aria-checked') === 'true'
-      this.#setFieldState(checkbox, isChecked ? 'success' : 'error')
-    }
+    // Disabled: do not programmatically toggle auditorium capacity checkbox.
+    // The selection should be performed manually by the user in the form.
+    return false
   }
 
   async #checkTeacherCheckbox() {
-    /** @type {NodeListOf<HTMLElement>} */
-    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
-
-    for (const checkbox of teacherCheckboxes) {
-      if (checkbox && this.#isElementVisible(checkbox)) {
-        const isChecked = checkbox.getAttribute('aria-checked') === 'true'
-
-        if (!isChecked) {
-          this.#setFieldState(checkbox, 'processing')
-          checkbox.click()
-
-          // Verify it was checked
-          await this.#delay(200)
-          const nowChecked = checkbox.getAttribute('aria-checked') === 'true'
-          this.#setFieldState(checkbox, nowChecked ? 'success' : 'error')
-
-          Logger.debug(`[${this.name}] Teacher checkbox toggled: ${checkbox.getAttribute('aria-label')} - checked: ${nowChecked}`)
-        }
-      }
-    }
+    // Disabled: do not programmatically toggle teacher checkboxes.
+    // Teachers should be selected manually in the add-entry form.
+    return false
   }
 
   #getTeacherCheckboxState() {
@@ -1821,11 +1890,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Re-run unified validation
       const capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
-      // Get current discrepancies (empty since we're only refreshing capacity)
-      const discrepancies = []
-
-      // Update unified display
-      this.table.insertUnifiedTable(discrepancies, capacityProblems)
+      // Instead of only updating capacity problems (which hides timetable discrepancies),
+      // perform a full table refresh so both timetable discrepancies and capacity problems
+      // are recalculated and displayed consistently.
+      await this.#createLessonDiscrepanciesTable(true, 'refreshCapacityValidationAfterSave')
     } catch (error) {
       Logger.error(`[${this.name}] Error refreshing capacity validation:`, error)
     }
