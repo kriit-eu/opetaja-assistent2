@@ -572,7 +572,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
-    // Filter rows based on date criteria
+  // Filter rows based on date criteria
     let dateMatchingRows
     if (date === 'NO_DATE') {
       // For null dates, we need to be more precise - only get journal entry rows
@@ -665,6 +665,28 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     // Simple position-based matching: assume DOM order matches API order
     const targetIndex = duplicateEntries.findIndex(entry => entry.id == entryId)
+
+    // Attempt to find DOM rows that explicitly reference the entry id in their click handlers
+    // (e.g. ng-click="editJournalEntry(12345)" or onclick="editJournalEntry(12345)")
+    try {
+      const idStr = String(entryId)
+      const idMatchingRows = [...allRows].filter(row => {
+        const ng = row.getAttribute('ng-click') || ''
+        const on = row.getAttribute('onclick') || ''
+        return ng.includes(idStr) || on.includes(idStr)
+      })
+
+      if (idMatchingRows.length > 0) {
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found DOM rows referencing entry id ${idStr} directly: ${idMatchingRows.length}`)
+        return {
+          exactMatches: idMatchingRows,
+          targetIndex: Math.max(0, targetIndex)
+        }
+      }
+    } catch (e) {
+      // Ignore and continue with existing heuristics
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] id-based DOM matching failed`, e)
+    }
 
     if (Logger.isDebugMode()) {
       Logger.debug(`[${this.name}] Duplicate matching results:`)
