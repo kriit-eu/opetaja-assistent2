@@ -609,7 +609,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         if (!id) {
-          const snippet = link && link.outerHTML ? link.outerHTML.replace(/\s+/g, ' ').slice(0,300) : String(link)
+          const snippet = link && link.outerHTML ? link.outerHTML.replace(/\s+/g, ' ').slice(0, 300) : String(link)
           Logger.warning(`Could not extract journal ID from element or href: ${href} / element snippet: ${snippet}`)
           return null
         }
@@ -779,7 +779,7 @@ class JournalListSyncFeature extends BaseFeature {
         const failed = results.filter(r => r === null)
         Logger.debug(`Pre-flight: Resolved ${resolvedCount}/${results.length} journal entries (failed: ${failed.length})`)
         if (failed.length > 0 && Logger.isDebugMode()) {
-          const samples = Array.from(this.journalLinks).map(el => el.outerHTML ? el.outerHTML.replace(/\s+/g, ' ').slice(0,200) : String(el)).slice(0,5)
+          const samples = Array.from(this.journalLinks).map(el => el.outerHTML ? el.outerHTML.replace(/\s+/g, ' ').slice(0, 200) : String(el)).slice(0, 5)
           Logger.debug('Sample observed elements (first 5):', samples)
         }
       } catch (err) {
@@ -993,7 +993,7 @@ class JournalListSyncFeature extends BaseFeature {
     if (!this.isActive) return
     // Show success banner with refresh and close actions
     bannerService.showSuccessBanner(message, {
-      onRefresh: () => this.fetchJournalData(),
+      onRefresh: () => this.proceedWithKriitApiCall(),
       onClose: () => bannerService.removeBanner()
     })
   }
@@ -1003,7 +1003,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showErrorBanner() {
     const options = {
-      onRetry: () => this.fetchJournalData(),
+      onRetry: () => this.proceedWithKriitApiCall(),
       onClearCache: () => {
         this.clearCache().then(result => {
           alert(
@@ -1034,7 +1034,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
-      () => this.fetchJournalData(),
+      () => this.proceedWithKriitApiCall(),
       () => bannerService.removeBanner()
     )
   }
@@ -1079,7 +1079,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
         await this.fetchJournalData()
       },
-      () => this.fetchJournalData(),
+      () => this.proceedWithKriitApiCall(),
       container => {
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
@@ -1535,7 +1535,7 @@ class JournalListSyncFeature extends BaseFeature {
       if (base.endsWith('/hois_back')) endpoint = '/journals'
 
       // Detect studyYear id from the page if possible (heuristics)
-      const detectStudyYear = async () => {
+      const detectStudyYear = async() => {
         try {
           // First try the new reliable method: fetch current study year from API
           try {
@@ -1543,15 +1543,15 @@ class JournalListSyncFeature extends BaseFeature {
             const base = (this.api && this.api.tahvel && this.api.tahvel.baseUrl) ? String(this.api.tahvel.baseUrl) : ''
             let studyYearsEndpoint = '/hois_back/autocomplete/studyYears'
             if (base.endsWith('/hois_back')) studyYearsEndpoint = '/autocomplete/studyYears'
-            
-            const studyYearsResponse = await this.api.tahvel.get(studyYearsEndpoint, {}, { 
-              cache: true, 
+
+            const studyYearsResponse = await this.api.tahvel.get(studyYearsEndpoint, {}, {
+              cache: true,
               cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
             })
-            
+
             if (Array.isArray(studyYearsResponse)) {
               const currentDate = new Date()
-              
+
               // Find the study year that contains the current date
               const currentStudyYear = studyYearsResponse.find(sy => {
                 if (!sy.startDate || !sy.endDate) return false
@@ -1559,7 +1559,7 @@ class JournalListSyncFeature extends BaseFeature {
                 const endDate = new Date(sy.endDate)
                 return currentDate >= startDate && currentDate <= endDate
               })
-              
+
               if (currentStudyYear && currentStudyYear.id) {
                 if (Logger.isDebugMode()) {
                   Logger.debug(`Found current study year from API: ${currentStudyYear.id} (${currentStudyYear.nameEt})`)
@@ -2554,13 +2554,13 @@ class JournalListSyncFeature extends BaseFeature {
           if (subject.assignments && Array.isArray(subject.assignments)) {
             subject.assignments.forEach(assignment => {
               // Check for assignment-level changes (name, due date, entry date)
-              const hasNameDiff = assignment.assignmentName && typeof assignment.assignmentName === 'object' && 
+              const hasNameDiff = assignment.assignmentName && typeof assignment.assignmentName === 'object' &&
                                   assignment.assignmentName.kriit && assignment.assignmentName.kriit !== assignment.assignmentName.Tahvel
-              const hasDueDateDiff = assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object' && 
+              const hasDueDateDiff = assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object' &&
                                      assignment.assignmentDueAt.kriit && assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
-              const hasEntryDateDiff = assignment.assignmentEntryDate && typeof assignment.assignmentEntryDate === 'object' && 
+              const hasEntryDateDiff = assignment.assignmentEntryDate && typeof assignment.assignmentEntryDate === 'object' &&
                                        assignment.assignmentEntryDate.kriit && assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
-              
+
               if (hasNameDiff || hasDueDateDiff || hasEntryDateDiff) {
                 assignmentLevelDifferences.push({
                   journalId: subject.subjectExternalId,
@@ -2636,7 +2636,7 @@ class JournalListSyncFeature extends BaseFeature {
       try {
         // Build assignment-level batches from both grade differences and assignment-level differences
         const assignmentMap = new Map()
-        
+
         // Add assignments with grade differences
         for (const item of syncData) {
           const key = `${item.journalId}::${item.assignmentId}`
@@ -2650,7 +2650,7 @@ class JournalListSyncFeature extends BaseFeature {
           }
           assignmentMap.get(key).students.push({ studentPersonalCode: item.studentPersonalCode, grade: item.grade })
         }
-        
+
         // Add assignments with only assignment-level differences (no grade changes)
         for (const assignmentDiff of assignmentLevelDifferences) {
           const key = `${assignmentDiff.journalId}::${assignmentDiff.assignmentId}`
@@ -2835,7 +2835,7 @@ class JournalListSyncFeature extends BaseFeature {
 
             // Prepare update payload based on existing entryData
             const updateData = { ...entryData }
-            
+
             // For assignment-level only batches, preserve all existing students
             // For batches with student updates, use only the students being updated
             if (isAssignmentLevelOnly) {
@@ -2878,15 +2878,15 @@ class JournalListSyncFeature extends BaseFeature {
               // Use the Kriit API base URL from the API service, trimming any trailing slash and removing '/api' if present
               let kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
               kriitBaseUrl = kriitBaseUrl.replace(/\/api$/, '')
-              
+
               // Try to get group name from the subject if available
-              const subject = this.differences && Array.isArray(this.differences) ? 
-                             this.differences.find(s => s.subjectExternalId === batch.journalId) : null
+              const subject = this.differences && Array.isArray(this.differences)
+                             ? this.differences.find(s => s.subjectExternalId === batch.journalId) : null
               const groupCode = subject ? subject.groupName || '' : ''
-              
+
               const kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${batch.assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
               const homeworkText = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
-              
+
               updateData.homework = homeworkText
               Logger.debug(`📋 Added assignment link to homework field: ${homeworkText}`)
             }
@@ -2920,7 +2920,7 @@ class JournalListSyncFeature extends BaseFeature {
             try {
               if (Logger.isDebugMode()) Logger.debug(`PUT /journals/${batch.journalId}/journalEntry/${batch.assignmentId} payload: ${JSON.stringify(updateData)}`)
               await this.api.tahvel.put(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, updateData)
-              
+
               // Mark successful - different tracking for assignment-level vs student updates
               if (isAssignmentLevelOnly) {
                 successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, assignmentLevelUpdated: true, updated: 0 })
@@ -3017,7 +3017,7 @@ class JournalListSyncFeature extends BaseFeature {
         this.isLoading = false
         if (realErrors.length === 0) {
           let successMessage = ''
-          
+
           if (actualUpdates > 0 || assignmentLevelUpdates > 0) {
             const parts = []
             if (actualUpdates > 0) {
@@ -3027,7 +3027,7 @@ class JournalListSyncFeature extends BaseFeature {
               parts.push(`${assignmentLevelUpdates} ülesande andmeid (nimi/kuupäevad)`)
             }
             successMessage = `Edukalt sünkroniseeritud ${parts.join(' ja ')} Kriidist Tahvlisse.`
-            
+
             if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} kirjet olid juba õiged.`
             if (inactiveStudentErrors.length > 0) successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
             successMessage += ` Andmed värskendatakse automaatselt mõne sekundi pärast...`

@@ -976,7 +976,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       count,
       timetableData,
       teacherLabel,
-      onConfirm: async () => {
+      onConfirm: async() => {
         const journalId = this.#currentJournalId || this.#extractJournalId()
         if (!journalId) throw new Error('Journal ID puudub')
 

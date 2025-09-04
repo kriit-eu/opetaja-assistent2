@@ -58,7 +58,7 @@ export async function showAddConfirmationOverlay({ date, start, count, timetable
     confirm.style.background = '#007bff'
     confirm.style.color = '#fff'
     confirm.style.border = 'none'
-    confirm.onclick = async () => {
+    confirm.onclick = async() => {
       try {
         confirm.disabled = true
         if (typeof onConfirm === 'function') await onConfirm()
