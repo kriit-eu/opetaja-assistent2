@@ -2873,11 +2873,30 @@ class JournalListSyncFeature extends BaseFeature {
               batch.entryDate = ed
             }
 
+            // Add Kriit assignment link to homework field
+            if (batch.assignmentId) {
+              // Use the Kriit API base URL from the API service, trimming any trailing slash and removing '/api' if present
+              let kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
+              kriitBaseUrl = kriitBaseUrl.replace(/\/api$/, '')
+              
+              // Try to get group name from the subject if available
+              const subject = this.differences && Array.isArray(this.differences) ? 
+                             this.differences.find(s => s.subjectExternalId === batch.journalId) : null
+              const groupCode = subject ? subject.groupName || '' : ''
+              
+              const kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${batch.assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+              const homeworkText = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+              
+              updateData.homework = homeworkText
+              Logger.debug(`📋 Added assignment link to homework field: ${homeworkText}`)
+            }
+
             // Ensure teacher IDs and capacity types as in other flows
             if (Array.isArray(updateData.journalEntryTeachers)) {
               updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
             }
-            updateData.journalEntryCapacityTypes = updateData.journalEntryCapacityTypes || ['MAHT_i']
+            // Always set capacity types to MAHT_i for assignment updates (as requested)
+            updateData.journalEntryCapacityTypes = ['MAHT_i']
 
             // Filter out students with OPPURSTAATUS_K using mapping similar to syncAssignmentNameDifferences
             if (Array.isArray(updateData.journalEntryStudents)) {
@@ -3697,7 +3716,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Make sure we have the correct capacity types
-        if (!updateData.journalEntryCapacityTypes && entryData.entryType) {
+        if (!updateData.journalEntryCapacityTypes || (Array.isArray(updateData.journalEntryCapacityTypes) && updateData.journalEntryCapacityTypes.length === 0)) {
           // Set default capacity types based on entry type
           if (entryData.entryType === 'SISSEKANNE_I') {
             updateData.journalEntryCapacityTypes = ['MAHT_i']
