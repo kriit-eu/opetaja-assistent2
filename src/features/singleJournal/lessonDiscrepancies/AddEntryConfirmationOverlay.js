@@ -1,6 +1,6 @@
 // Lightweight confirmation overlay used by lesson discrepancies feature.
 // Exposes `showAddConfirmationOverlay({date,start,count,timetableData,teacherLabel,onConfirm})`
-export async function showAddConfirmationOverlay({ date, start, count, timetableData = {}, teacherLabel = '—', onConfirm = null } = {}) {
+export async function showAddConfirmationOverlay({ date, start, count, _timetableData = {}, teacherLabel = '—', onConfirm = null } = {}) {
   try {
     // Remove any existing overlay with known IDs
     document.querySelector('#ra-overlay-add-entry')?.remove()

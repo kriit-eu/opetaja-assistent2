@@ -1218,7 +1218,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return value !== Infinity && value !== -Infinity && !isNaN(value) && value != null
   }
 
-  #setFieldState(field, state) {
+  #setFieldState(_field, _state) {
     // Visual highlighting disabled. Keep method to avoid breaking callers.
     return
   }
@@ -1909,8 +1909,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Fetch fresh journal data
       const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
 
-      // Re-run unified validation
-      const capacityProblems = await this.#getCapacityTypeProblems(journalData)
+  // Re-run unified validation
+  const _capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
       // Instead of only updating capacity problems (which hides timetable discrepancies),
       // perform a full table refresh so both timetable discrepancies and capacity problems
@@ -2696,7 +2696,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 await this.#refreshTableWithRetry()
 
                 // Inform user briefly and exit early since fix was applied server-side
-                try { await showMessageOverlay({ title: 'Parandus salvestatud', message: 'Muudatused on salvestatud serverisse. Palun kontrollige päevikut.', duration: 4000 }) } catch {}
+                try {
+                  await showMessageOverlay({
+                    title: 'Parandus salvestatud',
+                    message: 'Muudatused on salvestatud serverisse. Palun kontrollige päevikut.',
+                    duration: 4000
+                  })
+                } catch (err) {
+                  // Non-fatal: overlay failed to display; log for debugging
+                  Logger.debug(`[${this.name}] showMessageOverlay failed:`, err)
+                }
                 return
               } catch (putErr) {
                 Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId}:`, putErr)

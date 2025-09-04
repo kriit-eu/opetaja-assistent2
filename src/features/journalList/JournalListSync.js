@@ -430,7 +430,13 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug('Using API-provided journal list for data collection')
         // Map API items into a minimal journalLinks-like structure for compatibility
         // We create placeholder objects that collectJournalData knows how to handle when passed as apiJournalList
-        const mapped = apiJournalList.map(item => ({ __apiJournal: true, id: item.id, nameEt: item.nameEt || item.name || item.nameEt, studentCount: item.studentCount || 0, canEdit: item.canEdit }))
+        const mapped = apiJournalList.map(item => ({
+          __apiJournal: true,
+          id: item.id,
+          nameEt: item.nameEt || item.name || item.nameEt,
+          studentCount: item.studentCount || 0,
+          canEdit: item.canEdit
+        }))
         // Collect data using API-provided journal ids
         const journalData = await this.collectJournalData(mapped)
         // Continue with Kriit call and outcome sync
@@ -2554,12 +2560,26 @@ class JournalListSyncFeature extends BaseFeature {
           if (subject.assignments && Array.isArray(subject.assignments)) {
             subject.assignments.forEach(assignment => {
               // Check for assignment-level changes (name, due date, entry date)
-              const hasNameDiff = assignment.assignmentName && typeof assignment.assignmentName === 'object' &&
-                                  assignment.assignmentName.kriit && assignment.assignmentName.kriit !== assignment.assignmentName.Tahvel
-              const hasDueDateDiff = assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object' &&
-                                     assignment.assignmentDueAt.kriit && assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
-              const hasEntryDateDiff = assignment.assignmentEntryDate && typeof assignment.assignmentEntryDate === 'object' &&
-                                       assignment.assignmentEntryDate.kriit && assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+              const hasNameDiff = (
+                assignment.assignmentName &&
+                typeof assignment.assignmentName === 'object' &&
+                assignment.assignmentName.kriit &&
+                assignment.assignmentName.kriit !== assignment.assignmentName.Tahvel
+              )
+
+              const hasDueDateDiff = (
+                assignment.assignmentDueAt &&
+                typeof assignment.assignmentDueAt === 'object' &&
+                assignment.assignmentDueAt.kriit &&
+                assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
+              )
+
+              const hasEntryDateDiff = (
+                assignment.assignmentEntryDate &&
+                typeof assignment.assignmentEntryDate === 'object' &&
+                assignment.assignmentEntryDate.kriit &&
+                assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+              )
 
               if (hasNameDiff || hasDueDateDiff || hasEntryDateDiff) {
                 assignmentLevelDifferences.push({
@@ -3716,7 +3736,10 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Make sure we have the correct capacity types
-        if (!updateData.journalEntryCapacityTypes || (Array.isArray(updateData.journalEntryCapacityTypes) && updateData.journalEntryCapacityTypes.length === 0)) {
+        if (
+          !updateData.journalEntryCapacityTypes ||
+          (Array.isArray(updateData.journalEntryCapacityTypes) && updateData.journalEntryCapacityTypes.length === 0)
+        ) {
           // Set default capacity types based on entry type
           if (entryData.entryType === 'SISSEKANNE_I') {
             updateData.journalEntryCapacityTypes = ['MAHT_i']

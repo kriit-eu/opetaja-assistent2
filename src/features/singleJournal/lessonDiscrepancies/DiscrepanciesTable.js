@@ -21,7 +21,7 @@ export class DiscrepanciesTable {
    * @param {Array} colors - Array of [background, hover, text] colors
    * @returns {string} CSS style string
    */
-  static createButtonStyle = ([bg, hover, color]) =>
+  static createButtonStyle = ([bg, _hover, color]) =>
     `background:${bg};color:${color};border:none;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;cursor:pointer;`
 
   /**
@@ -817,7 +817,16 @@ export class DiscrepanciesTable {
     ]
 
     // Return the first visible element (width > 100px) from preferred selectors, or document.body as final fallback
-    const found = preferredSelectors.map(selector => document.querySelector(selector)).find(element => element && element.getBoundingClientRect && element.getBoundingClientRect().width > 100)
+    const candidates = preferredSelectors.map(selector => document.querySelector(selector))
+    const found = candidates.find(element => {
+      if (!element) return false
+      if (!element.getBoundingClientRect) return false
+      try {
+        return element.getBoundingClientRect().width > 100
+      } catch (e) {
+        return false
+      }
+    })
     return found || document.body
   }
 
