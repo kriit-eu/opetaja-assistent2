@@ -2547,10 +2547,39 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`=== SYNC DATA COLLECTION COMPLETE: ${syncData.length} items to sync ===`)
       }
 
-      if (syncData.length === 0) {
+      // Check for assignment-level differences even if no grade differences exist
+      const assignmentLevelDifferences = []
+      if (this.differences && Array.isArray(this.differences)) {
+        this.differences.forEach(subject => {
+          if (subject.assignments && Array.isArray(subject.assignments)) {
+            subject.assignments.forEach(assignment => {
+              // Check for assignment-level changes (name, due date, entry date)
+              const hasNameDiff = assignment.assignmentName && typeof assignment.assignmentName === 'object' && 
+                                  assignment.assignmentName.kriit && assignment.assignmentName.kriit !== assignment.assignmentName.Tahvel
+              const hasDueDateDiff = assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object' && 
+                                     assignment.assignmentDueAt.kriit && assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
+              const hasEntryDateDiff = assignment.assignmentEntryDate && typeof assignment.assignmentEntryDate === 'object' && 
+                                       assignment.assignmentEntryDate.kriit && assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+              
+              if (hasNameDiff || hasDueDateDiff || hasEntryDateDiff) {
+                assignmentLevelDifferences.push({
+                  journalId: subject.subjectExternalId,
+                  assignmentId: assignment.assignmentExternalId,
+                  hasNameDiff,
+                  hasDueDateDiff,
+                  hasEntryDateDiff
+                })
+                Logger.debug(`📋 Found assignment-level difference: ${assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel || assignment.assignmentExternalId} (name: ${hasNameDiff}, due: ${hasDueDateDiff}, entry: ${hasEntryDateDiff})`)
+              }
+            })
+          }
+        })
+      }
+
+      if (syncData.length === 0 && assignmentLevelDifferences.length === 0) {
         Logger.warning('No data to sync after processing')
         Logger.debug('=== SYNC STATUS CHECK ===')
-        Logger.debug('syncData is empty, meaning no differences were found or all are filtered out')
+        Logger.debug('syncData is empty and no assignment-level differences found')
         Logger.debug(`Original differences count: ${this.differences ? this.differences.length : 0}`)
 
         // Count total assignments and results for debugging
@@ -2588,7 +2617,13 @@ class JournalListSyncFeature extends BaseFeature {
       // Log what we're going to sync
       Logger.debug('=== SYNC DATA TO PROCESS ===')
       Logger.debug(`Found ${syncData.length} grade differences to sync`)
-      Logger.debug(`Differences to sync: ${JSON.stringify(syncData, null, 2)}`)
+      Logger.debug(`Found ${assignmentLevelDifferences.length} assignment-level differences to sync`)
+      if (syncData.length > 0) {
+        Logger.debug(`Grade differences to sync: ${JSON.stringify(syncData, null, 2)}`)
+      }
+      if (assignmentLevelDifferences.length > 0) {
+        Logger.debug(`Assignment-level differences to sync: ${JSON.stringify(assignmentLevelDifferences, null, 2)}`)
+      }
 
       // Show loading state
       this.isLoading = true
@@ -2599,18 +2634,35 @@ class JournalListSyncFeature extends BaseFeature {
   const failedSyncs = []
 
       try {
-        // Build assignment-level batches
+        // Build assignment-level batches from both grade differences and assignment-level differences
         const assignmentMap = new Map()
+        
+        // Add assignments with grade differences
         for (const item of syncData) {
           const key = `${item.journalId}::${item.assignmentId}`
           if (!assignmentMap.has(key)) {
             assignmentMap.set(key, {
               journalId: item.journalId,
               assignmentId: item.assignmentId,
-              students: []
+              students: [],
+              assignmentLevelOnly: false
             })
           }
           assignmentMap.get(key).students.push({ studentPersonalCode: item.studentPersonalCode, grade: item.grade })
+        }
+        
+        // Add assignments with only assignment-level differences (no grade changes)
+        for (const assignmentDiff of assignmentLevelDifferences) {
+          const key = `${assignmentDiff.journalId}::${assignmentDiff.assignmentId}`
+          if (!assignmentMap.has(key)) {
+            assignmentMap.set(key, {
+              journalId: assignmentDiff.journalId,
+              assignmentId: assignmentDiff.assignmentId,
+              students: [],
+              assignmentLevelOnly: true  // Mark as assignment-level only
+            })
+            Logger.debug(`📋 Added assignment-level only batch: ${assignmentDiff.journalId}/${assignmentDiff.assignmentId}`)
+          }
         }
 
         // Merge assignment-level changes from this.differences (name, due date, entry date)
@@ -2760,7 +2812,12 @@ class JournalListSyncFeature extends BaseFeature {
               studentsToUpdate.push({ ...finalStudentEntry, studentName, studentPersonalCode: studentPersonal })
             }
 
-            if (studentsToUpdate.length === 0) {
+            // Check if this is an assignment-level only batch or has student updates
+            const isAssignmentLevelOnly = batch.assignmentLevelOnly === true
+            const hasStudentUpdates = studentsToUpdate.length > 0
+            const hasAssignmentUpdates = batch.nameEt || batch.homeworkDuedate || batch.entryDate
+
+            if (!hasStudentUpdates && !isAssignmentLevelOnly) {
               Logger.debug(`No student updates required for assignment ${batch.assignmentId}`)
               successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, skipped: true })
               // update progress
@@ -2768,12 +2825,26 @@ class JournalListSyncFeature extends BaseFeature {
               continue
             }
 
-            // Prepare update payload based on existing entryData but with filtered studentsToUpdate
+            if (isAssignmentLevelOnly && !hasAssignmentUpdates) {
+              Logger.debug(`Assignment-level only batch ${batch.assignmentId} has no actual assignment changes`)
+              successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, skipped: true })
+              // update progress
+              this.updateProgressUI(bi + 1, batches.length)
+              continue
+            }
+
+            // Prepare update payload based on existing entryData
             const updateData = { ...entryData }
-            // Replace journalEntryStudents with only students being updated (server expects student objects with names)
-            updateData.journalEntryStudents = studentsToUpdate.map(s => ({
-              ...s
-            }))
+            
+            // For assignment-level only batches, preserve all existing students
+            // For batches with student updates, use only the students being updated
+            if (isAssignmentLevelOnly) {
+              // Keep all existing students for assignment-level only changes
+              Logger.debug(`📋 Assignment-level only update: preserving ${entryData.journalEntryStudents?.length || 0} existing students`)
+            } else {
+              // Replace journalEntryStudents with only students being updated
+              updateData.journalEntryStudents = studentsToUpdate.map(s => ({ ...s }))
+            }
 
             // Assignment-level updates: normalize date formats expected by Tahvel
             if (batch.nameEt) updateData.nameEt = batch.nameEt
@@ -2830,8 +2901,15 @@ class JournalListSyncFeature extends BaseFeature {
             try {
               if (Logger.isDebugMode()) Logger.debug(`PUT /journals/${batch.journalId}/journalEntry/${batch.assignmentId} payload: ${JSON.stringify(updateData)}`)
               await this.api.tahvel.put(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, updateData)
-              // Mark successful
-              successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, updated: studentsToUpdate.length })
+              
+              // Mark successful - different tracking for assignment-level vs student updates
+              if (isAssignmentLevelOnly) {
+                successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, assignmentLevelUpdated: true, updated: 0 })
+                Logger.debug(`✅ Assignment-level update successful: ${batch.journalId}/${batch.assignmentId}`)
+              } else {
+                successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, updated: studentsToUpdate.length })
+                Logger.debug(`✅ Student grade updates successful: ${studentsToUpdate.length} students in ${batch.journalId}/${batch.assignmentId}`)
+              }
 
               // Update in-memory differences: clear assignment-level diffs and update per-student currentGrade
               try {
@@ -2913,19 +2991,29 @@ class JournalListSyncFeature extends BaseFeature {
         const realErrors = failedSyncs.filter(item => item.errorType !== 'inactive_student')
 
         const actualUpdates = successfulSyncs.reduce((acc, s) => acc + (s.updated || 0), 0)
+        const assignmentLevelUpdates = successfulSyncs.filter(s => s.assignmentLevelUpdated).length
         const skippedUpdates = successfulSyncs.filter(s => s.skipped).length
 
         // Show success or partial messages
         this.isLoading = false
         if (realErrors.length === 0) {
-          let successMessage
-          if (actualUpdates > 0) {
-            successMessage = `Edukalt sünkroniseeritud ${actualUpdates} hinnet Kriidist Tahvlisse.`
-            if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} hinnet olid juba õiged.`
+          let successMessage = ''
+          
+          if (actualUpdates > 0 || assignmentLevelUpdates > 0) {
+            const parts = []
+            if (actualUpdates > 0) {
+              parts.push(`${actualUpdates} hinnet`)
+            }
+            if (assignmentLevelUpdates > 0) {
+              parts.push(`${assignmentLevelUpdates} ülesande andmeid (nimi/kuupäevad)`)
+            }
+            successMessage = `Edukalt sünkroniseeritud ${parts.join(' ja ')} Kriidist Tahvlisse.`
+            
+            if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} kirjet olid juba õiged.`
             if (inactiveStudentErrors.length > 0) successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
             successMessage += ` Andmed värskendatakse automaatselt mõne sekundi pärast...`
           } else {
-            successMessage = `Kõik ${successfulSyncs.length} hinnet olid juba õiged - pole midagi sünkroniseerida.`
+            successMessage = `Kõik ${successfulSyncs.length} kirjet olid juba õiged - pole midagi sünkroniseerida.`
           }
           this.showSuccessBanner(successMessage)
 
