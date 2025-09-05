@@ -3,7 +3,7 @@ import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
 import { DiscrepanciesTable } from './DiscrepanciesTable.js'
-import { showAddConfirmationOverlay, showMessageOverlay } from './AddEntryConfirmationOverlay.js'
+import { showMessageOverlay } from './AddEntryConfirmationOverlay.js'
 
 // HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
@@ -956,56 +956,53 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
   async #handleAddMissingEntry(date, start, count, timetableData = {}) {
     // Show a confirmation overlay that previews what will be inserted and
-    // provides a button to open the modal and pre-fill it.
+    // Directly create the missing entry without showing confirmation.
     try {
-      await this.#showAddConfirmationOverlay({ date, start, count, timetableData })
+      await this.#createMissingEntryDirect({ date, start, count, timetableData })
     } catch (err) {
-      Logger.error(`[${this.name}] Error showing add confirmation overlay`, err)
+      Logger.error(`[${this.name}] Error creating missing entry directly`, err)
     }
   }
 
   // Create and show a lightweight confirmation overlay. When user clicks
   // "Open form" the add-entry modal is opened and pre-filled via existing
   // helpers (#findAndClickAddButton and #fillAddForm).
-  async #showAddConfirmationOverlay({ date, start, count, timetableData = {} } = {}) {
-    const teacherLabel = this.#lastJournalData?.info?.journalTeachers?.[0]?.displayName || this.#lastJournalData?.info?.journalTeachers?.[0]?.name || '—'
+  // Immediately create a missing journal entry (no confirmation UI).
+  async #createMissingEntryDirect({ date, start, count, timetableData = {} } = {}) {
+    const journalId = this.#currentJournalId || this.#extractJournalId()
+    if (!journalId) throw new Error('Journal ID puudub')
 
-    await showAddConfirmationOverlay({
-      date,
-      start,
-      count,
-      timetableData,
-      teacherLabel,
-      onConfirm: async() => {
-        const journalId = this.#currentJournalId || this.#extractJournalId()
-        if (!journalId) throw new Error('Journal ID puudub')
+    const effectiveStart = timetableData.timetablestart ?? timetableData.timetableStart ?? start ?? 1
+    const effectiveCount = timetableData.timetablecount ?? timetableData.timetableCount ?? count ?? 1
+    const teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
 
-        const effectiveStart = timetableData.timetablestart ?? timetableData.timetableStart ?? start ?? 1
-        const effectiveCount = timetableData.timetablecount ?? timetableData.timetableCount ?? count ?? 1
-        const teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+    const payload = {
+      startLessonNr: Number(effectiveStart),
+      lessons: Number(effectiveCount),
+      entryType: LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE,
+      nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
+      studyPeriodEvent: null,
+      journalOmoduleTheme: null,
+      entryDate: (new Date(date)).toISOString(),
+      journalEntryStudents: [],
+      journalEntryCapacityTypes: ['MAHT_a'],
+      journalEntryTeachers: teacherId ? [String(teacherId)] : []
+    }
 
-        const payload = {
-          startLessonNr: Number(effectiveStart),
-          lessons: Number(effectiveCount),
-          entryType: LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE,
-          nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
-          studyPeriodEvent: null,
-          journalOmoduleTheme: null,
-          entryDate: (new Date(date)).toISOString(),
-          journalEntryStudents: [],
-          journalEntryCapacityTypes: ['MAHT_a'],
-          journalEntryTeachers: teacherId ? [teacherId] : []
-        }
+    const url = `/journals/${journalId}/journalEntry`
+    Logger.info(`[${this.name}] Creating missing journal entry (direct)`, { url, payload })
 
-        const url = `/journals/${journalId}/journalEntry`
-        Logger.info(`[${this.name}] Sending create journal entry POST`, { url, payload })
-
-        const res = await this.api.tahvel.post(url, payload)
-        try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
-        try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after create', e) }
-        return res
-      }
-    })
+    try {
+      const res = await this.api.tahvel.post(url, payload)
+      try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
+      try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after create', e) }
+      try { await showMessageOverlay({ title: 'Sissekanne lisatud', message: 'Uus sissekanne on loodud.', duration: 3500 }) } catch (e) { Logger.debug('showMessageOverlay failed', e) }
+      return res
+    } catch (err) {
+      Logger.error(`[${this.name}] Failed to create missing journal entry`, err)
+      try { await showMessageOverlay({ title: 'Viga', message: 'Sissekande loomine ebaõnnestus. Kontrolli konsooli.', duration: 5000 }) } catch (e) { Logger.debug('showMessageOverlay failed', e) }
+      throw err
+    }
   }
 
   // ...existing code...
@@ -2634,24 +2631,32 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
           // Fetch fresh detailed entry (no cache)
           const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
           if (detailedEntry) {
-            // Create a safe copy for PUT: remove UI-only fields and normalize types
+            // Create a safe copy for PUT: copy server object and normalize important types
             const safeCopy = { ...detailedEntry }
-            // Normalize teacher IDs to numbers
-            if (Array.isArray(safeCopy.journalEntryTeachers)) {
-              safeCopy.journalEntryTeachers = safeCopy.journalEntryTeachers.map(id => (typeof id === 'string' ? Number(id) : id))
-            } else {
-              safeCopy.journalEntryTeachers = []
-            }
 
-            // Ensure capacity types is an array
+            // Ensure capacity types is an array (copy to avoid mutating original)
             safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
               ? safeCopy.journalEntryCapacityTypes.slice()
               : []
 
-            // Remove UI-only fields
-            delete safeCopy.teacherSelection
-            delete safeCopy._links
-            delete safeCopy.journalStudent
+            // Normalize teacher IDs to strings and populate from teacherSelection or journal info when missing
+            if (Array.isArray(safeCopy.journalEntryTeachers) && safeCopy.journalEntryTeachers.length > 0) {
+              safeCopy.journalEntryTeachers = safeCopy.journalEntryTeachers.map(id => String(id))
+            } else {
+              // Try to populate from detailedEntry.teacherSelection first
+              if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                const sel = detailedEntry.teacherSelection[0]
+                safeCopy.journalEntryTeachers = [String(sel.id)]
+                // Preserve teacherSelection but ensure id is string
+                safeCopy.teacherSelection = detailedEntry.teacherSelection.map(t => ({ ...t, id: String(t.id) }))
+              } else if (this.#lastJournalData?.info?.journalTeachers && this.#lastJournalData.info.journalTeachers.length > 0) {
+                const fallback = this.#lastJournalData.info.journalTeachers[0]
+                safeCopy.journalEntryTeachers = [String(fallback.id)]
+                safeCopy.teacherSelection = [{ id: String(fallback.id), displayName: fallback.displayName || fallback.name || '' }]
+              } else {
+                safeCopy.journalEntryTeachers = []
+              }
+            }
 
             // Business rule: if both MAHT_a and MAHT_i present for a lesson entry, remove MAHT_i (auditoorne wins)
             if (safeCopy.entryType === 'SISSEKANNE_T' && safeCopy.journalEntryCapacityTypes.includes('MAHT_a') && safeCopy.journalEntryCapacityTypes.includes('MAHT_i')) {
@@ -2664,18 +2669,22 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
               const has_i = safeCopy.journalEntryCapacityTypes.includes('MAHT_i')
               if (!has_i) {
                 Logger.info(`[${this.name}] Adding MAHT_i for independent work entry ${actualEntryId}`)
-                // Remove MAHT_a if present
                 safeCopy.journalEntryCapacityTypes = safeCopy.journalEntryCapacityTypes.filter(t => t !== 'MAHT_a')
                 safeCopy.journalEntryCapacityTypes.push('MAHT_i')
               }
             }
+
+            // Remove other UI-only fields that are not needed or may cause server errors
+            delete safeCopy._links
+            delete safeCopy.journalStudent
 
             // If there is any change compared to server copy, perform PUT
             const needsPut = JSON.stringify(safeCopy) !== JSON.stringify(detailedEntry)
             if (needsPut) {
               try {
                 Logger.debug(`[${this.name}] Performing PUT for entry ${actualEntryId} with payload:`, safeCopy)
-                await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                Logger.debug(`[${this.name}] PUT response for normalized entry ${actualEntryId}:`, putRes)
 
                 // Clear cache and refresh local journal data
                 try {
@@ -2695,20 +2704,25 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 // Refresh the discrepancies display
                 await this.#refreshTableWithRetry()
 
-                // Inform user briefly and exit early since fix was applied server-side
-                try {
-                  await showMessageOverlay({
-                    title: 'Parandus salvestatud',
-                    message: 'Muudatused on salvestatud serverisse. Palun kontrollige päevikut.',
-                    duration: 4000
-                  })
-                } catch (err) {
-                  // Non-fatal: overlay failed to display; log for debugging
-                  Logger.debug(`[${this.name}] showMessageOverlay failed:`, err)
-                }
+                // Server-side fix applied; refresh display and exit early.
+                // Note: UI success overlay removed per user preference.
                 return
               } catch (putErr) {
-                Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId}:`, putErr)
+                // Try to extract response body for diagnostics
+                try {
+                  if (putErr?.response && typeof putErr.response.json === 'function') {
+                    const body = await putErr.response.json()
+                    Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId} - response body:`, body)
+                  } else if (putErr?.response && typeof putErr.response.text === 'function') {
+                    const body = await putErr.response.text()
+                    Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId} - response text:`, body)
+                  } else {
+                    Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId}:`, putErr)
+                  }
+                } catch (bodyErr) {
+                  Logger.error(`[${this.name}] PUT failed and response body could not be read`, bodyErr)
+                }
+
                 // Fall through to UI-based flow as a fallback
               }
             } else {
@@ -2814,29 +2828,131 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         highlightMessage = 'Kontrollige auditoorse õppe ja iseseiseva õppe linnukesi!'
       }
 
+      // Special handling for teacher validation issues: try server-side assignment BEFORE opening the dialog
+      if (validationResult?.errorType === 'no_teacher_selected') {
+        try {
+          const journalId = this.#currentJournalId || this.#extractJournalId()
+          if (journalId && entryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
+            const detailUrl = `/journals/${journalId}/journalEntry/${entryId}`
+            const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
+
+            if (detailedEntry) {
+              // Determine teacher id to assign: prefer server-provided teacherSelection, then journal info
+              let teacherId = null
+              if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                teacherId = detailedEntry.teacherSelection[0].id
+              }
+              if (!teacherId) {
+                teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+              }
+
+              if (teacherId) {
+                const safeCopy = { ...detailedEntry }
+                // Find teacher object (prefer detailedEntry.teacherSelection, fallback to journal info)
+                let teacherObj = null
+                if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                  teacherObj = detailedEntry.teacherSelection.find(t => Number(t.id) === Number(teacherId)) || detailedEntry.teacherSelection[0]
+                } else if (this.#lastJournalData?.info?.journalTeachers) {
+                  teacherObj = this.#lastJournalData.info.journalTeachers.find(t => Number(t.id) === Number(teacherId)) || null
+                }
+
+                // Server expects teacher ids as strings in some cases; use string form to match example payload
+                safeCopy.journalEntryTeachers = [String(teacherId)]
+                safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
+                  ? safeCopy.journalEntryCapacityTypes.slice()
+                  : []
+
+                // Preserve or set teacherSelection so server receives the teacher metadata (helps server-side processing)
+                if (teacherObj) {
+                  safeCopy.teacherSelection = [
+                    // Build a minimal teacher object if the server response didn't include one
+                    Object.assign(
+                      { id: String(teacherObj.id), displayName: teacherObj.displayName || teacherObj.name || '' },
+                      // Keep extra known fields if present
+                      teacherObj
+                    )
+                  ]
+                } else if (Array.isArray(safeCopy.teacherSelection) && safeCopy.teacherSelection.length > 0) {
+                  // Ensure IDs inside teacherSelection are strings
+                  safeCopy.teacherSelection = safeCopy.teacherSelection.map(t => ({ ...t, id: String(t.id) }))
+                } else {
+                  // No teacher metadata available - set minimal teacherSelection using journal info if present
+                  const fallbackTeacher = this.#lastJournalData?.info?.journalTeachers?.find(t => Number(t.id) === Number(teacherId))
+                  if (fallbackTeacher) {
+                    safeCopy.teacherSelection = [{ id: String(fallbackTeacher.id), displayName: fallbackTeacher.displayName || fallbackTeacher.name || '' }]
+                  } else {
+                    delete safeCopy.teacherSelection
+                  }
+                }
+
+                // Remove other UI-only fields
+                delete safeCopy._links
+                delete safeCopy.journalStudent
+
+                Logger.info(`[${this.name}] Attempting server-side teacher assignment for entry ${entryId}`, { journalId, teacherId, payloadPreview: { journalEntryTeachers: safeCopy.journalEntryTeachers, teacherSelection: safeCopy.teacherSelection } })
+
+                try {
+                  // Log the full payload at debug level (avoid verbose logging at info level)
+                  Logger.debug(`[${this.name}] Teacher assignment PUT payload for entry ${entryId}:`, safeCopy)
+                  const putRes = await this.api.tahvel.put(detailUrl, safeCopy)
+                  Logger.debug(`[${this.name}] PUT response for teacher assignment:`, putRes)
+                  try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.debug(`[${this.name}] cache clear error after teacher PUT:`, e) }
+                  try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after teacher PUT failed:`, e) }
+                  await this.#refreshTableWithRetry()
+
+                  try {
+                    await showMessageOverlay({ title: 'Õpetaja lisatud', message: 'Õpetaja on automaatselt määratud ja salvestatud.', duration: 4000 })
+                  } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+
+                  return // success, exit early
+                } catch (putErr) {
+                  // Try to extract server response body if available for diagnostics
+                  try {
+                    if (putErr?.response && typeof putErr.response.json === 'function') {
+                      const body = await putErr.response.json()
+                      Logger.error(`[${this.name}] Server PUT to assign teacher failed for entry ${entryId} - response body:`, body)
+                    } else if (putErr?.response && typeof putErr.response.text === 'function') {
+                      const body = await putErr.response.text()
+                      Logger.error(`[${this.name}] Server PUT to assign teacher failed for entry ${entryId} - response text:`, body)
+                    } else {
+                      Logger.error(`[${this.name}] Server PUT to assign teacher failed for entry ${entryId}:`, putErr)
+                    }
+                  } catch (bodyErr) {
+                    Logger.error(`[${this.name}] Server PUT failed and response body parsing threw:`, bodyErr)
+                  }
+
+                  // On failure, show message and exit (no UI fallback)
+                  try {
+                    await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt õpetajat määrata. Palun valige õpetaja käsitsi.', duration: 6000 })
+                  } catch (e) {
+                    Logger.debug(`[${this.name}] showMessageOverlay failed:`, e)
+                  }
+                  return
+                }
+              } else {
+                Logger.debug(`[${this.name}] No teacher available to assign for entry ${entryId}`)
+                try {
+                  await showMessageOverlay({ title: 'Õpetajat ei leitud', message: 'Päevikust või sissekandest ei leitud õpetajat, palun valige õpetaja käsitsi.', duration: 6000 })
+                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+                return
+              }
+            }
+          }
+        } catch (srvAssignErr) {
+          Logger.debug(`[${this.name}] Server-side teacher assignment attempt failed:`, srvAssignErr)
+          try {
+            await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Serveri päring ebaõnnestus. Palun valige õpetaja käsitsi.', duration: 6000 })
+          } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+          return
+        }
+      }
+
+      // Open the dialog only for non-teacher issues or if we reached here
       await this.#clickJournalEntry(element)
       await this.#waitForDialogContentLoaded()
 
       // Wait a bit for dialog content to fully render
       await new Promise(resolve => setTimeout(resolve, 500))
-
-      // Special handling for teacher validation issues
-      if (validationResult?.errorType === 'no_teacher_selected') {
-        // Auto-check teacher checkbox but don't auto-save
-        await this.#checkTeacherCheckbox()
-
-        // Highlight teacher checkboxes in green to show they were fixed
-        const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
-        const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
-
-        if (teacherElements.length > 0) {
-          // Use green highlight for successful fix - no message needed
-          this.#highlightProblematicElements(teacherElements, 'Õpetaja on valitud! Palun salvestage muudatused käsitsi.', '#4CAF50')
-          this.#addDialogCloseListeners()
-        }
-
-        return // Exit early for teacher validation - no auto-save
-      }
 
       // Special handling for lesson_without_auditoorne - only check capacity checkbox, not teacher
       if (validationResult?.errorType === 'lesson_without_auditoorne') {

@@ -1,80 +1,109 @@
 // Lightweight confirmation overlay used by lesson discrepancies feature.
 // Exposes `showAddConfirmationOverlay({date,start,count,timetableData,teacherLabel,onConfirm})`
-export async function showAddConfirmationOverlay({ date, start, count, _timetableData = {}, teacherLabel = '—', onConfirm = null } = {}) {
+export async function showAddConfirmationOverlay({ date, start, count, _timetableData = {}, teacherLabel = '—', onConfirm = null, onOpenForm = null } = {}) {
   try {
-    // Remove any existing overlay with known IDs
-    document.querySelector('#ra-overlay-add-entry')?.remove()
-    document.querySelector('#oa-add-entry-confirmation-overlay')?.remove()
+    // Remove any existing compact panel
+    document.querySelector('#ra-add-entry-panel')?.remove()
 
-    const overlay = document.createElement('div')
-    overlay.id = 'ra-overlay-add-entry'
-    overlay.style.position = 'fixed'
-    overlay.style.left = '0'
-    overlay.style.top = '0'
-    overlay.style.right = '0'
-    overlay.style.bottom = '0'
-    overlay.style.background = 'rgba(0,0,0,0.4)'
-    overlay.style.zIndex = 99999
-    overlay.style.display = 'flex'
-    overlay.style.alignItems = 'center'
-    overlay.style.justifyContent = 'center'
+    // Compact bottom-right non-blocking panel
+    const panel = document.createElement('div')
+    panel.id = 'ra-add-entry-panel'
+    panel.style.position = 'fixed'
+    panel.style.right = '16px'
+    panel.style.bottom = '16px'
+    panel.style.zIndex = 99999
+    panel.style.background = '#fff'
+    panel.style.padding = '12px 14px'
+    panel.style.borderRadius = '8px'
+    panel.style.boxShadow = '0 8px 30px rgba(0,0,0,0.18)'
+    panel.style.maxWidth = '360px'
+    panel.style.width = '320px'
+    panel.style.fontSize = '13px'
+    panel.style.color = '#111'
 
-    const box = document.createElement('div')
-    box.style.background = '#fff'
-    box.style.padding = '16px'
-    box.style.borderRadius = '6px'
-    box.style.maxWidth = '520px'
-    box.style.width = '90%'
-    box.style.boxShadow = '0 6px 24px rgba(0,0,0,0.2)'
+    const titleRow = document.createElement('div')
+    titleRow.style.display = 'flex'
+    titleRow.style.alignItems = 'center'
+    titleRow.style.justifyContent = 'space-between'
 
-    const title = document.createElement('h3')
-    title.textContent = 'Lisa sissekanne — kinnita'
-    title.style.marginTop = '0'
-    box.appendChild(title)
+    const title = document.createElement('div')
+    title.textContent = 'Lisa sissekanne'
+    title.style.fontWeight = '600'
+    titleRow.appendChild(title)
 
-    const list = document.createElement('div')
-    list.style.margin = '8px 0'
-    list.innerHTML = `
+    const closeX = document.createElement('button')
+    closeX.textContent = '✕'
+    closeX.style.border = 'none'
+    closeX.style.background = 'transparent'
+    closeX.style.cursor = 'pointer'
+    closeX.style.fontSize = '14px'
+    closeX.onclick = () => panel.remove()
+    titleRow.appendChild(closeX)
+
+    panel.appendChild(titleRow)
+
+    const info = document.createElement('div')
+    info.style.margin = '8px 0'
+    info.innerHTML = `
       <div><strong>Kuupäev:</strong> ${date || '—'}</div>
       <div><strong>Algus:</strong> ${start ?? '—'}</div>
       <div><strong>Tunnid:</strong> ${count ?? '—'}</div>
       <div><strong>Õpetaja:</strong> ${teacherLabel}</div>
     `
-    box.appendChild(list)
+    panel.appendChild(info)
 
-    const buttons = document.createElement('div')
-    buttons.style.display = 'flex'
-    buttons.style.gap = '8px'
-    buttons.style.justifyContent = 'flex-end'
+    const actions = document.createElement('div')
+    actions.style.display = 'flex'
+    actions.style.gap = '8px'
+    actions.style.justifyContent = 'flex-end'
 
     const cancel = document.createElement('button')
     cancel.textContent = 'Tühista'
-    cancel.style.padding = '6px 12px'
-    cancel.onclick = () => overlay.remove()
+    cancel.style.padding = '6px 10px'
+    cancel.style.border = '1px solid #d0d0d0'
+    cancel.style.background = 'transparent'
+    cancel.onclick = () => panel.remove()
+
+    // Optional: open the full form if caller provided a handler
+    let openFormBtn = null
+    if (typeof onOpenForm === 'function') {
+      openFormBtn = document.createElement('button')
+      openFormBtn.textContent = 'Ava vorm'
+      openFormBtn.style.padding = '6px 10px'
+      openFormBtn.style.border = '1px solid #d0d0d0'
+      openFormBtn.style.background = 'transparent'
+      openFormBtn.onclick = async() => {
+        try {
+          await onOpenForm()
+        } finally {
+          panel.remove()
+        }
+      }
+      actions.appendChild(openFormBtn)
+    }
 
     const confirm = document.createElement('button')
-    confirm.textContent = 'Kinnita'
+    confirm.textContent = 'Lisa'
     confirm.style.padding = '6px 12px'
     confirm.style.background = '#007bff'
     confirm.style.color = '#fff'
     confirm.style.border = 'none'
+    confirm.style.cursor = 'pointer'
     confirm.onclick = async() => {
       try {
         confirm.disabled = true
         if (typeof onConfirm === 'function') await onConfirm()
       } finally {
-        overlay.remove()
+        panel.remove()
       }
     }
 
-    buttons.appendChild(cancel)
-    buttons.appendChild(confirm)
-    box.appendChild(buttons)
+    actions.appendChild(cancel)
+    actions.appendChild(confirm)
+    panel.appendChild(actions)
 
-    overlay.appendChild(box)
-    document.body.appendChild(overlay)
-
-    return overlay
+    document.body.appendChild(panel)
+    return panel
   } catch (err) {
     console.error('showAddConfirmationOverlay error', err)
     return null
