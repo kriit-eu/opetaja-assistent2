@@ -746,6 +746,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         Object.entries(data).map(([key, value]) => [key, typeof value, value])
       )
 
+      // Special-case: duplicate "Muuda ... #1/#2" buttons should only open the
+      // journal entry for manual editing. Do not perform any server-side fetch/PUT
+      // for this exact UI case to avoid unintended API modifications.
+      try {
+        const text = (button.textContent || '').trim()
+        if (data.handler === 'editEntry' && /Muuda/i.test(text) && /#\d+/.test(text)) {
+          Logger.info(`[${this.name}] Detected duplicate 'Muuda' button - opening entry instead of server-side edit`, { text, data })
+          // Prefer entryId camelCase, fall back to lower-case dataset variant
+          const entryId = data.entryId ?? data.entryid
+          await this.#handleOpenEntry(entryId, data)
+          // Early return: skip the normal execute flow (no API calls)
+          return
+        }
+      } catch (err) {
+        Logger.error(`[${this.name}] Error during duplicate Muuda short-circuit`, err)
+      }
+
       // Fade out row or table for 'Lisa' button
       if (data.handler === 'addMissing') {
         fadeTarget = button.closest('tr')
@@ -3384,57 +3401,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
 
       if (entryTypeElement) {
-        // Create and apply red highlight
-        const highlightBox = document.createElement('div')
-        highlightBox.dataset.entryTypeHighlight = 'true'
-        highlightBox.style.cssText = `
-          position: absolute;
-          border: 3px solid #ff0000;
-          background: rgba(255, 0, 0, 0.1);
-          pointer-events: none;
-          z-index: 10000;
-          border-radius: 4px;
-          box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
-        `
-
-        // Position the highlight box over the element
-        const rect = entryTypeElement.getBoundingClientRect()
-        const scrollTop = window.scrollY
-        const scrollLeft = window.scrollX
-
-        highlightBox.style.top = rect.top + scrollTop - 2 + 'px'
-        highlightBox.style.left = rect.left + scrollLeft - 2 + 'px'
-        highlightBox.style.width = rect.width + 4 + 'px'
-        highlightBox.style.height = rect.height + 4 + 'px'
-
-        document.body.appendChild(highlightBox)
-
-        // Add tooltip message
-        const tooltip = document.createElement('div')
-        tooltip.dataset.entryTypeTooltip = 'true'
-        tooltip.style.cssText = `
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #ff0000;
-          color: white;
-          padding: 12px 18px;
-          border-radius: 8px;
-          z-index: 10001;
-          font-weight: bold;
-          font-size: 14px;
-          max-width: 350px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-          border: 2px solid #ffffff;
-          line-height: 1.4;
-        `
-        tooltip.textContent = 'Vigane sissekanne: Kontrollige sissekande liiki! See peaks olema õige tüüp päeviku seadistuste järgi.'
-        document.body.appendChild(tooltip)
-
-        // Add cleanup listener for dialog close
+        // Previously we displayed a prominent red highlight and tooltip
+        // warning the user about incorrect entry type. This was noisy and
+        // showed the message: "Vigane sissekanne: Kontrollige sissekande liiki! ...".
+        // Remove the visual tooltip and heavy highlight; keep a debug log and
+        // attach the cleanup listeners so any legacy hooks still work.
         this.#addEntryTypeHighlightCleanup()
-
-        Logger.debug(`[${this.name}] Entry type field highlighted`)
+        Logger.debug(`[${this.name}] Entry type field detected but interactive highlighting suppressed`)
       } else {
         Logger.warn(`[${this.name}] Could not find entry type field to highlight`)
       }
