@@ -2658,6 +2658,58 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
               }
             }
 
+            // Ensure capacity types is an array (copy to avoid mutating original)
+            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
+              ? safeCopy.journalEntryCapacityTypes.slice()
+              : []
+
+            // Special case: if this is a lesson entry and auditoorne capacity is missing,
+            // perform a focused server-side PUT to add MAHT_a and return early (no UI fallback).
+            if (safeCopy.entryType === 'SISSEKANNE_T' && !safeCopy.journalEntryCapacityTypes.includes('MAHT_a')) {
+              Logger.info(`[${this.name}] Detected lesson entry without auditoorne capacity - adding MAHT_a via API for entry ${actualEntryId}`)
+              // Add MAHT_a while keeping uniqueness
+              safeCopy.journalEntryCapacityTypes = Array.from(new Set([...(safeCopy.journalEntryCapacityTypes || []), 'MAHT_a']))
+
+              // Remove UI-only fields that might cause server errors
+              delete safeCopy._links
+              delete safeCopy.journalStudent
+
+              try {
+                Logger.debug(`[${this.name}] Performing focused PUT to add MAHT_a for entry ${actualEntryId}`, safeCopy)
+                const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                Logger.debug(`[${this.name}] Focused PUT response for entry ${actualEntryId}:`, putRes)
+
+                try { await cacheService.clearJournalCache(journalId) } catch (cErr) { Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr) }
+                try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e) }
+                await this.#refreshTableWithRetry()
+
+                // Done - server-side fix applied. Exit without opening UI fallback.
+                return
+              } catch (putErrFocused) {
+                // Try to extract response body for diagnostics and show user message but do NOT open UI fallback
+                try {
+                  if (putErrFocused?.response && typeof putErrFocused.response.json === 'function') {
+                    const body = await putErrFocused.response.json()
+                    Logger.error(`[${this.name}] Focused PUT failed for entry ${actualEntryId} - response body:`, body)
+                  } else if (putErrFocused?.response && typeof putErrFocused.response.text === 'function') {
+                    const body = await putErrFocused.response.text()
+                    Logger.error(`[${this.name}] Focused PUT failed for entry ${actualEntryId} - response text:`, body)
+                  } else {
+                    Logger.error(`[${this.name}] Focused PUT failed for entry ${actualEntryId}:`, putErrFocused)
+                  }
+                } catch (bodyErr) {
+                  Logger.error(`[${this.name}] Focused PUT failed and response body could not be read`, bodyErr)
+                }
+
+                try {
+                  await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt auditoorset õpet lisada. Palun parandage sissekanne käsitsi.', duration: 7000 })
+                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+
+                // Do not continue to UI fallback - return after informing the user
+                return
+              }
+            }
+
             // Business rule: if both MAHT_a and MAHT_i present for a lesson entry, remove MAHT_i (auditoorne wins)
             if (safeCopy.entryType === 'SISSEKANNE_T' && safeCopy.journalEntryCapacityTypes.includes('MAHT_a') && safeCopy.journalEntryCapacityTypes.includes('MAHT_i')) {
               Logger.info(`[${this.name}] Normalizing capacity types for entry ${actualEntryId}: removing MAHT_i since MAHT_a is present`)
