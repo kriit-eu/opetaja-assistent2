@@ -2727,6 +2727,66 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
               }
             }
 
+            // Special case: if this is a practical-work entry and praktiline capacity is missing,
+            // perform a focused server-side PUT to add MAHT_p and return early (no UI fallback).
+            if (safeCopy.entryType === 'SISSEKANNE_P' && !safeCopy.journalEntryCapacityTypes.includes('MAHT_p')) {
+              Logger.info(`[${this.name}] Detected practical-work entry without praktiline capacity - adding MAHT_p via API for entry ${actualEntryId}`)
+              // Add MAHT_p while keeping uniqueness
+              safeCopy.journalEntryCapacityTypes = Array.from(new Set([...(safeCopy.journalEntryCapacityTypes || []), 'MAHT_p']))
+
+              // Ensure we have at least one teacher id string present (server examples use strings)
+              if (!Array.isArray(safeCopy.journalEntryTeachers) || safeCopy.journalEntryTeachers.length === 0) {
+                if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                  safeCopy.journalEntryTeachers = [String(detailedEntry.teacherSelection[0].id)]
+                } else if (this.#lastJournalData?.info?.journalTeachers && this.#lastJournalData.info.journalTeachers.length > 0) {
+                  safeCopy.journalEntryTeachers = [String(this.#lastJournalData.info.journalTeachers[0].id)]
+                } else {
+                  safeCopy.journalEntryTeachers = []
+                }
+              } else {
+                safeCopy.journalEntryTeachers = safeCopy.journalEntryTeachers.map(id => String(id))
+              }
+
+              // Remove UI-only fields that might cause server errors
+              delete safeCopy._links
+              delete safeCopy.journalStudent
+
+              try {
+                Logger.debug(`[${this.name}] Performing focused PUT to add MAHT_p for entry ${actualEntryId}`, safeCopy)
+                const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                Logger.debug(`[${this.name}] Focused PUT response for practical entry ${actualEntryId}:`, putRes)
+
+                try { await cacheService.clearJournalCache(journalId) } catch (cErr) { Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr) }
+                try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e) }
+                await this.#refreshTableWithRetry()
+
+                // Done - server-side fix applied. Exit without opening UI fallback.
+                return
+              } catch (putErrFocused) {
+                // Diagnostics similar to lesson-focused path
+                try {
+                  if (putErrFocused?.response && typeof putErrFocused.response.json === 'function') {
+                    const body = await putErrFocused.response.json()
+                    Logger.error(`[${this.name}] Focused PUT failed for practical entry ${actualEntryId} - response body:`, body)
+                  } else if (putErrFocused?.response && typeof putErrFocused.response.text === 'function') {
+                    const body = await putErrFocused.response.text()
+                    Logger.error(`[${this.name}] Focused PUT failed for practical entry ${actualEntryId} - response text:`, body)
+                  } else {
+                    Logger.error(`[${this.name}] Focused PUT failed for practical entry ${actualEntryId}:`, putErrFocused)
+                  }
+                } catch (bodyErr) {
+                  Logger.error(`[${this.name}] Focused PUT failed and response body could not be read`, bodyErr)
+                }
+
+                try {
+                  await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt praktilist tööd lisada. Palun parandage sissekanne käsitsi.', duration: 7000 })
+                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+
+                // Do not continue to UI fallback - return after informing the user
+                return
+              }
+            }
+
             // Business rule: if both MAHT_a and MAHT_i present for a lesson entry, remove MAHT_i (auditoorne wins)
             if (safeCopy.entryType === 'SISSEKANNE_T' && safeCopy.journalEntryCapacityTypes.includes('MAHT_a') && safeCopy.journalEntryCapacityTypes.includes('MAHT_i')) {
               Logger.info(`[${this.name}] Normalizing capacity types for entry ${actualEntryId}: removing MAHT_i since MAHT_a is present`)
