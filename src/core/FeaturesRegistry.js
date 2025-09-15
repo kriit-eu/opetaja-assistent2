@@ -36,9 +36,18 @@ export async function loadFeatures() {
       Logger.error('Error loading journalListSync feature:', error)
     }
 
+    // Import Tahvel New Assignment Sync feature
+    try {
+      const { tahvelNewAssignmentSync } = await import('../features/journalList/TahvelNewAssignmentSync.js')
+      allAvailableFeatures.journalList.push(tahvelNewAssignmentSync)
+      Logger.debug('Feature "tahvelNewAssignmentSync" created')
+    } catch (error) {
+      Logger.error('Error loading tahvelNewAssignmentSync feature:', error)
+    }
+
     // TODO: Import other Kriit-dependent features when implemented
   } else {
-    Logger.debug('Skipping feature journalListSync because it requires Kriit and Kriit is disabled')
+    Logger.debug('Skipping Kriit-dependent features because Kriit is disabled')
   }
 
   // Load non-Kriit features here (they should always be loaded)
@@ -83,10 +92,10 @@ export async function loadFeatures() {
 
   // Load final grades by outcomes feature (always enabled)
   try {
-  const FinalGradesManagementFeature = (await import('../features/singleJournal/addFinalGrades/FinalGradesManagementFeature.js')).default
-  const finalGradesManagementFeature = new FinalGradesManagementFeature()
-  allAvailableFeatures.singleJournal.push(finalGradesManagementFeature)
-  Logger.debug('Feature "FinalGradesManagementFeature" created')
+    const FinalGradesManagementFeature = (await import('../features/singleJournal/addFinalGrades/FinalGradesManagementFeature.js')).default
+    const finalGradesManagementFeature = new FinalGradesManagementFeature()
+    allAvailableFeatures.singleJournal.push(finalGradesManagementFeature)
+    Logger.debug('Feature "FinalGradesManagementFeature" created')
   } catch (error) {
     Logger.error('Error loading FinalGradesManagementFeature:', error)
   }
