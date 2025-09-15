@@ -259,12 +259,8 @@ class TahvelNewAssignmentSyncFeature extends BaseFeature {
           // Step 3: POST to create the assignment
           Logger.debug(`Step 3: Creating assignment "${assignment.assignmentName}" in Tahvel`)
           const createResult = await this.createAssignmentInTahvel(journalId, assignment)
-          // Log the createResult for debugging (shows raw response or error)
+          // Create result is logged via Logger.debug above
           Logger.debug('Create result for assignment:', createResult)
-          if (typeof window !== 'undefined' && window.console && window.console.log) {
-            // eslint-disable-next-line no-console
-            console.log('TahvelNewAssignmentSync: createResult for', assignment.assignmentName, createResult)
-          }
 
           if (!createResult.success) {
             results.failed.push({
@@ -393,13 +389,8 @@ class TahvelNewAssignmentSyncFeature extends BaseFeature {
 
       const response = await this.api.tahvel.post(`/journals/${journalId}/journalEntry`, payload, { cache: false })
 
-      // Log raw response for debugging what Tahvel returns on creation
+      // Raw response is logged via Logger.debug above
       Logger.debug(`Raw Tahvel POST response for journal ${journalId}:`, response)
-      // Also print to console so it's visible in page devtools (easy inspection)
-      if (typeof window !== 'undefined' && window.console && window.console.log) {
-        // eslint-disable-next-line no-console
-        console.log('TahvelNewAssignmentSync: createAssignmentInTahvel response:', response)
-      }
 
       if (response) {
         Logger.debug(`Assignment created successfully in journal ${journalId}`)
