@@ -22,6 +22,114 @@ import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
+   * Resolve a journal link element and extract journal ID from it.
+   * Accepts anchor elements, elements inside anchors (like span.linked-name),
+   * or elements with data attributes containing the ID.
+   * @param {Element} el - Element matched by selector
+   * @returns {Object|null} { href, id } or null if not resolvable
+   */
+  _resolveJournalFromElement(el) {
+    if (!el) return null
+    // If it's an anchor
+    if (el.tagName && el.tagName.toLowerCase() === 'a') {
+      const href = el.getAttribute('href') || el.getAttribute('ng-href') || ''
+      const idMatch = String(href).match(/\/journal\/(\d+)/)
+      if (idMatch && idMatch[1]) return { href, id: parseInt(idMatch[1], 10) }
+      // fallback: href may contain query param like /#/journal/123
+      const anchorMatch = String(href).match(/#\/?journal\/(\d+)/)
+      if (anchorMatch && anchorMatch[1]) return { href, id: parseInt(anchorMatch[1], 10) }
+      return { href, id: null }
+    }
+
+    // If it's inside an anchor (like span.linked-name), walk up to find anchor
+    let parent = el
+    while (parent && parent !== document.body) {
+      if (parent.tagName && parent.tagName.toLowerCase() === 'a') {
+        return this._resolveJournalFromElement(parent)
+      }
+      parent = parent.parentNode
+    }
+
+    // If element has data attributes with an id
+    if (el.dataset && el.dataset.journalId) {
+      return { href: null, id: parseInt(el.dataset.journalId, 10) }
+    }
+
+    // Additional heuristics: check for router/link attributes on the element itself
+    const routerAttrs = ['ng-reflect-router-link', 'routerlink', 'ng-href', 'data-href', 'href', 'onclick']
+    for (const attr of routerAttrs) {
+      try {
+        const val = el.getAttribute && el.getAttribute(attr)
+        if (val) {
+          // Try to extract journal id from the attribute value
+          const m = String(val).match(/#?\/?(?:#\/)?(?:journal\/)?(\d{3,7})/)
+          if (m && m[1]) {
+            Logger.debug(`Resolved journal id from attribute '${attr}': ${m[1]}`)
+            return { href: val, id: parseInt(m[1], 10) }
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    // If this element is inside a table row, try to find an anchor in the same row
+    try {
+      const tr = el.closest ? el.closest('tr') : null
+      if (tr) {
+        const anchors = tr.querySelectorAll && tr.querySelectorAll('a')
+        if (anchors && anchors.length > 0) {
+          for (const a of anchors) {
+            const resolved = this._resolveJournalFromElement(a)
+            if (resolved && resolved.id) return resolved
+          }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // As a last resort, inspect sibling anchors inside same parent
+    try {
+      const parentEl = el.parentNode
+      if (parentEl && parentEl.querySelectorAll) {
+        const anchors = parentEl.querySelectorAll('a')
+        for (const a of anchors) {
+          const resolved = this._resolveJournalFromElement(a)
+          if (resolved && resolved.id) return resolved
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // Final fallback: scan element.outerHTML for journal id patterns
+    try {
+      const outer = el && el.outerHTML ? String(el.outerHTML) : ''
+      if (outer) {
+        const m1 = outer.match(/journal\/(\d{3,7})/)
+        if (m1 && m1[1]) {
+          Logger.debug(`Resolved journal id from outerHTML pattern journal/ID: ${m1[1]}`)
+          return { href: null, id: parseInt(m1[1], 10) }
+        }
+        const m2 = outer.match(/#\/?journal\/(\d{3,7})/)
+        if (m2 && m2[1]) {
+          Logger.debug(`Resolved journal id from outerHTML pattern #/journal/ID: ${m2[1]}`)
+          return { href: null, id: parseInt(m2[1], 10) }
+        }
+        const m3 = outer.match(/journalId\W*[:=]\W*"?(\d{3,7})"?/) || outer.match(/data[-_]journal[-_]id\W*[:=]\W*"?(\d{3,7})"?/) || outer.match(/data[-_]id\W*[:=]\W*"?(\d{3,7})"?/)
+        if (m3 && m3[1]) {
+          Logger.debug(`Resolved journal id from outerHTML generic id pattern: ${m3[1]}`)
+          return { href: null, id: parseInt(m3[1], 10) }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    return null
+  }
+  /**
    * Extract assignment entry date differences from Kriit response
    */
   extractEntryDateDifferences() {
@@ -150,17 +258,34 @@ class JournalListSyncFeature extends BaseFeature {
   constructor() {
     // Define selectors for journal links - using the most reliable selector first
     const journalLinkSelectors = [
-      // Primary selector that works reliably
+      // Primary selector that works reliably in older layout
       '#main-content md-table-container td:nth-child(2) > a',
 
       // Fallback selectors in case the primary one doesn't work
       '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
       '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
-      'a[href^="/#/journal/"]'
+      'a[href^="/#/journal/"]',
+
+      // Newer layout variations: look for links with data-test or contain '/journal/' in href
+  'a[data-test*="journal"]',
+  'a[href*="/journal/"]',
+  // New Tahvel markup: journal name may be inside a span.linked-name inside a clickable cell
+  'span.linked-name',
+      // Clickable row/element attributes used by Angular/JS frameworks
+      '[ng-reflect-router-link*="/journal/"]',
+      '[routerlink*="/journal/"]',
+      '[data-href*="/journal/"]',
+      '[onclick*="/journal/"]',
+      '[data-journal-id]',
+      '[role="link"]',
+      '[tabindex][onclick]',
+      '#main-content a',
+      'md-table-container a'
     ]
 
-    // Match the journal list page URL pattern and pass required selectors
-    super('journalListSync', /#\/journals\?_menu/, journalLinkSelectors)
+  // Match the journal list page URL pattern and pass required selectors
+  // Accept modern variants like '#/journals' and '#/journals?...'
+  super('journalListSync', /#\/journals/, journalLinkSelectors)
 
     // Initialize state
     this.differences = null
@@ -185,10 +310,10 @@ class JournalListSyncFeature extends BaseFeature {
    */
   onActivate(elements) {
     this.isActive = true
-    // Only activate if the URL is exactly 'journals?_menu'
+    // Only activate on journals page (accept variants like 'journals?…')
     const url = window.location.hash.replace(/^#\/?/, '').split('&')[0]
-    if (url !== 'journals?_menu') {
-      Logger.debug('JournalListSync not activated: URL does not match journals?_menu')
+    if (!url.startsWith('journals')) {
+      Logger.debug('JournalListSync not activated: URL does not match journals')
       return
     }
 
@@ -290,15 +415,93 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.updateUI()
 
+      // First try to fetch the journal list from Tahvel REST API as it's more reliable
+      let apiJournalList = null
+      try {
+        apiJournalList = await this.fetchJournalsFromApi()
+        if (Logger.isDebugMode()) Logger.debug(`Fetched ${apiJournalList ? apiJournalList.length : 0} journals from Tahvel API`)
+      } catch (err) {
+        Logger.debug('Failed to fetch journals from API, will fallback to DOM scanning:', err.message)
+        apiJournalList = null
+      }
+
+      // If API provided a non-empty list, use it and skip DOM scanning
+      if (apiJournalList && apiJournalList.length > 0) {
+        Logger.debug('Using API-provided journal list for data collection')
+        // Map API items into a minimal journalLinks-like structure for compatibility
+        // We create placeholder objects that collectJournalData knows how to handle when passed as apiJournalList
+        const mapped = apiJournalList.map(item => ({
+          __apiJournal: true,
+          id: item.id,
+          nameEt: item.nameEt || item.name || item.nameEt,
+          studentCount: item.studentCount || 0,
+          canEdit: item.canEdit
+        }))
+        // Collect data using API-provided journal ids
+        const journalData = await this.collectJournalData(mapped)
+        // Continue with Kriit call and outcome sync
+        if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
+          Logger.warning('No journal data to send to Kriit (API path)')
+          this.isLoading = false
+          this.differences = []
+          this.updateUI()
+          return
+        }
+
+        this.isLoading = true
+        this.error = null
+        this.differences = []
+        await this.proceedWithKriitApiCall(journalData)
+        await this.sendOutcomeEntriesToKriit()
+        return
+      }
+
       // Always get the latest journal links from the DOM to handle filtering/sorting
       const journalLinkSelectors = [
         '#main-content md-table-container td:nth-child(2) > a',
         '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
         '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
-        'a[href^="/#/journal/"]'
+        'a[href^="/#/journal/"]',
+        'a[data-test*="journal"]',
+        'a[href*="/journal/"]',
+        // New Tahvel markup: visible journal name may be inside a non-anchor element
+        'span.linked-name',
+        // Clickable row/element attributes used by Angular/JS frameworks
+        '[ng-reflect-router-link*="/journal/"]',
+        '[routerlink*="/journal/"]',
+        '[data-href*="/journal/"]',
+        '[onclick*="/journal/"]',
+        '[data-journal-id]',
+        '[role="link"]',
+        '[tabindex][onclick]',
+        '#main-content a',
+        'md-table-container a'
       ]
-      this.journalLinks = document.querySelectorAll(journalLinkSelectors.join(', '))
-      Logger.debug(`Re-scanned for journal links, found ${this.journalLinks.length}`)
+
+      // Debug: scan each selector and log how many matched — helps find the right one on modern pages
+      let totalFound = 0
+      journalLinkSelectors.forEach(sel => {
+        try {
+          const n = document.querySelectorAll(sel).length
+          Logger.debug(`Selector scan: '${sel}' -> ${n} nodes`)
+          totalFound += n
+        } catch (err) {
+          Logger.debug(`Selector scan error for '${sel}': ${err.message}`)
+        }
+      })
+
+      // Re-scan using our selectors. If nothing is found but we already had journalLinks
+      // provided by the observer (for example span.linked-name nodes), keep the
+      // previously-discovered NodeList instead of overwriting it with an empty list.
+      const scannedNodes = document.querySelectorAll(journalLinkSelectors.join(', '))
+      Logger.debug(`Re-scanned for journal links, found ${scannedNodes.length} (total scanned nodes: ${totalFound})`)
+
+      if (scannedNodes.length === 0 && this.journalLinks && this.journalLinks.length > 0) {
+        Logger.debug('No scanned nodes found — keeping previously-observed journalLinks')
+        // keep this.journalLinks as-is (observer provided them)
+      } else {
+        this.journalLinks = scannedNodes
+      }
 
       // Verify that we have journal links
       if (!this.journalLinks || this.journalLinks.length === 0) {
@@ -309,8 +512,8 @@ class JournalListSyncFeature extends BaseFeature {
         return
       }
 
-      // Collect data from Tahvel
-      const journalData = await this.collectJournalData()
+  // Collect data from Tahvel (DOM path)
+  const journalData = await this.collectJournalData()
       // Store Tahvel assignments for due date diff feature
       if (!window.journalListSync) window.journalListSync = {}
 
@@ -374,26 +577,48 @@ class JournalListSyncFeature extends BaseFeature {
       }
 
       Logger.debug(`Using ${this.journalLinks.length} journal links for data collection`)
+    // Support passing in an API-provided list of journals as argument
+    const usingApiList = Array.isArray(arguments[0]) && arguments[0].length > 0
+    const apiList = usingApiList ? arguments[0] : null
 
-      const journalPromises = Array.from(this.journalLinks).map(async link => {
-        const href = link.getAttribute('href') || link.getAttribute('ng-href') || ''
-        let id = null
-        const idMatch = href.match(/\/journal\/([0-9]+)/)
-        if (idMatch && idMatch[1]) {
-          id = parseInt(idMatch[1], 10)
-        } else {
-          const parts = href.split('/')
-          if (parts.length >= 4) {
-            id = parseInt(parts[3], 10)
+    const journalPromises = (apiList ? apiList : Array.from(this.journalLinks)).map(async link => {
+      // If this is an API-provided item, it has minimal shape: { __apiJournal: true, id, nameEt }
+      let resolved = null
+      let id = null
+      let href = ''
+      let name = ''
+
+      if (link && link.__apiJournal) {
+        id = link.id
+        name = link.nameEt || link.name || ''
+        // leave href empty – we'll fetch full journal info below
+      } else {
+        // Resolve href/id from anchor or a child element (e.g. span.linked-name)
+        resolved = this._resolveJournalFromElement(link)
+        id = resolved && resolved.id ? resolved.id : null
+        href = resolved && resolved.href ? resolved.href : (link.getAttribute ? (link.getAttribute('href') || link.getAttribute('ng-href') || '') : '')
+        name = (link.textContent || (link.innerText || '')).trim()
+      }
+
+        if (!id) {
+          // Try to parse from href fallback
+          const idMatch = String(href).match(/\/journal\/([0-9]+)/)
+          if (idMatch && idMatch[1]) {
+            id = parseInt(idMatch[1], 10)
+          } else {
+            const parts = String(href).split('/')
+            if (parts.length >= 4) {
+              const maybe = parseInt(parts[3], 10)
+              if (!isNaN(maybe)) id = maybe
+            }
           }
         }
 
         if (!id) {
-          Logger.warning(`Could not extract journal ID from href: ${href}`)
+          const snippet = link && link.outerHTML ? link.outerHTML.replace(/\s+/g, ' ').slice(0, 300) : String(link)
+          Logger.warning(`Could not extract journal ID from element or href: ${href} / element snippet: ${snippet}`)
           return null
         }
-
-        const name = link.textContent.trim()
 
         try {
           const [journalInfo, journalEntries, journalEntriesWithGrades, journalStudents] = await Promise.all([
@@ -553,8 +778,19 @@ class JournalListSyncFeature extends BaseFeature {
           return null
         }
       })
-
       const results = await Promise.all(journalPromises)
+      // Pre-flight summary: how many journal IDs were resolved vs failed
+      try {
+        const resolvedCount = results.filter(r => r !== null).length
+        const failed = results.filter(r => r === null)
+        Logger.debug(`Pre-flight: Resolved ${resolvedCount}/${results.length} journal entries (failed: ${failed.length})`)
+        if (failed.length > 0 && Logger.isDebugMode()) {
+          const samples = Array.from(this.journalLinks).map(el => el.outerHTML ? el.outerHTML.replace(/\s+/g, ' ').slice(0, 200) : String(el)).slice(0, 5)
+          Logger.debug('Sample observed elements (first 5):', samples)
+        }
+      } catch (err) {
+        // ignore logging errors
+      }
       // Flatten the results as some journals may return arrays of group entries
       const journalData = results.filter(r => r !== null).flatMap(result => (Array.isArray(result) ? result : [result]))
 
@@ -763,7 +999,7 @@ class JournalListSyncFeature extends BaseFeature {
     if (!this.isActive) return
     // Show success banner with refresh and close actions
     bannerService.showSuccessBanner(message, {
-      onRefresh: () => this.fetchJournalData(),
+      onRefresh: () => this.proceedWithKriitApiCall(),
       onClose: () => bannerService.removeBanner()
     })
   }
@@ -773,7 +1009,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showErrorBanner() {
     const options = {
-      onRetry: () => this.fetchJournalData(),
+      onRetry: () => this.proceedWithKriitApiCall(),
       onClearCache: () => {
         this.clearCache().then(result => {
           alert(
@@ -804,7 +1040,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
-      () => this.fetchJournalData(),
+      () => this.proceedWithKriitApiCall(),
       () => bannerService.removeBanner()
     )
   }
@@ -849,7 +1085,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
         await this.fetchJournalData()
       },
-      () => this.fetchJournalData(),
+      () => this.proceedWithKriitApiCall(),
       container => {
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
@@ -1290,6 +1526,126 @@ class JournalListSyncFeature extends BaseFeature {
         cacheExpiration: 30 * 24 * 60 * 60 * 1000 // 30 days
       }
     )
+  }
+
+  /**
+   * Fetch journal list directly from Tahvel REST API (hois_back/journals)
+   * Returns an array of journal items or null on failure
+   */
+  async fetchJournalsFromApi() {
+    try {
+      if (Logger.isDebugMode()) Logger.debug('Attempting to fetch journals via Tahvel REST API /hois_back/journals')
+      // Determine correct endpoint to avoid duplicating '/hois_back'
+      const base = (this.api && this.api.tahvel && this.api.tahvel.baseUrl) ? String(this.api.tahvel.baseUrl) : ''
+      let endpoint = '/hois_back/journals'
+      if (base.endsWith('/hois_back')) endpoint = '/journals'
+
+      // Detect studyYear id from the page if possible (heuristics)
+      const detectStudyYear = async() => {
+        try {
+          // First try the new reliable method: fetch current study year from API
+          try {
+            // Determine correct endpoint to avoid duplicating '/hois_back'
+            const base = (this.api && this.api.tahvel && this.api.tahvel.baseUrl) ? String(this.api.tahvel.baseUrl) : ''
+            let studyYearsEndpoint = '/hois_back/autocomplete/studyYears'
+            if (base.endsWith('/hois_back')) studyYearsEndpoint = '/autocomplete/studyYears'
+
+            const studyYearsResponse = await this.api.tahvel.get(studyYearsEndpoint, {}, {
+              cache: true,
+              cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
+            })
+
+            if (Array.isArray(studyYearsResponse)) {
+              const currentDate = new Date()
+
+              // Find the study year that contains the current date
+              const currentStudyYear = studyYearsResponse.find(sy => {
+                if (!sy.startDate || !sy.endDate) return false
+                const startDate = new Date(sy.startDate)
+                const endDate = new Date(sy.endDate)
+                return currentDate >= startDate && currentDate <= endDate
+              })
+
+              if (currentStudyYear && currentStudyYear.id) {
+                if (Logger.isDebugMode()) {
+                  Logger.debug(`Found current study year from API: ${currentStudyYear.id} (${currentStudyYear.nameEt})`)
+                }
+                return currentStudyYear.id
+              }
+            }
+          } catch (apiError) {
+            Logger.debug('Failed to fetch study year from API, falling back to DOM detection:', apiError.message)
+          }
+
+          // Fallback to original DOM-based detection methods
+          // Common global states used by SPA apps
+          const globals = [window.__INITIAL_STATE, window.__PRELOADED_STATE, window.__TAHVEL, window.__TAHVEL_STATE, window.appState]
+          for (const g of globals) {
+            if (g && typeof g === 'object') {
+              for (const key of ['studyYear', 'study_year', 'studyYearId', 'studyYearId']) {
+                if (typeof g[key] !== 'undefined' && g[key] !== null) {
+                  const v = parseInt(g[key], 10)
+                  if (!isNaN(v)) return v
+                }
+              }
+            }
+          }
+
+          // Meta tag <meta name="studyYear" content="726">
+          const meta = document.querySelector('meta[name="studyYear"]')
+          if (meta && meta.content) {
+            const v = parseInt(meta.content, 10)
+            if (!isNaN(v)) return v
+          }
+
+          // Data attributes
+          const el = document.querySelector('[data-studyyear], [data-study-year]')
+          if (el) {
+            const v = parseInt(el.getAttribute('data-studyyear') || el.getAttribute('data-study-year'), 10)
+            if (!isNaN(v)) return v
+          }
+
+          // Search in script tags for studyYear-like tokens
+          const scripts = document.querySelectorAll('script')
+          for (const s of scripts) {
+            const txt = s.textContent
+            if (!txt) continue
+            const m = txt.match(/studyYear\W*[:=]\W*(\d{2,6})/i)
+            if (m && m[1]) return parseInt(m[1], 10)
+            const m2 = txt.match(/study_year\W*[:=]\W*(\d{2,6})/i)
+            if (m2 && m2[1]) return parseInt(m2[1], 10)
+          }
+        } catch (err) {
+          // ignore
+        }
+        return null
+      }
+
+      const studyYear = await detectStudyYear()
+
+      // Use query params matching example; size=20 by default
+      const params = { onlyMyJournals: true, sort: '2, 5, 3', size: 50, page: 0 }
+      if (studyYear) {
+        params.studyYear = studyYear
+        if (Logger.isDebugMode()) Logger.debug('Detected studyYear for journals API:', studyYear)
+      } else {
+        if (Logger.isDebugMode()) Logger.debug('No studyYear detected; calling journals API without studyYear param')
+      }
+
+      const response = await this.api.tahvel.get(endpoint, params, { cache: true, cacheExpiration: 5 * 60 * 1000 })
+
+      if (!response || !response.content || !Array.isArray(response.content)) {
+        if (Logger.isDebugMode()) Logger.debug('Unexpected /hois_back/journals response format', response)
+        return null
+      }
+
+      // Map response items to a minimal shape used by collectJournalData when using API path
+      const mapped = response.content.map(item => ({ id: item.id, nameEt: item.nameEt || item.name || '', studentCount: item.studentCount || 0, canEdit: item.canEdit }))
+      return mapped
+    } catch (error) {
+      Logger.debug('Error fetching journals from API:', error && error.message ? error.message : error)
+      return null
+    }
   }
 
   /**
@@ -2197,10 +2553,53 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`=== SYNC DATA COLLECTION COMPLETE: ${syncData.length} items to sync ===`)
       }
 
-      if (syncData.length === 0) {
+      // Check for assignment-level differences even if no grade differences exist
+      const assignmentLevelDifferences = []
+      if (this.differences && Array.isArray(this.differences)) {
+        this.differences.forEach(subject => {
+          if (subject.assignments && Array.isArray(subject.assignments)) {
+            subject.assignments.forEach(assignment => {
+              // Check for assignment-level changes (name, due date, entry date)
+              const hasNameDiff = (
+                assignment.assignmentName &&
+                typeof assignment.assignmentName === 'object' &&
+                assignment.assignmentName.kriit &&
+                assignment.assignmentName.kriit !== assignment.assignmentName.Tahvel
+              )
+
+              const hasDueDateDiff = (
+                assignment.assignmentDueAt &&
+                typeof assignment.assignmentDueAt === 'object' &&
+                assignment.assignmentDueAt.kriit &&
+                assignment.assignmentDueAt.kriit !== assignment.assignmentDueAt.Tahvel
+              )
+
+              const hasEntryDateDiff = (
+                assignment.assignmentEntryDate &&
+                typeof assignment.assignmentEntryDate === 'object' &&
+                assignment.assignmentEntryDate.kriit &&
+                assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
+              )
+
+              if (hasNameDiff || hasDueDateDiff || hasEntryDateDiff) {
+                assignmentLevelDifferences.push({
+                  journalId: subject.subjectExternalId,
+                  assignmentId: assignment.assignmentExternalId,
+                  hasNameDiff,
+                  hasDueDateDiff,
+                  hasEntryDateDiff
+                })
+                Logger.debug(`📋 Found assignment-level difference: ${assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel || assignment.assignmentExternalId} (name: ${hasNameDiff}, due: ${hasDueDateDiff}, entry: ${hasEntryDateDiff})`)
+              }
+            })
+          }
+        })
+      }
+
+      if (syncData.length === 0 && assignmentLevelDifferences.length === 0) {
         Logger.warning('No data to sync after processing')
         Logger.debug('=== SYNC STATUS CHECK ===')
-        Logger.debug('syncData is empty, meaning no differences were found or all are filtered out')
+        Logger.debug('syncData is empty and no assignment-level differences found')
         Logger.debug(`Original differences count: ${this.differences ? this.differences.length : 0}`)
 
         // Count total assignments and results for debugging
@@ -2238,7 +2637,13 @@ class JournalListSyncFeature extends BaseFeature {
       // Log what we're going to sync
       Logger.debug('=== SYNC DATA TO PROCESS ===')
       Logger.debug(`Found ${syncData.length} grade differences to sync`)
-      Logger.debug(`Differences to sync: ${JSON.stringify(syncData, null, 2)}`)
+      Logger.debug(`Found ${assignmentLevelDifferences.length} assignment-level differences to sync`)
+      if (syncData.length > 0) {
+        Logger.debug(`Grade differences to sync: ${JSON.stringify(syncData, null, 2)}`)
+      }
+      if (assignmentLevelDifferences.length > 0) {
+        Logger.debug(`Assignment-level differences to sync: ${JSON.stringify(assignmentLevelDifferences, null, 2)}`)
+      }
 
       // Show loading state
       this.isLoading = true
@@ -2249,18 +2654,35 @@ class JournalListSyncFeature extends BaseFeature {
   const failedSyncs = []
 
       try {
-        // Build assignment-level batches
+        // Build assignment-level batches from both grade differences and assignment-level differences
         const assignmentMap = new Map()
+
+        // Add assignments with grade differences
         for (const item of syncData) {
           const key = `${item.journalId}::${item.assignmentId}`
           if (!assignmentMap.has(key)) {
             assignmentMap.set(key, {
               journalId: item.journalId,
               assignmentId: item.assignmentId,
-              students: []
+              students: [],
+              assignmentLevelOnly: false
             })
           }
           assignmentMap.get(key).students.push({ studentPersonalCode: item.studentPersonalCode, grade: item.grade })
+        }
+
+        // Add assignments with only assignment-level differences (no grade changes)
+        for (const assignmentDiff of assignmentLevelDifferences) {
+          const key = `${assignmentDiff.journalId}::${assignmentDiff.assignmentId}`
+          if (!assignmentMap.has(key)) {
+            assignmentMap.set(key, {
+              journalId: assignmentDiff.journalId,
+              assignmentId: assignmentDiff.assignmentId,
+              students: [],
+              assignmentLevelOnly: true  // Mark as assignment-level only
+            })
+            Logger.debug(`📋 Added assignment-level only batch: ${assignmentDiff.journalId}/${assignmentDiff.assignmentId}`)
+          }
         }
 
         // Merge assignment-level changes from this.differences (name, due date, entry date)
@@ -2410,7 +2832,12 @@ class JournalListSyncFeature extends BaseFeature {
               studentsToUpdate.push({ ...finalStudentEntry, studentName, studentPersonalCode: studentPersonal })
             }
 
-            if (studentsToUpdate.length === 0) {
+            // Check if this is an assignment-level only batch or has student updates
+            const isAssignmentLevelOnly = batch.assignmentLevelOnly === true
+            const hasStudentUpdates = studentsToUpdate.length > 0
+            const hasAssignmentUpdates = batch.nameEt || batch.homeworkDuedate || batch.entryDate
+
+            if (!hasStudentUpdates && !isAssignmentLevelOnly) {
               Logger.debug(`No student updates required for assignment ${batch.assignmentId}`)
               successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, skipped: true })
               // update progress
@@ -2418,12 +2845,26 @@ class JournalListSyncFeature extends BaseFeature {
               continue
             }
 
-            // Prepare update payload based on existing entryData but with filtered studentsToUpdate
+            if (isAssignmentLevelOnly && !hasAssignmentUpdates) {
+              Logger.debug(`Assignment-level only batch ${batch.assignmentId} has no actual assignment changes`)
+              successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, skipped: true })
+              // update progress
+              this.updateProgressUI(bi + 1, batches.length)
+              continue
+            }
+
+            // Prepare update payload based on existing entryData
             const updateData = { ...entryData }
-            // Replace journalEntryStudents with only students being updated (server expects student objects with names)
-            updateData.journalEntryStudents = studentsToUpdate.map(s => ({
-              ...s
-            }))
+
+            // For assignment-level only batches, preserve all existing students
+            // For batches with student updates, use only the students being updated
+            if (isAssignmentLevelOnly) {
+              // Keep all existing students for assignment-level only changes
+              Logger.debug(`📋 Assignment-level only update: preserving ${entryData.journalEntryStudents?.length || 0} existing students`)
+            } else {
+              // Replace journalEntryStudents with only students being updated
+              updateData.journalEntryStudents = studentsToUpdate.map(s => ({ ...s }))
+            }
 
             // Assignment-level updates: normalize date formats expected by Tahvel
             if (batch.nameEt) updateData.nameEt = batch.nameEt
@@ -2452,11 +2893,30 @@ class JournalListSyncFeature extends BaseFeature {
               batch.entryDate = ed
             }
 
+            // Add Kriit assignment link to homework field
+            if (batch.assignmentId) {
+              // Use the Kriit API base URL from the API service, trimming any trailing slash and removing '/api' if present
+              let kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
+              kriitBaseUrl = kriitBaseUrl.replace(/\/api$/, '')
+
+              // Try to get group name from the subject if available
+              const subject = this.differences && Array.isArray(this.differences)
+                             ? this.differences.find(s => s.subjectExternalId === batch.journalId) : null
+              const groupCode = subject ? subject.groupName || '' : ''
+
+              const kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${batch.assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+              const homeworkText = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
+
+              updateData.homework = homeworkText
+              Logger.debug(`📋 Added assignment link to homework field: ${homeworkText}`)
+            }
+
             // Ensure teacher IDs and capacity types as in other flows
             if (Array.isArray(updateData.journalEntryTeachers)) {
               updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
             }
-            updateData.journalEntryCapacityTypes = updateData.journalEntryCapacityTypes || ['MAHT_i']
+            // Always set capacity types to MAHT_i for assignment updates (as requested)
+            updateData.journalEntryCapacityTypes = ['MAHT_i']
 
             // Filter out students with OPPURSTAATUS_K using mapping similar to syncAssignmentNameDifferences
             if (Array.isArray(updateData.journalEntryStudents)) {
@@ -2480,8 +2940,15 @@ class JournalListSyncFeature extends BaseFeature {
             try {
               if (Logger.isDebugMode()) Logger.debug(`PUT /journals/${batch.journalId}/journalEntry/${batch.assignmentId} payload: ${JSON.stringify(updateData)}`)
               await this.api.tahvel.put(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, updateData)
-              // Mark successful
-              successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, updated: studentsToUpdate.length })
+
+              // Mark successful - different tracking for assignment-level vs student updates
+              if (isAssignmentLevelOnly) {
+                successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, assignmentLevelUpdated: true, updated: 0 })
+                Logger.debug(`✅ Assignment-level update successful: ${batch.journalId}/${batch.assignmentId}`)
+              } else {
+                successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, updated: studentsToUpdate.length })
+                Logger.debug(`✅ Student grade updates successful: ${studentsToUpdate.length} students in ${batch.journalId}/${batch.assignmentId}`)
+              }
 
               // Update in-memory differences: clear assignment-level diffs and update per-student currentGrade
               try {
@@ -2563,19 +3030,29 @@ class JournalListSyncFeature extends BaseFeature {
         const realErrors = failedSyncs.filter(item => item.errorType !== 'inactive_student')
 
         const actualUpdates = successfulSyncs.reduce((acc, s) => acc + (s.updated || 0), 0)
+        const assignmentLevelUpdates = successfulSyncs.filter(s => s.assignmentLevelUpdated).length
         const skippedUpdates = successfulSyncs.filter(s => s.skipped).length
 
         // Show success or partial messages
         this.isLoading = false
         if (realErrors.length === 0) {
-          let successMessage
-          if (actualUpdates > 0) {
-            successMessage = `Edukalt sünkroniseeritud ${actualUpdates} hinnet Kriidist Tahvlisse.`
-            if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} hinnet olid juba õiged.`
+          let successMessage = ''
+
+          if (actualUpdates > 0 || assignmentLevelUpdates > 0) {
+            const parts = []
+            if (actualUpdates > 0) {
+              parts.push(`${actualUpdates} hinnet`)
+            }
+            if (assignmentLevelUpdates > 0) {
+              parts.push(`${assignmentLevelUpdates} ülesande andmeid (nimi/kuupäevad)`)
+            }
+            successMessage = `Edukalt sünkroniseeritud ${parts.join(' ja ')} Kriidist Tahvlisse.`
+
+            if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} kirjet olid juba õiged.`
             if (inactiveStudentErrors.length > 0) successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
             successMessage += ` Andmed värskendatakse automaatselt mõne sekundi pärast...`
           } else {
-            successMessage = `Kõik ${successfulSyncs.length} hinnet olid juba õiged - pole midagi sünkroniseerida.`
+            successMessage = `Kõik ${successfulSyncs.length} kirjet olid juba õiged - pole midagi sünkroniseerida.`
           }
           this.showSuccessBanner(successMessage)
 
@@ -3259,7 +3736,10 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Make sure we have the correct capacity types
-        if (!updateData.journalEntryCapacityTypes && entryData.entryType) {
+        if (
+          !updateData.journalEntryCapacityTypes ||
+          (Array.isArray(updateData.journalEntryCapacityTypes) && updateData.journalEntryCapacityTypes.length === 0)
+        ) {
           // Set default capacity types based on entry type
           if (entryData.entryType === 'SISSEKANNE_I') {
             updateData.journalEntryCapacityTypes = ['MAHT_i']

@@ -155,6 +155,30 @@ export class BannerService {
    * @returns {Element} The banner container element or document.body as fallback
    */
   getBannerContainer() {
+    // First prefer the new Tahvel controls wrapper that appeared in the updated UI
+    const preferredSelector = '.tahvel-form-buttons'
+    const preferred = document.querySelector(preferredSelector)
+    if (preferred) {
+      try {
+        // If we haven't already created a stable insertion wrapper, create one after the preferred element
+        let insertionWrapper = preferred.parentNode.querySelector('.ta-sync-banner-insertion')
+        if (!insertionWrapper) {
+          insertionWrapper = document.createElement('div')
+          insertionWrapper.className = 'ta-sync-banner-insertion'
+          // Keep clear separation from Tahvel's layout
+          insertionWrapper.style.marginTop = '12px'
+          // Insert after the preferred element
+          preferred.insertAdjacentElement('afterend', insertionWrapper)
+          Logger.debug(`Created banner insertion wrapper after ${preferredSelector}`)
+        }
+        return insertionWrapper
+      } catch (err) {
+        Logger.warning(`Failed to create insertion wrapper after ${preferredSelector}: ${err.message}`)
+        // Fall through to other selectors
+      }
+    }
+
+    // Fallback to the configured container selector
     const container = document.querySelector(this.containerSelector)
     if (!container) {
       Logger.warning(`Banner container not found with selector: ${this.containerSelector}, falling back to document.body`)
