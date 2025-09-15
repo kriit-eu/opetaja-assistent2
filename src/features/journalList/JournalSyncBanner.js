@@ -14,16 +14,34 @@ class DifferenceRenderer {
       groupedDiffs[subjectName].forEach(diff => {
         const row = this.createRow(subjectContainer)
         const badges = domService.createAndInsertElement('div', { classList: ['badges'] }, '', row)
-        this.createBadge(badges, diff.typeName, `badge-${diff.type}`)
+        // Use a special class for new assignments for styling
+        if (diff.type === 'new') {
+          this.createBadge(badges, diff.typeName, `badge-new`)
+        } else {
+          this.createBadge(badges, diff.typeName, `badge-${diff.type}`)
+        }
         this.createBadge(badges, diff.assignmentName, 'badge-assignment')
 
         const values = domService.createAndInsertElement('div', { classList: ['values'] }, '', row)
         if (diff.studentName) {
           domService.createAndInsertElement('span', { classList: ['student-name'] }, `${diff.studentName}:`, values)
         }
-        const valueBadge = domService.createAndInsertElement('span', { classList: ['value-badge'] }, '', values)
-        domService.createAndInsertElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
-        domService.createAndInsertElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
+
+        // For new assignments, show entryDate then dueDate (omit when missing)
+        if (diff.type === 'new') {
+          const datesContainer = domService.createAndInsertElement('div', { classList: ['new-assignment-dates'] }, '', values)
+          if (diff.entryDate) {
+            domService.createAndInsertElement('span', { classList: ['date-entry'] }, `Sissekanne: ${diff.entryDate}`, datesContainer)
+          }
+          if (diff.dueDate) {
+            // show due date only if present
+            domService.createAndInsertElement('span', { classList: ['date-due'] }, `Tähtaeg: ${diff.dueDate}`, datesContainer)
+          }
+        } else {
+          const valueBadge = domService.createAndInsertElement('span', { classList: ['value-badge'] }, '', values)
+          domService.createAndInsertElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
+          domService.createAndInsertElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
+        }
       })
     }
   }
@@ -54,13 +72,13 @@ class DifferenceRenderer {
 
     // Format date as dd.mm.yyyy if possible
     const formatDate = val => {
-      if (!val) return 'puudub'
+      if (!val) return null
       // Accept ISO, yyyy-mm-dd, yyyy-mm-ddTHH:mm:ss, etc.
       const dateMatch = String(val).match(/^(\d{4})-(\d{2})-(\d{2})/)
       if (dateMatch) {
         return `${dateMatch[3]}.${dateMatch[2]}.${dateMatch[1]}`
       }
-      return val
+      return String(val)
     }
 
     // Track latest assignment name for each assignmentExternalId
@@ -201,15 +219,19 @@ class DifferenceRenderer {
 
         arr.forEach(a => {
           const assignmentName = normalize(a.assignmentName) || `Ülesanne ${a.createdAssignmentId || ''}`
-          const due = a.assignmentDueAt || a.assignmentEntryDate || null
-          const dueFormatted = due ? formatDate(due) : 'puudub'
+          const entryRaw = a.assignmentEntryDate || null
+          const dueRaw = a.assignmentDueAt || null
+          const entryFormatted = formatDate(entryRaw)
+          const dueFormatted = formatDate(dueRaw)
           addDiff(subjectName || '', {
             type: 'new',
             typeName: 'Uus ülesanne',
             assignmentName: assignmentName,
             studentName: '',
-            oldValue: 'puudub',
-            newValue: dueFormatted
+            entryDate: entryFormatted,
+            dueDate: dueFormatted,
+            createdAssignmentId: a.createdAssignmentId || null,
+            assignmentExternalId: a.assignmentExternalId || null
           })
         })
       }

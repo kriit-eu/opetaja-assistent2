@@ -1250,53 +1250,76 @@ class JournalListSyncFeature extends BaseFeature {
 
         // Make the actual API call
         const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
-        // Store Kriit assignments for due date diff feature
+        // Ensure runtime container exists
         if (!window.journalListSync) window.journalListSync = {}
 
         // Log the full response for debugging
         Logger.debug('Raw response from Kriit:', JSON.stringify(response))
 
-        // Process the response directly
+        // Normalize possible response shapes from Kriit
+        let respDifferences = null
+        // 1) Response is an array of differences
         if (response && Array.isArray(response)) {
-          this.differences = response
+          respDifferences = response
           Logger.debug('Response is an array with', response.length, 'items')
-        } else if (response && response.data && Array.isArray(response.data)) {
-          this.differences = response.data
-          Logger.debug('Response has a data property with', response.data.length, 'items')
-        } else if (response && response.status === 200) {
-          // This is a success response with no differences — but Kriit may have returned newAssignments
-          Logger.debug('Received status 200 response from Kriit - no differences found')
-          this.differences = []
+        }
 
-          // Ensure global differences is cleared
-          if (!window.journalListSync) window.journalListSync = {}
-          window.journalListSync.differences = this.differences
+        // 2) Response has a top-level data array (legacy)
+        else if (response && response.data && Array.isArray(response.data)) {
+          respDifferences = response.data
+          Logger.debug('Response has a data array with', response.data.length, 'items')
+        }
 
-          // If there are newAssignments returned by Kriit, keep error null so banner shows them
-          const respNewAssignments = (response && response.data && response.data.newAssignments) || (response && response.newAssignments) || {}
-          const hasNewAssignmentsResp = respNewAssignments && Object.keys(respNewAssignments).length > 0
+        // 3) Response has data object with a differences array
+        else if (response && response.data && Array.isArray(response.data.differences)) {
+          respDifferences = response.data.differences
+          Logger.debug('Response has data.differences with', response.data.differences.length, 'items')
+        }
 
-          this.isLoading = false
-          if (hasNewAssignmentsResp) {
-            this.error = null
-            window.journalListSync.newAssignments = respNewAssignments
-            this.updateUI()
-            return
-          }
+        // 4) Response contains differences directly under response.differences
+        else if (response && Array.isArray(response.differences)) {
+          respDifferences = response.differences
+          Logger.debug('Response has differences property with', response.differences.length, 'items')
+        }
 
-          // No differences and no new assignments — show the all-in-sync message
-          this.error = 'Kõik hinded on juba sünkroonis. Pole midagi sünkroniseerida.'
-          this.updateUI()
-          return
-        } else {
-          if (Logger.isDebugMode()) Logger.debug('[DEBUG] Backend response is not an array:', response)
-          Logger.warning('Unexpected response format from Kriit:', response)
-          this.differences = []
+        // Assign normalized differences (empty array when none)
+        this.differences = Array.isArray(respDifferences) ? respDifferences : []
+
+        // Normalize newAssignments (can be under response.data.newAssignments or response.newAssignments)
+        const respNewAssignments = (response && response.data && response.data.newAssignments) || (response && response.newAssignments) || {}
+        if (respNewAssignments && Object.keys(respNewAssignments).length > 0) {
+          window.journalListSync.newAssignments = respNewAssignments
+          Logger.debug('Stored newAssignments in runtime cache for banner:', JSON.stringify(Object.keys(respNewAssignments)))
+        } else if (window.journalListSync.newAssignments && Object.keys(window.journalListSync.newAssignments).length === 0) {
+          // Leave existing cache alone if already populated; if completely empty, ensure it's an object
+          window.journalListSync.newAssignments = window.journalListSync.newAssignments || {}
         }
 
         // Always update global differences after setting this.differences
-        if (!window.journalListSync) window.journalListSync = {}
         window.journalListSync.differences = this.differences
+
+        // If there are no differences and there are new assignments, show banner for new assignments
+        if (
+          (!this.differences || this.differences.length === 0) &&
+          window.journalListSync.newAssignments &&
+          Object.keys(window.journalListSync.newAssignments).length > 0
+        ) {
+          this.error = null
+          this.isLoading = false
+          this.updateUI()
+          return
+        }
+
+        // If no differences and no new assignments, show 'all synced' message
+        if (
+          (!this.differences || this.differences.length === 0) &&
+          (!window.journalListSync.newAssignments || Object.keys(window.journalListSync.newAssignments).length === 0)
+        ) {
+          this.error = 'Kõik hinded on juba sünkroonis. Pole midagi sünkroniseerida.'
+          this.isLoading = false
+          this.updateUI()
+          return
+        }
 
         // Persist the payload hash and differences to cache so we can skip redundant calls on refresh
         try {
