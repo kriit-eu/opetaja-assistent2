@@ -209,13 +209,41 @@ class DifferenceRenderer {
     // New Assignments (returned by Kriit as newAssignments: { subjectExternalId: [ { assignmentName, ... } ] })
     try {
       const na = newAssignments || (window.journalListSync && window.journalListSync.newAssignments) || {}
+
+      // Ensure a small cache on window.journalListSync for subject names by external id
+      if (typeof window !== 'undefined') {
+        window.journalListSync = window.journalListSync || {}
+        window.journalListSync.subjectsCache = window.journalListSync.subjectsCache || {}
+      }
+      const subjectsCache = (window.journalListSync && window.journalListSync.subjectsCache) || {}
+
+      // Source of subject names from existing difference data if available
+      const subjectFromDiffs = (window.journalListSync && window.journalListSync.differences) || []
+
       // Iterate subjects
       for (const subjectExternalId of Object.keys(na)) {
         const arr = na[subjectExternalId] || []
-        // Derive subject name from existing differences if available, else use a fallback
-        const subjectFromDiff = (window.journalListSync && window.journalListSync.differences) || []
-        const subjectObj = subjectFromDiff.find(s => String(s.subjectExternalId) === String(subjectExternalId))
-        const subjectName = (subjectObj && subjectObj.subjectName) || `Päevik ${subjectExternalId}`
+
+        // Prefer cached subject name
+        let subjectName = subjectsCache[subjectExternalId]
+
+        // Try to derive from differences if not cached
+        if (!subjectName) {
+          const subjectObj = subjectFromDiffs.find(s => String(s.subjectExternalId) === String(subjectExternalId))
+          subjectName = (subjectObj && subjectObj.subjectName) || null
+        }
+
+        // Fallback
+        if (!subjectName) {
+          subjectName = `Päevik ${subjectExternalId}`
+        }
+
+        // Keep it in cache for future renders
+        try {
+          if (window && window.journalListSync) window.journalListSync.subjectsCache[subjectExternalId] = subjectName
+        } catch (err) {
+          // ignore cache write errors
+        }
 
         arr.forEach(a => {
           const assignmentName = normalize(a.assignmentName) || `Ülesanne ${a.createdAssignmentId || ''}`

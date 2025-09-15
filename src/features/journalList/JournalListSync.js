@@ -1285,6 +1285,28 @@ class JournalListSyncFeature extends BaseFeature {
         // Assign normalized differences (empty array when none)
         this.differences = Array.isArray(respDifferences) ? respDifferences : []
 
+        // Ensure runtime cache object exists
+        if (!window.journalListSync) window.journalListSync = {}
+
+        // Populate subjectsCache from collected journalData so UI renderers can lookup subject names
+        try {
+          window.journalListSync.subjectsCache = window.journalListSync.subjectsCache || {}
+          if (Array.isArray(journalData)) {
+            journalData.forEach(j => {
+              try {
+                const id = j.subjectExternalId || j.subjectExternalId === 0 ? String(j.subjectExternalId) : null
+                if (id) {
+                  window.journalListSync.subjectsCache[id] = j.subjectName || window.journalListSync.subjectsCache[id] || `Päevik ${id}`
+                }
+              } catch (err) {
+                // ignore per-item failures
+              }
+            })
+          }
+        } catch (err) {
+          Logger.debug('Failed to populate subjectsCache:', err)
+        }
+
         // Normalize newAssignments (can be under response.data.newAssignments or response.newAssignments)
         const respNewAssignments = (response && response.data && response.data.newAssignments) || (response && response.newAssignments) || {}
         if (respNewAssignments && Object.keys(respNewAssignments).length > 0) {
