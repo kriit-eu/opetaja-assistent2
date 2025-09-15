@@ -104,6 +104,12 @@
   color: #856404;
 }
 
+/* New assignment badge */
+.ta-sync-banner-container .badge-new {
+  background-color: #e0f7fa;
+  color: #006064;
+}
+
 .ta-sync-banner-container .change-item {
   display: flex;
   align-items: center;
@@ -183,6 +189,23 @@
   align-items: center;
   gap: 10px;
   margin-left: 20px;
+}
+
+/* Layout for entry and due dates for new assignments */
+.ta-sync-banner-container .new-assignment-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #444;
+  font-size: 13px;
+}
+
+.ta-sync-banner-container .new-assignment-dates .date-entry {
+  color: #2e7d32; /* greenish for entry */
+}
+
+.ta-sync-banner-container .new-assignment-dates .date-due {
+  color: #c2185b; /* reddish for due date */
 }
 
 .ta-sync-banner-container .actions {

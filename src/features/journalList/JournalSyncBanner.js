@@ -4,31 +4,59 @@ import { bannerService } from '../../services/BannerService.js'
 import Logger from '../../services/Logger.js'
 
 class DifferenceRenderer {
-  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
+  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments) {
     // Only render on journal list page, never on edit page - accept modern variants
-    if (!((window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1))) return
-    const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
+    if (!(window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1)) return
+    const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments)
 
     for (const subjectName in groupedDiffs) {
       const subjectContainer = this.createSubjectContainer(container, subjectName)
       groupedDiffs[subjectName].forEach(diff => {
         const row = this.createRow(subjectContainer)
         const badges = domService.createAndInsertElement('div', { classList: ['badges'] }, '', row)
-        this.createBadge(badges, diff.typeName, `badge-${diff.type}`)
+        // Use a special class for new assignments for styling
+        if (diff.type === 'new') {
+          this.createBadge(badges, diff.typeName, `badge-new`)
+        } else {
+          this.createBadge(badges, diff.typeName, `badge-${diff.type}`)
+        }
         this.createBadge(badges, diff.assignmentName, 'badge-assignment')
 
         const values = domService.createAndInsertElement('div', { classList: ['values'] }, '', row)
         if (diff.studentName) {
           domService.createAndInsertElement('span', { classList: ['student-name'] }, `${diff.studentName}:`, values)
         }
-        const valueBadge = domService.createAndInsertElement('span', { classList: ['value-badge'] }, '', values)
-        domService.createAndInsertElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
-        domService.createAndInsertElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
+
+        // For new assignments, show entryDate then dueDate (omit when missing)
+        if (diff.type === 'new') {
+          const datesContainer = domService.createAndInsertElement('div', { classList: ['new-assignment-dates'] }, '', values)
+          if (diff.entryDate) {
+            domService.createAndInsertElement('span', { classList: ['date-entry'] }, `Sissekanne: ${diff.entryDate}`, datesContainer)
+          }
+          if (diff.dueDate) {
+            // show due date only if present
+            domService.createAndInsertElement('span', { classList: ['date-due'] }, `Tähtaeg: ${diff.dueDate}`, datesContainer)
+          }
+        } else {
+          const valueBadge = domService.createAndInsertElement('span', { classList: ['value-badge'] }, '', values)
+          domService.createAndInsertElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
+          domService.createAndInsertElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
+        }
       })
     }
   }
 
-  collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
+  // Utility to count newAssignments quickly
+  countNewAssignmentsObj(newAssignments) {
+    if (!newAssignments) return 0
+    try {
+      return Object.values(newAssignments).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0)
+    } catch (err) {
+      return 0
+    }
+  }
+
+  collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments) {
     const grouped = {}
     // Improved normalization: extract string from object, fallback to JSON if needed
     const normalize = val => {
@@ -44,13 +72,13 @@ class DifferenceRenderer {
 
     // Format date as dd.mm.yyyy if possible
     const formatDate = val => {
-      if (!val) return 'puudub'
+      if (!val) return null
       // Accept ISO, yyyy-mm-dd, yyyy-mm-ddTHH:mm:ss, etc.
       const dateMatch = String(val).match(/^(\d{4})-(\d{2})-(\d{2})/)
       if (dateMatch) {
         return `${dateMatch[3]}.${dateMatch[2]}.${dateMatch[1]}`
       }
-      return val
+      return String(val)
     }
 
     // Track latest assignment name for each assignmentExternalId
@@ -178,6 +206,68 @@ class DifferenceRenderer {
       })
     })
 
+    // New Assignments (returned by Kriit as newAssignments: { subjectExternalId: [ { assignmentName, ... } ] })
+    try {
+      const na = newAssignments || (window.journalListSync && window.journalListSync.newAssignments) || {}
+
+      // Ensure a small cache on window.journalListSync for subject names by external id
+      if (typeof window !== 'undefined') {
+        window.journalListSync = window.journalListSync || {}
+        window.journalListSync.subjectsCache = window.journalListSync.subjectsCache || {}
+      }
+      const subjectsCache = (window.journalListSync && window.journalListSync.subjectsCache) || {}
+
+      // Source of subject names from existing difference data if available
+      const subjectFromDiffs = (window.journalListSync && window.journalListSync.differences) || []
+
+      // Iterate subjects
+      for (const subjectExternalId of Object.keys(na)) {
+        const arr = na[subjectExternalId] || []
+
+        // Prefer cached subject name
+        let subjectName = subjectsCache[subjectExternalId]
+
+        // Try to derive from differences if not cached
+        if (!subjectName) {
+          const subjectObj = subjectFromDiffs.find(s => String(s.subjectExternalId) === String(subjectExternalId))
+          subjectName = (subjectObj && subjectObj.subjectName) || null
+        }
+
+        // Fallback
+        if (!subjectName) {
+          subjectName = `Päevik ${subjectExternalId}`
+        }
+
+        // Keep it in cache for future renders
+        try {
+          if (window && window.journalListSync) window.journalListSync.subjectsCache[subjectExternalId] = subjectName
+        } catch (err) {
+          // ignore cache write errors
+        }
+
+        arr.forEach(a => {
+          const assignmentName = normalize(a.assignmentName) || `Ülesanne ${a.createdAssignmentId || ''}`
+          const entryRaw = a.assignmentEntryDate || null
+          const dueRaw = a.assignmentDueAt || null
+          const entryFormatted = formatDate(entryRaw)
+          const dueFormatted = formatDate(dueRaw)
+          addDiff(subjectName || '', {
+            type: 'new',
+            typeName: 'Uus ülesanne',
+            assignmentName: assignmentName,
+            studentName: '',
+            entryDate: entryFormatted,
+            dueDate: dueFormatted,
+            createdAssignmentId: a.createdAssignmentId || null,
+            assignmentExternalId: a.assignmentExternalId || null
+          })
+        })
+      }
+    } catch (err) {
+      // don't let banner rendering fail on unexpected data
+      Logger.debug('Error rendering newAssignments in banner:', err)
+    }
+
     return grouped
   }
 
@@ -251,11 +341,11 @@ export class JournalSyncBannerService {
    * @param {Function} onOpenSettings - Callback for opening settings
    */
   showMissingApiKeyBanner(onOpenSettings = null) {
-  this.loadSyncStyles()
-  if (!((window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1))) return
-  const container = bannerService.getBannerContainer()
-  if (!container) return
-  Logger.debug('Using banner container:', container)
+    this.loadSyncStyles()
+    if (!(window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1)) return
+    const container = bannerService.getBannerContainer()
+    if (!container) return
+    Logger.debug('Using banner container:', container)
     bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
@@ -319,8 +409,8 @@ export class JournalSyncBannerService {
   showAllInSyncBanner(onRefresh = null, onClose = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
-  Logger.debug('Using banner container:', container)
-  bannerService.removeBanner()
+    Logger.debug('Using banner container:', container)
+    bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
     const scopedContainer = domService.createAndInsertElement(
@@ -407,8 +497,8 @@ export class JournalSyncBannerService {
   showDifferencesBanner(totalDifferences, onSync = null, onRefresh = null, renderDifferences = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
-  Logger.debug('Using banner container:', container)
-  bannerService.removeBanner()
+    Logger.debug('Using banner container:', container)
+    bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
     const scopedContainer = domService.createAndInsertElement(
@@ -523,15 +613,20 @@ export class JournalSyncBannerService {
    */
   showSyncErrorBanner(error, options = {}) {
     // If all grades are already synced, show the green banner instead
+    // But *only* show the green banner when there are no newAssignments returned by Kriit
     if (error && error.includes('Kõik hinded on juba sünkroonis')) {
-      this.showAllInSyncBanner(options.onRetry, null)
-      return
+      const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
+      if (!globalNewAssignments || Object.keys(globalNewAssignments).length === 0) {
+        this.showAllInSyncBanner(options.onRetry, null)
+        return
+      }
+      // If there are new assignments, fall through and let the caller show the differences banner
     }
 
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
-  Logger.debug('Using banner container:', container)
-  bannerService.removeBanner()
+    Logger.debug('Using banner container:', container)
+    bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
     const scopedContainer = domService.createAndInsertElement(
@@ -675,34 +770,40 @@ export class JournalSyncBannerService {
         )
       }
     } else if (error && error.includes('Kõik hinded on juba sünkroonis')) {
-      // All grades already in sync - show as info, not error
-      banner.classList.remove('ta-sync-error')
-      banner.classList.add('ta-sync-info')
+      // Only treat this as 'all in sync' when there are no new assignments returned by Kriit
+      const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
+      if (!globalNewAssignments || Object.keys(globalNewAssignments).length === 0) {
+        // All grades already in sync - show as info, not error
+        banner.classList.remove('ta-sync-error')
+        banner.classList.add('ta-sync-info')
 
-      // Add refresh button
-      if (options.onRetry) {
-        domService.createAndInsertElement(
-          'button',
-          {
-            classList: ['btn-secondary'],
-            onclick: options.onRetry
-          },
-          'Värskenda andmeid',
-          actions
-        )
-      }
+        // Add refresh button
+        if (options.onRetry) {
+          domService.createAndInsertElement(
+            'button',
+            {
+              classList: ['btn-secondary'],
+              onclick: options.onRetry
+            },
+            'Värskenda andmeid',
+            actions
+          )
+        }
 
-      // Add clear cache button
-      if (options.onClearCache) {
-        domService.createAndInsertElement(
-          'button',
-          {
-            classList: ['btn-secondary'],
-            onclick: options.onClearCache
-          },
-          'Puhasta vahemälu',
-          actions
-        )
+        // Add clear cache button
+        if (options.onClearCache) {
+          domService.createAndInsertElement(
+            'button',
+            {
+              classList: ['btn-secondary'],
+              onclick: options.onClearCache
+            },
+            'Puhasta vahemälu',
+            actions
+          )
+        }
+      } else {
+        // There are new assignments; do not show the all-in-sync info banner. Let the differences banner be shown.
       }
     } else if (error && (error.includes('sync') || error.includes('sünkroniseerimine'))) {
       // Sync error
