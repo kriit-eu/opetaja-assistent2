@@ -5,8 +5,8 @@ import Logger from '../../services/Logger.js'
 
 class DifferenceRenderer {
   render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs) {
-    // Only render on journal list page, never on edit page
-    if (!window.location.hash.includes('journals?_menu')) return
+    // Only render on journal list page, never on edit page - accept modern variants
+    if (!((window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1))) return
     const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs)
 
     for (const subjectName in groupedDiffs) {
@@ -251,10 +251,11 @@ export class JournalSyncBannerService {
    * @param {Function} onOpenSettings - Callback for opening settings
    */
   showMissingApiKeyBanner(onOpenSettings = null) {
-    this.loadSyncStyles()
-    const container = bannerService.getBannerContainer()
-    if (!container) return
-
+  this.loadSyncStyles()
+  if (!((window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1))) return
+  const container = bannerService.getBannerContainer()
+  if (!container) return
+  Logger.debug('Using banner container:', container)
     bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
@@ -318,7 +319,8 @@ export class JournalSyncBannerService {
   showAllInSyncBanner(onRefresh = null, onClose = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
-    bannerService.removeBanner()
+  Logger.debug('Using banner container:', container)
+  bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
     const scopedContainer = domService.createAndInsertElement(
@@ -405,7 +407,8 @@ export class JournalSyncBannerService {
   showDifferencesBanner(totalDifferences, onSync = null, onRefresh = null, renderDifferences = null) {
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
-    bannerService.removeBanner()
+  Logger.debug('Using banner container:', container)
+  bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
     const scopedContainer = domService.createAndInsertElement(
@@ -527,7 +530,8 @@ export class JournalSyncBannerService {
 
     this.loadSyncStyles()
     const container = bannerService.getBannerContainer()
-    bannerService.removeBanner()
+  Logger.debug('Using banner container:', container)
+  bannerService.removeBanner()
 
     // Add scoping container to prevent CSS leakage
     const scopedContainer = domService.createAndInsertElement(

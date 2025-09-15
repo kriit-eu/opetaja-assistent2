@@ -3,6 +3,7 @@ import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
 import { DiscrepanciesTable } from './DiscrepanciesTable.js'
+import { showMessageOverlay } from './AddEntryConfirmationOverlay.js'
 
 // HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
@@ -550,19 +551,28 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Searching for date prefix: ${dateSearchCriteria}`)
     }
 
-    // Try multiple selectors to find journal entry rows
-    let allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"]')
-    if (allRows.length === 0) {
-      allRows = document.querySelectorAll('tr[onclick*="editJournalEntry"]')
-    }
-    if (allRows.length === 0) {
-      // Fallback: look for any clickable table rows
-      allRows = document.querySelectorAll('tr[ng-click], tr[onclick]')
+    // Try multiple selectors to find journal entry rows.
+    // New page layout may render entries inside #entryTable or table.tahvel-table
+    const rowSelectors = [
+      'tr[ng-click*="editJournalEntry"]',
+      'tr[onclick*="editJournalEntry"]',
+      '#entryTable tr',
+      'table.tahvel-table tr',
+      'tr[ng-click], tr[onclick]'
+    ]
+
+    let allRows = []
+    for (const sel of rowSelectors) {
+      const nodes = document.querySelectorAll(sel)
+      if (nodes && nodes.length > 0) {
+        allRows = nodes
+        break
+      }
     }
 
     if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
-    // Filter rows based on date criteria
+  // Filter rows based on date criteria
     let dateMatchingRows
     if (date === 'NO_DATE') {
       // For null dates, we need to be more precise - only get journal entry rows
@@ -656,6 +666,28 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     // Simple position-based matching: assume DOM order matches API order
     const targetIndex = duplicateEntries.findIndex(entry => entry.id == entryId)
 
+    // Attempt to find DOM rows that explicitly reference the entry id in their click handlers
+    // (e.g. ng-click="editJournalEntry(12345)" or onclick="editJournalEntry(12345)")
+    try {
+      const idStr = String(entryId)
+      const idMatchingRows = [...allRows].filter(row => {
+        const ng = row.getAttribute('ng-click') || ''
+        const on = row.getAttribute('onclick') || ''
+        return ng.includes(idStr) || on.includes(idStr)
+      })
+
+      if (idMatchingRows.length > 0) {
+        if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Found DOM rows referencing entry id ${idStr} directly: ${idMatchingRows.length}`)
+        return {
+          exactMatches: idMatchingRows,
+          targetIndex: Math.max(0, targetIndex)
+        }
+      }
+    } catch (e) {
+      // Ignore and continue with existing heuristics
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] id-based DOM matching failed`, e)
+    }
+
     if (Logger.isDebugMode()) {
       Logger.debug(`[${this.name}] Duplicate matching results:`)
       Logger.debug(`[${this.name}] - Target entry ID: ${entryId}`)
@@ -713,6 +745,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         `[${this.name}] Button data types:`,
         Object.entries(data).map(([key, value]) => [key, typeof value, value])
       )
+
+      // Special-case: duplicate "Muuda ... #1/#2" buttons should only open the
+      // journal entry for manual editing. Do not perform any server-side fetch/PUT
+      // for this exact UI case to avoid unintended API modifications.
+      try {
+        const text = (button.textContent || '').trim()
+        if (data.handler === 'editEntry' && /Muuda/i.test(text) && /#\d+/.test(text)) {
+          Logger.info(`[${this.name}] Detected duplicate 'Muuda' button - opening entry instead of server-side edit`, { text, data })
+          // Prefer entryId camelCase, fall back to lower-case dataset variant
+          const entryId = data.entryId ?? data.entryid
+          await this.#handleOpenEntry(entryId, data)
+          // Early return: skip the normal execute flow (no API calls)
+          return
+        }
+      } catch (err) {
+        Logger.error(`[${this.name}] Error during duplicate Muuda short-circuit`, err)
+      }
 
       // Fade out row or table for 'Lisa' button
       if (data.handler === 'addMissing') {
@@ -812,6 +861,34 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
     }
 
+    // Normalize common dataset key variants so callers can use either camelCase or
+    // lowercase keys. The DiscrepanciesTable currently emits data attributes using
+    // `data-${key.toLowerCase()}` which yields dataset keys like `entryid` and
+    // `timetablestart`. Other code paths expect camelCase names like `entryId` or
+    // `timetableStart`. Create aliases for the most common keys to avoid
+    // undefined values at call sites.
+    const aliasMap = {
+      entryid: 'entryId',
+      duplicateindex: 'duplicateIndex',
+      startlesson: 'startLesson',
+      timetablestart: 'timetableStart',
+      timetablecount: 'timetableCount',
+      currentstart: 'currentStart',
+      currentcount: 'currentCount',
+      lessoncount: 'lessonCount',
+      timestart: 'timeStart',
+      timeend: 'timeEnd'
+    }
+
+    for (const [lower, camel] of Object.entries(aliasMap)) {
+      if (Object.prototype.hasOwnProperty.call(parsedData, lower) && parsedData[camel] === undefined) {
+        parsedData[camel] = parsedData[lower]
+      }
+      if (Object.prototype.hasOwnProperty.call(parsedData, camel) && parsedData[lower] === undefined) {
+        parsedData[lower] = parsedData[camel]
+      }
+    }
+
     Logger.debug(`[${this.name}] Final parsed button data:`, parsedData)
     return parsedData
   }
@@ -895,16 +972,57 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #handleAddMissingEntry(date, start, count, timetableData = {}) {
+    // Show a confirmation overlay that previews what will be inserted and
+    // Directly create the missing entry without showing confirmation.
     try {
-      const addButton = await this.#findAndClickAddButton()
-      if (!addButton) throw new Error('Lisa sissekanne not found')
-
-      await this.#waitForDialogContentLoaded()
-      await this.#fillAddForm(date, start, count, timetableData)
-    } catch (error) {
-      Logger.error(`[${this.name}] missing entry error`, error)
+      await this.#createMissingEntryDirect({ date, start, count, timetableData })
+    } catch (err) {
+      Logger.error(`[${this.name}] Error creating missing entry directly`, err)
     }
   }
+
+  // Create and show a lightweight confirmation overlay. When user clicks
+  // "Open form" the add-entry modal is opened and pre-filled via existing
+  // helpers (#findAndClickAddButton and #fillAddForm).
+  // Immediately create a missing journal entry (no confirmation UI).
+  async #createMissingEntryDirect({ date, start, count, timetableData = {} } = {}) {
+    const journalId = this.#currentJournalId || this.#extractJournalId()
+    if (!journalId) throw new Error('Journal ID puudub')
+
+    const effectiveStart = timetableData.timetablestart ?? timetableData.timetableStart ?? start ?? 1
+    const effectiveCount = timetableData.timetablecount ?? timetableData.timetableCount ?? count ?? 1
+    const teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+
+    const payload = {
+      startLessonNr: Number(effectiveStart),
+      lessons: Number(effectiveCount),
+      entryType: LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE,
+      nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
+      studyPeriodEvent: null,
+      journalOmoduleTheme: null,
+      entryDate: (new Date(date)).toISOString(),
+      journalEntryStudents: [],
+      journalEntryCapacityTypes: ['MAHT_a'],
+      journalEntryTeachers: teacherId ? [String(teacherId)] : []
+    }
+
+    const url = `/journals/${journalId}/journalEntry`
+    Logger.info(`[${this.name}] Creating missing journal entry (direct)`, { url, payload })
+
+    try {
+      const res = await this.api.tahvel.post(url, payload)
+      try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
+      try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after create', e) }
+      try { await showMessageOverlay({ title: 'Sissekanne lisatud', message: 'Uus sissekanne on loodud.', duration: 3500 }) } catch (e) { Logger.debug('showMessageOverlay failed', e) }
+      return res
+    } catch (err) {
+      Logger.error(`[${this.name}] Failed to create missing journal entry`, err)
+      try { await showMessageOverlay({ title: 'Viga', message: 'Sissekande loomine ebaõnnestus. Kontrolli konsooli.', duration: 5000 }) } catch (e) { Logger.debug('showMessageOverlay failed', e) }
+      throw err
+    }
+  }
+
+  // ...existing code...
 
   /**
    * @param {string} date - Entry date
@@ -916,7 +1034,87 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     try {
       const actualEntryId = entryId || data.entryid
       const duplicateIndex = data.duplicateindex || 0
+      // Preferred flow: perform a server-side fetch -> modify -> PUT to update the entry
+      const journalId = this.#currentJournalId || this.#extractJournalId()
+      if (journalId && actualEntryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
+        try {
+          const detailUrl = `/journals/${journalId}/journalEntry/${actualEntryId}`
+          Logger.info(`[${this.name}] Fetching current entry for server-side edit`, { detailUrl })
+          const current = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
 
+          if (!current) throw new Error('failed to fetch current entry')
+
+          // Build a safe PUT payload by copying server object and applying minimal changes
+          const putPayload = { ...current }
+
+          // Apply changes if provided by the button data (timetable suggested values)
+          // Only change startLessonNr, lessons and entryDate/nameEt when the parsed data differs
+          if (this.#isValidValue(data.timetablestart) && Number(data.timetablestart) !== Number(current.startLessonNr)) {
+            putPayload.startLessonNr = Number(data.timetablestart)
+          }
+          if (this.#isValidValue(data.timetablecount) && Number(data.timetablecount) !== Number(current.lessons)) {
+            putPayload.lessons = Number(data.timetablecount)
+          }
+
+          // Normalize entryDate to ISO if date is provided
+          if (date) {
+            const iso = (new Date(date)).toISOString()
+            if (iso !== current.entryDate) putPayload.entryDate = iso
+          }
+
+          // Ensure entryType stays correct (it should already), but keep nameEt consistent with timetable if available
+          if (data.name) putPayload.nameEt = data.name
+
+          // Normalize teacher ids: use current first teacher or the journal's first teacher
+          const teacherIdFromJournal = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+          if (!Array.isArray(putPayload.journalEntryTeachers) || putPayload.journalEntryTeachers.length === 0) {
+            putPayload.journalEntryTeachers = teacherIdFromJournal ? [Number(teacherIdFromJournal)] : []
+          } else {
+            // Ensure teachers are numbers
+            putPayload.journalEntryTeachers = putPayload.journalEntryTeachers.map(t => Number(t))
+          }
+
+          // Ensure capacity types are an array (don't introduce UI-only fields)
+          if (!Array.isArray(putPayload.journalEntryCapacityTypes)) {
+            putPayload.journalEntryCapacityTypes = putPayload.journalEntryCapacityTypes ? [putPayload.journalEntryCapacityTypes] : ['MAHT_a']
+          }
+
+          // Remove fields that are UI-only or could cause server errors
+          delete putPayload.teacherSelection
+          delete putPayload._links
+
+          Logger.info(`[${this.name}] Sending PUT to update journal entry`, { url: detailUrl, payload: putPayload })
+
+          try {
+            const putRes = await this.api.tahvel.put(detailUrl, putPayload)
+            try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
+            try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after PUT', e) }
+            return putRes
+          } catch (putErr) {
+            // Try to extract response body for better diagnostics
+            try {
+              if (putErr?.response && typeof putErr.response.json === 'function') {
+                const body = await putErr.response.json()
+                Logger.error(`[${this.name}] PUT failed for entry ${actualEntryId} - response body:`, body)
+              } else if (putErr?.response && typeof putErr.response.text === 'function') {
+                const body = await putErr.response.text()
+                Logger.error(`[${this.name}] PUT failed for entry ${actualEntryId} - response text:`, body)
+              } else {
+                Logger.error(`[${this.name}] PUT failed for entry ${actualEntryId}`, putErr)
+              }
+            } catch (bodyErr) {
+              Logger.error(`[${this.name}] PUT failed and response body could not be read`, bodyErr)
+            }
+
+            // Fall through to UI modal fallback below
+          }
+        } catch (fetchErr) {
+          Logger.error(`[${this.name}] Failed to prepare server-side edit for entry ${actualEntryId}`, fetchErr)
+          // Fall through to UI modal fallback below
+        }
+      }
+
+      // Fallback UX: open the edit modal and prefill fields if server-side flow is not possible or failed
       const element = await this.#findJournalEntryElement(actualEntryId, date, duplicateIndex)
       if (!element) {
         Logger.error(`[${this.name}] Entry element not found for ID=${actualEntryId}, date=${date}, duplicateIndex=${duplicateIndex}`)
@@ -963,10 +1161,29 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     const effectiveStart = timetableData.timetablestart || timetableData.timetableStart || start
     const effectiveCount = timetableData.timetablecount || timetableData.timetableCount || count
 
-    await Promise.all([
-      this.#fillFieldWithVisualFeedback(['md-select[ng-model*="entryType"]'], LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE, 'Entry type'),
-      this.#fillFieldWithVisualFeedback(['md-datepicker input'], formattedDate, 'Date')
-    ])
+    // Fill entry type (md-select)
+    try {
+      const entryTypeField = this.#findVisibleElement(['md-select[ng-model*="entryType"]'])
+      if (entryTypeField) {
+        await this.#selectMdSelectOption(entryTypeField, LessonDiscrepanciesFeature.JOURNAL_ENTRY_LESSON_TYPE)
+      } else {
+        Logger.warning(`[${this.name}] Entry type field not found`)
+      }
+    } catch (err) {
+      Logger.error(`[${this.name}] Error setting entry type`, err)
+    }
+
+    // Fill date input
+    try {
+      const dateField = this.#findVisibleElement(['md-datepicker input'])
+      if (dateField) {
+        await this.#fillInputField(dateField, formattedDate)
+      } else {
+        Logger.warning(`[${this.name}] Date field not found`)
+      }
+    } catch (err) {
+      Logger.error(`[${this.name}] Error setting date field`, err)
+    }
 
     await Promise.all([
       this.#fillStartLessonField(String(effectiveStart)),
@@ -1015,36 +1232,45 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     return value !== Infinity && value !== -Infinity && !isNaN(value) && value != null
   }
 
-  #setFieldState(field, state) {
-    const colors = {
-      processing: '#DAA520',
-      success: '#006400',
-      error: '#dc3545'
-    }
-    field.style.border = `3px solid ${colors[state]}`
+  #setFieldState(_field, _state) {
+    // Visual highlighting disabled. Keep method to avoid breaking callers.
+    return
   }
 
   async #fillFieldWithVisualFeedback(selectors, value, logName) {
+    // Removed: visual feedback helper replaced by direct calls to lower-level helpers.
+    // Kept as a placeholder to avoid breaking references during refactor (should be removed).
     const field = this.#findVisibleElement(selectors)
     if (!field) {
       Logger.warning(`[${this.name}] ${logName} field not found`)
       return false
     }
 
-    this.#setFieldState(field, 'processing')
-    const success = field.tagName.toLowerCase() === 'md-select' ? await this.#selectMdSelectOption(field, value) : await this.#fillInputField(field, value)
-    this.#setFieldState(field, success ? 'success' : 'error')
-    return success
+    if (field.tagName.toLowerCase() === 'md-select') {
+      return await this.#selectMdSelectOption(field, value)
+    }
+
+    return await this.#fillInputField(field, value)
   }
 
   async #fillStartLessonField(value) {
     const selectors = ['md-select[aria-label*="Algustund"]', 'md-select[ng-model*="startLessonNr"]', '#select_89']
-    return this.#fillFieldWithVisualFeedback(selectors, value, 'Start lesson')
+    const field = this.#findVisibleElement(selectors)
+    if (!field) {
+      Logger.warning(`[${this.name}] Start lesson field not found`)
+      return false
+    }
+    return await this.#selectMdSelectOption(field, value)
   }
 
   async #fillLessonCountField(value) {
     const selectors = ['input[aria-label="lessons"]', 'input[ng-model*="lessons"]', '#input_69']
-    return this.#fillFieldWithVisualFeedback(selectors, value, 'Lesson count')
+    const field = this.#findVisibleElement(selectors)
+    if (!field) {
+      Logger.warning(`[${this.name}] Lesson count field not found`)
+      return false
+    }
+    return await this.#fillInputField(field, value)
   }
 
   async #fillInputField(field, value) {
@@ -1294,7 +1520,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         dateSearchCriteria = this.#formatDisplayDate(date).slice(0, 5)
       }
 
-      const allRows = document.querySelectorAll('tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], tr[ng-click], tr[onclick]')
+      const allRows = document.querySelectorAll(
+        'tr[ng-click*="editJournalEntry"], tr[onclick*="editJournalEntry"], #entryTable tr, table.tahvel-table tr, tr[ng-click], tr[onclick]'
+      )
       const dateMatchingRows = [...allRows].filter(row => row.textContent.includes(dateSearchCriteria))
 
       Logger.debug(`[${this.name}] Fallback found ${dateMatchingRows.length} rows matching date ${dateSearchCriteria}`)
@@ -1567,38 +1795,15 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   }
 
   async #checkAuditoriumLearningCheckbox() {
-    /** @type {HTMLElement} */
-    const checkbox = document.querySelector('md-checkbox[ng-model*="selectedCapacityTypes"][aria-label="Auditoorne õpe"]')
-
-    if (checkbox && this.#isElementVisible(checkbox)) {
-      this.#setFieldState(checkbox, 'processing')
-      checkbox.click()
-      const isChecked = checkbox.getAttribute('aria-checked') === 'true'
-      this.#setFieldState(checkbox, isChecked ? 'success' : 'error')
-    }
+    // Disabled: do not programmatically toggle auditorium capacity checkbox.
+    // The selection should be performed manually by the user in the form.
+    return false
   }
 
   async #checkTeacherCheckbox() {
-    /** @type {NodeListOf<HTMLElement>} */
-    const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
-
-    for (const checkbox of teacherCheckboxes) {
-      if (checkbox && this.#isElementVisible(checkbox)) {
-        const isChecked = checkbox.getAttribute('aria-checked') === 'true'
-
-        if (!isChecked) {
-          this.#setFieldState(checkbox, 'processing')
-          checkbox.click()
-
-          // Verify it was checked
-          await this.#delay(200)
-          const nowChecked = checkbox.getAttribute('aria-checked') === 'true'
-          this.#setFieldState(checkbox, nowChecked ? 'success' : 'error')
-
-          Logger.debug(`[${this.name}] Teacher checkbox toggled: ${checkbox.getAttribute('aria-label')} - checked: ${nowChecked}`)
-        }
-      }
-    }
+    // Disabled: do not programmatically toggle teacher checkboxes.
+    // Teachers should be selected manually in the add-entry form.
+    return false
   }
 
   #getTeacherCheckboxState() {
@@ -1718,14 +1923,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Fetch fresh journal data
       const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
 
-      // Re-run unified validation
-      const capacityProblems = await this.#getCapacityTypeProblems(journalData)
+  // Re-run unified validation
+  const _capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
-      // Get current discrepancies (empty since we're only refreshing capacity)
-      const discrepancies = []
-
-      // Update unified display
-      this.table.insertUnifiedTable(discrepancies, capacityProblems)
+      // Instead of only updating capacity problems (which hides timetable discrepancies),
+      // perform a full table refresh so both timetable discrepancies and capacity problems
+      // are recalculated and displayed consistently.
+      await this.#createLessonDiscrepanciesTable(true, 'refreshCapacityValidationAfterSave')
     } catch (error) {
       Logger.error(`[${this.name}] Error refreshing capacity validation:`, error)
     }
@@ -2436,6 +2640,230 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         }
       }
 
+      // Attempt server-side capacity fix first: fetch detailed entry and PUT modified payload
+      try {
+        const journalId = this.#currentJournalId || this.#extractJournalId()
+        if (journalId && actualEntryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
+          const detailUrl = `/journals/${journalId}/journalEntry/${actualEntryId}`
+          // Fetch fresh detailed entry (no cache)
+          const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
+          if (detailedEntry) {
+            // Create a safe copy for PUT: copy server object and normalize important types
+            const safeCopy = { ...detailedEntry }
+
+            // Ensure capacity types is an array (copy to avoid mutating original)
+            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
+              ? safeCopy.journalEntryCapacityTypes.slice()
+              : []
+
+            // Normalize teacher IDs to strings and populate from teacherSelection or journal info when missing
+            if (Array.isArray(safeCopy.journalEntryTeachers) && safeCopy.journalEntryTeachers.length > 0) {
+              safeCopy.journalEntryTeachers = safeCopy.journalEntryTeachers.map(id => String(id))
+            } else {
+              // Try to populate from detailedEntry.teacherSelection first
+              if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                const sel = detailedEntry.teacherSelection[0]
+                safeCopy.journalEntryTeachers = [String(sel.id)]
+                // Preserve teacherSelection but ensure id is string
+                safeCopy.teacherSelection = detailedEntry.teacherSelection.map(t => ({ ...t, id: String(t.id) }))
+              } else if (this.#lastJournalData?.info?.journalTeachers && this.#lastJournalData.info.journalTeachers.length > 0) {
+                const fallback = this.#lastJournalData.info.journalTeachers[0]
+                safeCopy.journalEntryTeachers = [String(fallback.id)]
+                safeCopy.teacherSelection = [{ id: String(fallback.id), displayName: fallback.displayName || fallback.name || '' }]
+              } else {
+                safeCopy.journalEntryTeachers = []
+              }
+            }
+
+            // Ensure capacity types is an array (copy to avoid mutating original)
+            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
+              ? safeCopy.journalEntryCapacityTypes.slice()
+              : []
+
+            // Special case: if this is a lesson entry and auditoorne capacity is missing,
+            // perform a focused server-side PUT to add MAHT_a and return early (no UI fallback).
+            if (safeCopy.entryType === 'SISSEKANNE_T' && !safeCopy.journalEntryCapacityTypes.includes('MAHT_a')) {
+              Logger.info(`[${this.name}] Detected lesson entry without auditoorne capacity - adding MAHT_a via API for entry ${actualEntryId}`)
+              // Add MAHT_a while keeping uniqueness
+              safeCopy.journalEntryCapacityTypes = Array.from(new Set([...(safeCopy.journalEntryCapacityTypes || []), 'MAHT_a']))
+
+              // Remove UI-only fields that might cause server errors
+              delete safeCopy._links
+              delete safeCopy.journalStudent
+
+              try {
+                Logger.debug(`[${this.name}] Performing focused PUT to add MAHT_a for entry ${actualEntryId}`, safeCopy)
+                const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                Logger.debug(`[${this.name}] Focused PUT response for entry ${actualEntryId}:`, putRes)
+
+                try { await cacheService.clearJournalCache(journalId) } catch (cErr) { Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr) }
+                try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e) }
+                await this.#refreshTableWithRetry()
+
+                // Done - server-side fix applied. Exit without opening UI fallback.
+                return
+              } catch (putErrFocused) {
+                // Try to extract response body for diagnostics and show user message but do NOT open UI fallback
+                try {
+                  if (putErrFocused?.response && typeof putErrFocused.response.json === 'function') {
+                    const body = await putErrFocused.response.json()
+                    Logger.error(`[${this.name}] Focused PUT failed for entry ${actualEntryId} - response body:`, body)
+                  } else if (putErrFocused?.response && typeof putErrFocused.response.text === 'function') {
+                    const body = await putErrFocused.response.text()
+                    Logger.error(`[${this.name}] Focused PUT failed for entry ${actualEntryId} - response text:`, body)
+                  } else {
+                    Logger.error(`[${this.name}] Focused PUT failed for entry ${actualEntryId}:`, putErrFocused)
+                  }
+                } catch (bodyErr) {
+                  Logger.error(`[${this.name}] Focused PUT failed and response body could not be read`, bodyErr)
+                }
+
+                try {
+                  await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt auditoorset õpet lisada. Palun parandage sissekanne käsitsi.', duration: 7000 })
+                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+
+                // Do not continue to UI fallback - return after informing the user
+                return
+              }
+            }
+
+            // Special case: if this is a practical-work entry and praktiline capacity is missing,
+            // perform a focused server-side PUT to add MAHT_p and return early (no UI fallback).
+            if (safeCopy.entryType === 'SISSEKANNE_P' && !safeCopy.journalEntryCapacityTypes.includes('MAHT_p')) {
+              Logger.info(`[${this.name}] Detected practical-work entry without praktiline capacity - adding MAHT_p via API for entry ${actualEntryId}`)
+              // Add MAHT_p while keeping uniqueness
+              safeCopy.journalEntryCapacityTypes = Array.from(new Set([...(safeCopy.journalEntryCapacityTypes || []), 'MAHT_p']))
+
+              // Ensure we have at least one teacher id string present (server examples use strings)
+              if (!Array.isArray(safeCopy.journalEntryTeachers) || safeCopy.journalEntryTeachers.length === 0) {
+                if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                  safeCopy.journalEntryTeachers = [String(detailedEntry.teacherSelection[0].id)]
+                } else if (this.#lastJournalData?.info?.journalTeachers && this.#lastJournalData.info.journalTeachers.length > 0) {
+                  safeCopy.journalEntryTeachers = [String(this.#lastJournalData.info.journalTeachers[0].id)]
+                } else {
+                  safeCopy.journalEntryTeachers = []
+                }
+              } else {
+                safeCopy.journalEntryTeachers = safeCopy.journalEntryTeachers.map(id => String(id))
+              }
+
+              // Remove UI-only fields that might cause server errors
+              delete safeCopy._links
+              delete safeCopy.journalStudent
+
+              try {
+                Logger.debug(`[${this.name}] Performing focused PUT to add MAHT_p for entry ${actualEntryId}`, safeCopy)
+                const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                Logger.debug(`[${this.name}] Focused PUT response for practical entry ${actualEntryId}:`, putRes)
+
+                try { await cacheService.clearJournalCache(journalId) } catch (cErr) { Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr) }
+                try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e) }
+                await this.#refreshTableWithRetry()
+
+                // Done - server-side fix applied. Exit without opening UI fallback.
+                return
+              } catch (putErrFocused) {
+                // Diagnostics similar to lesson-focused path
+                try {
+                  if (putErrFocused?.response && typeof putErrFocused.response.json === 'function') {
+                    const body = await putErrFocused.response.json()
+                    Logger.error(`[${this.name}] Focused PUT failed for practical entry ${actualEntryId} - response body:`, body)
+                  } else if (putErrFocused?.response && typeof putErrFocused.response.text === 'function') {
+                    const body = await putErrFocused.response.text()
+                    Logger.error(`[${this.name}] Focused PUT failed for practical entry ${actualEntryId} - response text:`, body)
+                  } else {
+                    Logger.error(`[${this.name}] Focused PUT failed for practical entry ${actualEntryId}:`, putErrFocused)
+                  }
+                } catch (bodyErr) {
+                  Logger.error(`[${this.name}] Focused PUT failed and response body could not be read`, bodyErr)
+                }
+
+                try {
+                  await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt praktilist tööd lisada. Palun parandage sissekanne käsitsi.', duration: 7000 })
+                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+
+                // Do not continue to UI fallback - return after informing the user
+                return
+              }
+            }
+
+            // Business rule: if both MAHT_a and MAHT_i present for a lesson entry, remove MAHT_i (auditoorne wins)
+            if (safeCopy.entryType === 'SISSEKANNE_T' && safeCopy.journalEntryCapacityTypes.includes('MAHT_a') && safeCopy.journalEntryCapacityTypes.includes('MAHT_i')) {
+              Logger.info(`[${this.name}] Normalizing capacity types for entry ${actualEntryId}: removing MAHT_i since MAHT_a is present`)
+              safeCopy.journalEntryCapacityTypes = safeCopy.journalEntryCapacityTypes.filter(t => t !== 'MAHT_i')
+            }
+
+            // For independent work entries, ensure MAHT_i is present; remove MAHT_a if present
+            if (safeCopy.entryType === 'SISSEKANNE_I') {
+              const has_i = safeCopy.journalEntryCapacityTypes.includes('MAHT_i')
+              if (!has_i) {
+                Logger.info(`[${this.name}] Adding MAHT_i for independent work entry ${actualEntryId}`)
+                safeCopy.journalEntryCapacityTypes = safeCopy.journalEntryCapacityTypes.filter(t => t !== 'MAHT_a')
+                safeCopy.journalEntryCapacityTypes.push('MAHT_i')
+              }
+            }
+
+            // Remove other UI-only fields that are not needed or may cause server errors
+            delete safeCopy._links
+            delete safeCopy.journalStudent
+
+            // If there is any change compared to server copy, perform PUT
+            const needsPut = JSON.stringify(safeCopy) !== JSON.stringify(detailedEntry)
+            if (needsPut) {
+              try {
+                Logger.debug(`[${this.name}] Performing PUT for entry ${actualEntryId} with payload:`, safeCopy)
+                const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
+                Logger.debug(`[${this.name}] PUT response for normalized entry ${actualEntryId}:`, putRes)
+
+                // Clear cache and refresh local journal data
+                try {
+                  await cacheService.clearJournalCache(journalId)
+                } catch (cErr) {
+                  Logger.debug(`[${this.name}] cache clear error after PUT:`, cErr)
+                }
+
+                // Re-fetch journal data to reflect changes
+                try {
+                  const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
+                  this.#lastJournalData = journalData
+                } catch (reErr) {
+                  Logger.debug(`[${this.name}] failed to refresh journal data after PUT:`, reErr)
+                }
+
+                // Refresh the discrepancies display
+                await this.#refreshTableWithRetry()
+
+                // Server-side fix applied; refresh display and exit early.
+                // Note: UI success overlay removed per user preference.
+                return
+              } catch (putErr) {
+                // Try to extract response body for diagnostics
+                try {
+                  if (putErr?.response && typeof putErr.response.json === 'function') {
+                    const body = await putErr.response.json()
+                    Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId} - response body:`, body)
+                  } else if (putErr?.response && typeof putErr.response.text === 'function') {
+                    const body = await putErr.response.text()
+                    Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId} - response text:`, body)
+                  } else {
+                    Logger.error(`[${this.name}] Failed to PUT normalized entry ${actualEntryId}:`, putErr)
+                  }
+                } catch (bodyErr) {
+                  Logger.error(`[${this.name}] PUT failed and response body could not be read`, bodyErr)
+                }
+
+                // Fall through to UI-based flow as a fallback
+              }
+            } else {
+              Logger.debug(`[${this.name}] No normalization needed for entry ${actualEntryId}; skipping server PUT`)
+            }
+          }
+        }
+      } catch (srvErr) {
+        Logger.debug(`[${this.name}] Server-side fix attempt failed:`, srvErr)
+        // Continue to fallback UI flow
+      }
+
       const element = await this.#findJournalEntryElement(actualEntryId, date, duplicateIndex)
       if (!element) {
         // Enhanced error logging
@@ -2529,29 +2957,131 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         highlightMessage = 'Kontrollige auditoorse õppe ja iseseiseva õppe linnukesi!'
       }
 
+      // Special handling for teacher validation issues: try server-side assignment BEFORE opening the dialog
+      if (validationResult?.errorType === 'no_teacher_selected') {
+        try {
+          const journalId = this.#currentJournalId || this.#extractJournalId()
+          if (journalId && entryId && this.api?.tahvel?.get && this.api?.tahvel?.put) {
+            const detailUrl = `/journals/${journalId}/journalEntry/${entryId}`
+            const detailedEntry = await this.api.tahvel.get(detailUrl, { allStudents: true }, { cache: false, cacheExpiration: 0 })
+
+            if (detailedEntry) {
+              // Determine teacher id to assign: prefer server-provided teacherSelection, then journal info
+              let teacherId = null
+              if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                teacherId = detailedEntry.teacherSelection[0].id
+              }
+              if (!teacherId) {
+                teacherId = this.#lastJournalData?.info?.journalTeachers?.[0]?.id
+              }
+
+              if (teacherId) {
+                const safeCopy = { ...detailedEntry }
+                // Find teacher object (prefer detailedEntry.teacherSelection, fallback to journal info)
+                let teacherObj = null
+                if (Array.isArray(detailedEntry.teacherSelection) && detailedEntry.teacherSelection.length > 0) {
+                  teacherObj = detailedEntry.teacherSelection.find(t => Number(t.id) === Number(teacherId)) || detailedEntry.teacherSelection[0]
+                } else if (this.#lastJournalData?.info?.journalTeachers) {
+                  teacherObj = this.#lastJournalData.info.journalTeachers.find(t => Number(t.id) === Number(teacherId)) || null
+                }
+
+                // Server expects teacher ids as strings in some cases; use string form to match example payload
+                safeCopy.journalEntryTeachers = [String(teacherId)]
+                safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
+                  ? safeCopy.journalEntryCapacityTypes.slice()
+                  : []
+
+                // Preserve or set teacherSelection so server receives the teacher metadata (helps server-side processing)
+                if (teacherObj) {
+                  safeCopy.teacherSelection = [
+                    // Build a minimal teacher object if the server response didn't include one
+                    Object.assign(
+                      { id: String(teacherObj.id), displayName: teacherObj.displayName || teacherObj.name || '' },
+                      // Keep extra known fields if present
+                      teacherObj
+                    )
+                  ]
+                } else if (Array.isArray(safeCopy.teacherSelection) && safeCopy.teacherSelection.length > 0) {
+                  // Ensure IDs inside teacherSelection are strings
+                  safeCopy.teacherSelection = safeCopy.teacherSelection.map(t => ({ ...t, id: String(t.id) }))
+                } else {
+                  // No teacher metadata available - set minimal teacherSelection using journal info if present
+                  const fallbackTeacher = this.#lastJournalData?.info?.journalTeachers?.find(t => Number(t.id) === Number(teacherId))
+                  if (fallbackTeacher) {
+                    safeCopy.teacherSelection = [{ id: String(fallbackTeacher.id), displayName: fallbackTeacher.displayName || fallbackTeacher.name || '' }]
+                  } else {
+                    delete safeCopy.teacherSelection
+                  }
+                }
+
+                // Remove other UI-only fields
+                delete safeCopy._links
+                delete safeCopy.journalStudent
+
+                Logger.info(`[${this.name}] Attempting server-side teacher assignment for entry ${entryId}`, { journalId, teacherId, payloadPreview: { journalEntryTeachers: safeCopy.journalEntryTeachers, teacherSelection: safeCopy.teacherSelection } })
+
+                try {
+                  // Log the full payload at debug level (avoid verbose logging at info level)
+                  Logger.debug(`[${this.name}] Teacher assignment PUT payload for entry ${entryId}:`, safeCopy)
+                  const putRes = await this.api.tahvel.put(detailUrl, safeCopy)
+                  Logger.debug(`[${this.name}] PUT response for teacher assignment:`, putRes)
+                  try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.debug(`[${this.name}] cache clear error after teacher PUT:`, e) }
+                  try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after teacher PUT failed:`, e) }
+                  await this.#refreshTableWithRetry()
+
+                  try {
+                    await showMessageOverlay({ title: 'Õpetaja lisatud', message: 'Õpetaja on automaatselt määratud ja salvestatud.', duration: 4000 })
+                  } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+
+                  return // success, exit early
+                } catch (putErr) {
+                  // Try to extract server response body if available for diagnostics
+                  try {
+                    if (putErr?.response && typeof putErr.response.json === 'function') {
+                      const body = await putErr.response.json()
+                      Logger.error(`[${this.name}] Server PUT to assign teacher failed for entry ${entryId} - response body:`, body)
+                    } else if (putErr?.response && typeof putErr.response.text === 'function') {
+                      const body = await putErr.response.text()
+                      Logger.error(`[${this.name}] Server PUT to assign teacher failed for entry ${entryId} - response text:`, body)
+                    } else {
+                      Logger.error(`[${this.name}] Server PUT to assign teacher failed for entry ${entryId}:`, putErr)
+                    }
+                  } catch (bodyErr) {
+                    Logger.error(`[${this.name}] Server PUT failed and response body parsing threw:`, bodyErr)
+                  }
+
+                  // On failure, show message and exit (no UI fallback)
+                  try {
+                    await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt õpetajat määrata. Palun valige õpetaja käsitsi.', duration: 6000 })
+                  } catch (e) {
+                    Logger.debug(`[${this.name}] showMessageOverlay failed:`, e)
+                  }
+                  return
+                }
+              } else {
+                Logger.debug(`[${this.name}] No teacher available to assign for entry ${entryId}`)
+                try {
+                  await showMessageOverlay({ title: 'Õpetajat ei leitud', message: 'Päevikust või sissekandest ei leitud õpetajat, palun valige õpetaja käsitsi.', duration: 6000 })
+                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+                return
+              }
+            }
+          }
+        } catch (srvAssignErr) {
+          Logger.debug(`[${this.name}] Server-side teacher assignment attempt failed:`, srvAssignErr)
+          try {
+            await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Serveri päring ebaõnnestus. Palun valige õpetaja käsitsi.', duration: 6000 })
+          } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+          return
+        }
+      }
+
+      // Open the dialog only for non-teacher issues or if we reached here
       await this.#clickJournalEntry(element)
       await this.#waitForDialogContentLoaded()
 
       // Wait a bit for dialog content to fully render
       await new Promise(resolve => setTimeout(resolve, 500))
-
-      // Special handling for teacher validation issues
-      if (validationResult?.errorType === 'no_teacher_selected') {
-        // Auto-check teacher checkbox but don't auto-save
-        await this.#checkTeacherCheckbox()
-
-        // Highlight teacher checkboxes in green to show they were fixed
-        const teacherCheckboxes = document.querySelectorAll('md-checkbox[ng-model*="selectedTeachers"]')
-        const teacherElements = [...teacherCheckboxes].filter(cb => this.#isElementVisible(cb))
-
-        if (teacherElements.length > 0) {
-          // Use green highlight for successful fix - no message needed
-          this.#highlightProblematicElements(teacherElements, 'Õpetaja on valitud! Palun salvestage muudatused käsitsi.', '#4CAF50')
-          this.#addDialogCloseListeners()
-        }
-
-        return // Exit early for teacher validation - no auto-save
-      }
 
       // Special handling for lesson_without_auditoorne - only check capacity checkbox, not teacher
       if (validationResult?.errorType === 'lesson_without_auditoorne') {
@@ -2931,57 +3461,13 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       }
 
       if (entryTypeElement) {
-        // Create and apply red highlight
-        const highlightBox = document.createElement('div')
-        highlightBox.dataset.entryTypeHighlight = 'true'
-        highlightBox.style.cssText = `
-          position: absolute;
-          border: 3px solid #ff0000;
-          background: rgba(255, 0, 0, 0.1);
-          pointer-events: none;
-          z-index: 10000;
-          border-radius: 4px;
-          box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
-        `
-
-        // Position the highlight box over the element
-        const rect = entryTypeElement.getBoundingClientRect()
-        const scrollTop = window.scrollY
-        const scrollLeft = window.scrollX
-
-        highlightBox.style.top = rect.top + scrollTop - 2 + 'px'
-        highlightBox.style.left = rect.left + scrollLeft - 2 + 'px'
-        highlightBox.style.width = rect.width + 4 + 'px'
-        highlightBox.style.height = rect.height + 4 + 'px'
-
-        document.body.appendChild(highlightBox)
-
-        // Add tooltip message
-        const tooltip = document.createElement('div')
-        tooltip.dataset.entryTypeTooltip = 'true'
-        tooltip.style.cssText = `
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: #ff0000;
-          color: white;
-          padding: 12px 18px;
-          border-radius: 8px;
-          z-index: 10001;
-          font-weight: bold;
-          font-size: 14px;
-          max-width: 350px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-          border: 2px solid #ffffff;
-          line-height: 1.4;
-        `
-        tooltip.textContent = 'Vigane sissekanne: Kontrollige sissekande liiki! See peaks olema õige tüüp päeviku seadistuste järgi.'
-        document.body.appendChild(tooltip)
-
-        // Add cleanup listener for dialog close
+        // Previously we displayed a prominent red highlight and tooltip
+        // warning the user about incorrect entry type. This was noisy and
+        // showed the message: "Vigane sissekanne: Kontrollige sissekande liiki! ...".
+        // Remove the visual tooltip and heavy highlight; keep a debug log and
+        // attach the cleanup listeners so any legacy hooks still work.
         this.#addEntryTypeHighlightCleanup()
-
-        Logger.debug(`[${this.name}] Entry type field highlighted`)
+        Logger.debug(`[${this.name}] Entry type field detected but interactive highlighting suppressed`)
       } else {
         Logger.warn(`[${this.name}] Could not find entry type field to highlight`)
       }

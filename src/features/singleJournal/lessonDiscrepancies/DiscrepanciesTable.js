@@ -21,10 +21,8 @@ export class DiscrepanciesTable {
    * @param {Array} colors - Array of [background, hover, text] colors
    * @returns {string} CSS style string
    */
-  static createButtonStyle = ([bg, hover, color]) =>
-    `background:${bg};color:${color};border:none;padding:4px 8px;border-radius:3px;` +
-    'font-size:12px;font-weight:bold;cursor:pointer;' +
-    `" onmouseover="this.style.background='${hover}'" onmouseout="this.style.background='${bg}'`
+  static createButtonStyle = ([bg, _hover, color]) =>
+    `background:${bg};color:${color};border:none;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;cursor:pointer;`
 
   /**
    * Constructor for DiscrepanciesTable
@@ -217,7 +215,24 @@ export class DiscrepanciesTable {
       // Main table only for now
       const mainTableSection = this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, null, true)
       flexContainer.innerHTML = mainTableSection
-      insertionPoint.insertBefore(flexContainer, insertionPoint.firstChild)
+      // If the chosen insertion point is a header/section element (accordion-header),
+      // insert the table after that element (as a sibling) so it appears under the section,
+      // otherwise insert as the first child (legacy behavior).
+      try {
+        // If the insertion point is the whole accordion component or the header, insert after it
+        const tagName = insertionPoint.tagName && insertionPoint.tagName.toLowerCase()
+        const isTahvelAccordion = tagName === 'tahvel-accordion'
+        const isAccordionHeader = insertionPoint.classList && insertionPoint.classList.contains('accordion-header')
+        if (isTahvelAccordion || isAccordionHeader) {
+          // Place the container immediately after the accordion or header so it appears under the section but not inside it
+          insertionPoint.insertAdjacentElement('afterend', flexContainer)
+        } else {
+          insertionPoint.insertBefore(flexContainer, insertionPoint.firstChild)
+        }
+      } catch (e) {
+        // Fallback to safe behavior if DOM operations fail
+        (insertionPoint.parentNode || document.body).insertBefore(flexContainer, insertionPoint.nextSibling || insertionPoint.firstChild)
+      }
       setTimeout(() => {
         // Check for all highlight types and missing grades
         const ovCells = document.querySelectorAll('.highlight-ov-red')
@@ -781,10 +796,38 @@ export class DiscrepanciesTable {
    * @private
    */
   #findInsertionPoint() {
-    const selectors = ['md-content .layout-padding', '.layout-padding', 'md-content', '#main-content', '.main-content', 'main']
-    return (
-      selectors.map(selector => document.querySelector(selector)).find(element => element && element.getBoundingClientRect().width > 100) || document.body
-    )
+    // Prefer the new accordion header area introduced by the redesigned page.
+    // The Angular-generated class part (e.g. ng-tns-c1628529983-11) may change between builds,
+    // so prefer generic `.accordion-header` but fall back to the more specific pattern if present.
+    const preferredSelectors = [
+      // Prefer the whole accordion component so the table can be placed after it
+      // Prefer the whole accordion component so the table can be placed after it
+      'tahvel-accordion',
+      // Generic accordion header used in new layout
+      '.accordion-header',
+      // Specific combined class (kept for backwards-compatibility with snapshot pages)
+      '.accordion-header.ng-tns-c1628529983-11',
+      // Older/fallback selectors
+      'md-content .layout-padding',
+      '.layout-padding',
+      'md-content',
+      '#main-content',
+      '.main-content',
+      'main'
+    ]
+
+    // Return the first visible element (width > 100px) from preferred selectors, or document.body as final fallback
+    const candidates = preferredSelectors.map(selector => document.querySelector(selector))
+    const found = candidates.find(element => {
+      if (!element) return false
+      if (!element.getBoundingClientRect) return false
+      try {
+        return element.getBoundingClientRect().width > 100
+      } catch (e) {
+        return false
+      }
+    })
+    return found || document.body
   }
 
   /**
@@ -802,7 +845,12 @@ export class DiscrepanciesTable {
       .map(([key, value]) => `data-${key.toLowerCase()}="${String(value).replace(/"/g, '&quot;')}"`)
       .join(' ')
     const titleAttribute = tooltip ? `title="${tooltip}"` : ''
-    return `<button id="${id}" style="${DiscrepanciesTable.createButtonStyle(DiscrepanciesTable.HEX[colorKey])}" ${dataAttributes} ${titleAttribute}>${text}</button>`
+    // Resolve colors so we can attach simple hover handlers as attributes
+    const colors = DiscrepanciesTable.HEX[colorKey] || DiscrepanciesTable.HEX.green
+    const [bg, hover] = colors
+    // Add onmouseover/onmouseout attributes to mimic hover background change
+    const hoverAttr = `onmouseover="this.style.background='${hover}'" onmouseout="this.style.background='${bg}'"`
+    return `<button id="${id}" style="${DiscrepanciesTable.createButtonStyle(DiscrepanciesTable.HEX[colorKey])}" ${hoverAttr} ${dataAttributes} ${titleAttribute}>${text}</button>`
   }
 
   /**
@@ -873,7 +921,7 @@ export class DiscrepanciesTable {
   updateMissingGradesBanner(missingGradesMessage) {
     const notifications = document.querySelector('[data-discrepancies-table] .notifications-section')
     if (!notifications) return
-    notifications.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
+      notifications.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #dee2e6;">
       <div style="display:flex;align-items:center;">
         <span style="font-size:20px;margin-right:10px;">🎓</span>
         <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
