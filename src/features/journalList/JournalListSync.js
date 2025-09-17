@@ -702,6 +702,19 @@ class JournalListSyncFeature extends BaseFeature {
             Logger.warning(`Could not get last lesson date for journal ${id}:`, error)
           }
 
+          // Extract planned hours for MAHT_i (independent work) capacity
+          let plannedHours = null
+          try {
+            if (journalInfo.lessonHours && Array.isArray(journalInfo.lessonHours.capacityHours)) {
+              const mahtICapacity = journalInfo.lessonHours.capacityHours.find(c => c.capacity === 'MAHT_i')
+              if (mahtICapacity && typeof mahtICapacity.plannedHours === 'number') {
+                plannedHours = mahtICapacity.plannedHours
+              }
+            }
+          } catch (error) {
+            Logger.warning(`Could not extract planned hours for journal ${id}:`, error)
+          }
+
           let teacherName = ''
           let teacherPersonalCode = ''
 
@@ -745,7 +758,8 @@ class JournalListSyncFeature extends BaseFeature {
               teacherPersonalCode,
               teacherName,
               assignments,
-              lastLessonDate
+              lastLessonDate,
+              plannedHours
             }
           }
 
@@ -789,7 +803,8 @@ class JournalListSyncFeature extends BaseFeature {
               teacherPersonalCode,
               teacherName,
               assignments: filteredAssignments,
-              lastLessonDate
+              lastLessonDate,
+              plannedHours
             })
           }
 
