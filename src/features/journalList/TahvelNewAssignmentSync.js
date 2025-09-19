@@ -371,8 +371,10 @@ class TahvelNewAssignmentSyncFeature extends BaseFeature {
     try {
       // Build the request payload based on the example in postentry.txt
       const payload = {
+        // Keep `startLessonNr` present for Tahvel; always send null here (simplified)
         startLessonNr: null,
-        lessons: null,
+        // If Kriit provided lesson info, pass lessons through; otherwise leave null
+        lessons: typeof assignment.lessons !== 'undefined' && assignment.lessons !== null ? Number(assignment.lessons) : null,
         entryType: this.getEntryTypeFromAssignment(assignment),
         nameEt: assignment.assignmentName,
         studyPeriodEvent: null,
