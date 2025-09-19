@@ -3,7 +3,6 @@ import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
 import { DiscrepanciesTable } from './DiscrepanciesTable.js'
-import { showMessageOverlay } from './AddEntryConfirmationOverlay.js'
 
 // HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
@@ -161,7 +160,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
   async #createLessonDiscrepanciesTable(forceRefresh = false, trigger = 'unknown') {
     // Lock: only one refresh at a time, queue one extra if needed
     if (this.#refreshInProgress) {
-      Logger.info(`[${this.name}] Refresh requested (trigger: ${trigger}, forceRefresh: ${forceRefresh}) but refresh is already in progress. Queueing one more.`)
+      Logger.info(
+        `[${this.name}] Refresh requested (trigger: ${trigger}, forceRefresh: ${forceRefresh}) but refresh is already in progress. Queueing one more.`
+      )
       this.#refreshPending = true
       return
     }
@@ -177,9 +178,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     if (now - this.#lastRefreshTs < 750 && !forceRefresh) {
       Logger.info(`[${this.name}] Debouncing refresh (trigger: ${trigger})`)
       // Schedule a single refresh after debounce window
-      this.#refreshDebounceTimer = setTimeout(() => {
-        this.#createLessonDiscrepanciesTable(forceRefresh, 'debounce')
-      }, 750 - (now - this.#lastRefreshTs))
+      this.#refreshDebounceTimer = setTimeout(
+        () => {
+          this.#createLessonDiscrepanciesTable(forceRefresh, 'debounce')
+        },
+        750 - (now - this.#lastRefreshTs)
+      )
       this.#refreshInProgress = false
       return
     }
@@ -572,7 +576,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Total rows found: ${allRows.length}`)
 
-  // Filter rows based on date criteria
+    // Filter rows based on date criteria
     let dateMatchingRows
     if (date === 'NO_DATE') {
       // For null dates, we need to be more precise - only get journal entry rows
@@ -1000,7 +1004,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       nameEt: timetableData.name || this.#lastJournalData?.info?.nameEt || 'Tund',
       studyPeriodEvent: null,
       journalOmoduleTheme: null,
-      entryDate: (new Date(date)).toISOString(),
+      entryDate: new Date(date).toISOString(),
       journalEntryStudents: [],
       journalEntryCapacityTypes: ['MAHT_a'],
       journalEntryTeachers: teacherId ? [String(teacherId)] : []
@@ -1011,14 +1015,88 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
     try {
       const res = await this.api.tahvel.post(url, payload)
-      try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
-      try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after create', e) }
-      try { await showMessageOverlay({ title: 'Sissekanne lisatud', message: 'Uus sissekanne on loodud.', duration: 3500 }) } catch (e) { Logger.debug('showMessageOverlay failed', e) }
+      try {
+        await cacheService.clearJournalCache(journalId)
+      } catch (e) {
+        Logger.warn('Failed to clear journal cache', e)
+      }
+
+      // Show success message overlay and wait for it to be dismissed before refreshing
+      let overlay = null
+      try {
+        overlay = await this.#safeNotify({ title: 'Sissekanne lisatud', message: 'Uus sissekanne on loodud.', duration: 3500 })
+      } catch (e) {
+        Logger.debug('safeNotify failed', e)
+      }
+
+      // Give backend a short moment before attempting to refresh
+      await this.#delay(400)
+
+      // If overlay exists, wait for it to be removed (user clicks OK or it auto-dismisses)
+      if (overlay) {
+        try {
+          await this.#waitForElementRemoval('#ra-overlay-message', 8000)
+        } catch (waitErr) {
+          Logger.debug(`[${this.name}] Overlay did not disappear within timeout`, waitErr)
+        }
+      }
+
+      // Now attempt a full reload; fallback to table refresh
+      try {
+        Logger.info(`[${this.name}] Reloading page to show newly created entry`)
+        window.location.reload()
+      } catch (reloadErr) {
+        Logger.warn(`[${this.name}] window.location.reload failed, falling back to table refresh`, reloadErr)
+        try {
+          await this.#refreshTableWithRetry()
+        } catch (e) {
+          Logger.warn('Failed to refresh table after create', e)
+        }
+      }
+
       return res
     } catch (err) {
       Logger.error(`[${this.name}] Failed to create missing journal entry`, err)
-      try { await showMessageOverlay({ title: 'Viga', message: 'Sissekande loomine ebaõnnestus. Kontrolli konsooli.', duration: 5000 }) } catch (e) { Logger.debug('showMessageOverlay failed', e) }
+      try {
+        await this.#safeNotify({ title: 'Viga', message: 'Sissekande loomine ebaõnnestus. Kontrolli konsooli.', duration: 5000 })
+      } catch (e) {
+        Logger.debug('safeNotify failed', e)
+      }
       throw err
+    }
+  }
+
+  async #waitForElementRemoval(selector, timeout = 5000) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now()
+      const check = () => {
+        const exists = document.querySelector(selector)
+        if (!exists) return resolve()
+        if (Date.now() - start > timeout) return reject(new Error('element not removed within timeout'))
+        setTimeout(check, 150)
+      }
+      check()
+    })
+  }
+
+  // Non-blocking notification helper - logs and optionally shows a lightweight banner
+  async #safeNotify({ title = 'Teade', message = '', duration = 3000 } = {}) {
+    try {
+      // Prefer centralized BannerService if available to avoid modal overlays
+      if (window.raBannerService && typeof window.raBannerService.show === 'function') {
+        try {
+          return window.raBannerService.show({ title, message, duration })
+        } catch (e) {
+          Logger.debug(`${this.name} BannerService failed:`, e)
+        }
+      }
+
+      // Fallback: log to console so nothing blocks UI
+      Logger.info(`[${this.name}] ${title} - ${message}`)
+      return null
+    } catch (err) {
+      Logger.debug(`[${this.name}] safeNotify error`, err)
+      return null
     }
   }
 
@@ -1058,7 +1136,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
           // Normalize entryDate to ISO if date is provided
           if (date) {
-            const iso = (new Date(date)).toISOString()
+            const iso = new Date(date).toISOString()
             if (iso !== current.entryDate) putPayload.entryDate = iso
           }
 
@@ -1087,8 +1165,16 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
           try {
             const putRes = await this.api.tahvel.put(detailUrl, putPayload)
-            try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.warn('Failed to clear journal cache', e) }
-            try { await this.#refreshTableWithRetry() } catch (e) { Logger.warn('Failed to refresh table after PUT', e) }
+            try {
+              await cacheService.clearJournalCache(journalId)
+            } catch (e) {
+              Logger.warn('Failed to clear journal cache', e)
+            }
+            try {
+              await this.#refreshTableWithRetry()
+            } catch (e) {
+              Logger.warn('Failed to refresh table after PUT', e)
+            }
             return putRes
           } catch (putErr) {
             // Try to extract response body for better diagnostics
@@ -1923,8 +2009,8 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       // Fetch fresh journal data
       const { journalData } = await this.#fetchJournalAndTimetableData(this.#currentJournalId, true)
 
-  // Re-run unified validation
-  const _capacityProblems = await this.#getCapacityTypeProblems(journalData)
+      // Re-run unified validation
+      const _capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
       // Instead of only updating capacity problems (which hides timetable discrepancies),
       // perform a full table refresh so both timetable discrepancies and capacity problems
@@ -2652,9 +2738,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             const safeCopy = { ...detailedEntry }
 
             // Ensure capacity types is an array (copy to avoid mutating original)
-            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
-              ? safeCopy.journalEntryCapacityTypes.slice()
-              : []
+            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes) ? safeCopy.journalEntryCapacityTypes.slice() : []
 
             // Normalize teacher IDs to strings and populate from teacherSelection or journal info when missing
             if (Array.isArray(safeCopy.journalEntryTeachers) && safeCopy.journalEntryTeachers.length > 0) {
@@ -2676,9 +2760,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
 
             // Ensure capacity types is an array (copy to avoid mutating original)
-            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
-              ? safeCopy.journalEntryCapacityTypes.slice()
-              : []
+            safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes) ? safeCopy.journalEntryCapacityTypes.slice() : []
 
             // Special case: if this is a lesson entry and auditoorne capacity is missing,
             // perform a focused server-side PUT to add MAHT_a and return early (no UI fallback).
@@ -2696,8 +2778,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
                 Logger.debug(`[${this.name}] Focused PUT response for entry ${actualEntryId}:`, putRes)
 
-                try { await cacheService.clearJournalCache(journalId) } catch (cErr) { Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr) }
-                try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e) }
+                try {
+                  await cacheService.clearJournalCache(journalId)
+                } catch (cErr) {
+                  Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr)
+                }
+                try {
+                  const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
+                  this.#lastJournalData = journalData
+                } catch (e) {
+                  Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e)
+                }
                 await this.#refreshTableWithRetry()
 
                 // Done - server-side fix applied. Exit without opening UI fallback.
@@ -2719,8 +2810,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 }
 
                 try {
-                  await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt auditoorset õpet lisada. Palun parandage sissekanne käsitsi.', duration: 7000 })
-                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+                  await this.#safeNotify({
+                    title: 'Parandus ebaõnnestus',
+                    message: 'Server ei suutnud automaatselt auditoorset õpet lisada. Palun parandage sissekanne käsitsi.',
+                    duration: 7000
+                  })
+                } catch (e) {
+                  Logger.debug(`[${this.name}] safeNotify failed:`, e)
+                }
 
                 // Do not continue to UI fallback - return after informing the user
                 return
@@ -2756,8 +2853,17 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 const putRes = await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${actualEntryId}`, safeCopy)
                 Logger.debug(`[${this.name}] Focused PUT response for practical entry ${actualEntryId}:`, putRes)
 
-                try { await cacheService.clearJournalCache(journalId) } catch (cErr) { Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr) }
-                try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e) }
+                try {
+                  await cacheService.clearJournalCache(journalId)
+                } catch (cErr) {
+                  Logger.debug(`[${this.name}] cache clear error after focused PUT:`, cErr)
+                }
+                try {
+                  const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
+                  this.#lastJournalData = journalData
+                } catch (e) {
+                  Logger.debug(`[${this.name}] refresh after focused PUT failed:`, e)
+                }
                 await this.#refreshTableWithRetry()
 
                 // Done - server-side fix applied. Exit without opening UI fallback.
@@ -2779,8 +2885,14 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 }
 
                 try {
-                  await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt praktilist tööd lisada. Palun parandage sissekanne käsitsi.', duration: 7000 })
-                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+                  await this.#safeNotify({
+                    title: 'Parandus ebaõnnestus',
+                    message: 'Server ei suutnud automaatselt praktilist tööd lisada. Palun parandage sissekanne käsitsi.',
+                    duration: 7000
+                  })
+                } catch (e) {
+                  Logger.debug(`[${this.name}] safeNotify failed:`, e)
+                }
 
                 // Do not continue to UI fallback - return after informing the user
                 return
@@ -2788,7 +2900,11 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
             }
 
             // Business rule: if both MAHT_a and MAHT_i present for a lesson entry, remove MAHT_i (auditoorne wins)
-            if (safeCopy.entryType === 'SISSEKANNE_T' && safeCopy.journalEntryCapacityTypes.includes('MAHT_a') && safeCopy.journalEntryCapacityTypes.includes('MAHT_i')) {
+            if (
+              safeCopy.entryType === 'SISSEKANNE_T' &&
+              safeCopy.journalEntryCapacityTypes.includes('MAHT_a') &&
+              safeCopy.journalEntryCapacityTypes.includes('MAHT_i')
+            ) {
               Logger.info(`[${this.name}] Normalizing capacity types for entry ${actualEntryId}: removing MAHT_i since MAHT_a is present`)
               safeCopy.journalEntryCapacityTypes = safeCopy.journalEntryCapacityTypes.filter(t => t !== 'MAHT_i')
             }
@@ -2987,9 +3103,7 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                 // Server expects teacher ids as strings in some cases; use string form to match example payload
                 safeCopy.journalEntryTeachers = [String(teacherId)]
-                safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes)
-                  ? safeCopy.journalEntryCapacityTypes.slice()
-                  : []
+                safeCopy.journalEntryCapacityTypes = Array.isArray(safeCopy.journalEntryCapacityTypes) ? safeCopy.journalEntryCapacityTypes.slice() : []
 
                 // Preserve or set teacherSelection so server receives the teacher metadata (helps server-side processing)
                 if (teacherObj) {
@@ -3008,7 +3122,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                   // No teacher metadata available - set minimal teacherSelection using journal info if present
                   const fallbackTeacher = this.#lastJournalData?.info?.journalTeachers?.find(t => Number(t.id) === Number(teacherId))
                   if (fallbackTeacher) {
-                    safeCopy.teacherSelection = [{ id: String(fallbackTeacher.id), displayName: fallbackTeacher.displayName || fallbackTeacher.name || '' }]
+                    safeCopy.teacherSelection = [
+                      { id: String(fallbackTeacher.id), displayName: fallbackTeacher.displayName || fallbackTeacher.name || '' }
+                    ]
                   } else {
                     delete safeCopy.teacherSelection
                   }
@@ -3018,20 +3134,35 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
                 delete safeCopy._links
                 delete safeCopy.journalStudent
 
-                Logger.info(`[${this.name}] Attempting server-side teacher assignment for entry ${entryId}`, { journalId, teacherId, payloadPreview: { journalEntryTeachers: safeCopy.journalEntryTeachers, teacherSelection: safeCopy.teacherSelection } })
+                Logger.info(`[${this.name}] Attempting server-side teacher assignment for entry ${entryId}`, {
+                  journalId,
+                  teacherId,
+                  payloadPreview: { journalEntryTeachers: safeCopy.journalEntryTeachers, teacherSelection: safeCopy.teacherSelection }
+                })
 
                 try {
                   // Log the full payload at debug level (avoid verbose logging at info level)
                   Logger.debug(`[${this.name}] Teacher assignment PUT payload for entry ${entryId}:`, safeCopy)
                   const putRes = await this.api.tahvel.put(detailUrl, safeCopy)
                   Logger.debug(`[${this.name}] PUT response for teacher assignment:`, putRes)
-                  try { await cacheService.clearJournalCache(journalId) } catch (e) { Logger.debug(`[${this.name}] cache clear error after teacher PUT:`, e) }
-                  try { const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true); this.#lastJournalData = journalData } catch (e) { Logger.debug(`[${this.name}] refresh after teacher PUT failed:`, e) }
+                  try {
+                    await cacheService.clearJournalCache(journalId)
+                  } catch (e) {
+                    Logger.debug(`[${this.name}] cache clear error after teacher PUT:`, e)
+                  }
+                  try {
+                    const { journalData } = await this.#fetchJournalAndTimetableData(journalId, true)
+                    this.#lastJournalData = journalData
+                  } catch (e) {
+                    Logger.debug(`[${this.name}] refresh after teacher PUT failed:`, e)
+                  }
                   await this.#refreshTableWithRetry()
 
                   try {
-                    await showMessageOverlay({ title: 'Õpetaja lisatud', message: 'Õpetaja on automaatselt määratud ja salvestatud.', duration: 4000 })
-                  } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+                    await this.#safeNotify({ title: 'Õpetaja lisatud', message: 'Õpetaja on automaatselt määratud ja salvestatud.', duration: 4000 })
+                  } catch (e) {
+                    Logger.debug(`[${this.name}] safeNotify failed:`, e)
+                  }
 
                   return // success, exit early
                 } catch (putErr) {
@@ -3052,17 +3183,27 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
 
                   // On failure, show message and exit (no UI fallback)
                   try {
-                    await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Server ei suutnud automaatselt õpetajat määrata. Palun valige õpetaja käsitsi.', duration: 6000 })
+                    await this.#safeNotify({
+                      title: 'Parandus ebaõnnestus',
+                      message: 'Server ei suutnud automaatselt õpetajat määrata. Palun valige õpetaja käsitsi.',
+                      duration: 6000
+                    })
                   } catch (e) {
-                    Logger.debug(`[${this.name}] showMessageOverlay failed:`, e)
+                    Logger.debug(`[${this.name}] safeNotify failed:`, e)
                   }
                   return
                 }
               } else {
                 Logger.debug(`[${this.name}] No teacher available to assign for entry ${entryId}`)
                 try {
-                  await showMessageOverlay({ title: 'Õpetajat ei leitud', message: 'Päevikust või sissekandest ei leitud õpetajat, palun valige õpetaja käsitsi.', duration: 6000 })
-                } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+                  await this.#safeNotify({
+                    title: 'Õpetajat ei leitud',
+                    message: 'Päevikust või sissekandest ei leitud õpetajat, palun valige õpetaja käsitsi.',
+                    duration: 6000
+                  })
+                } catch (e) {
+                  Logger.debug(`[${this.name}] safeNotify failed:`, e)
+                }
                 return
               }
             }
@@ -3070,8 +3211,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         } catch (srvAssignErr) {
           Logger.debug(`[${this.name}] Server-side teacher assignment attempt failed:`, srvAssignErr)
           try {
-            await showMessageOverlay({ title: 'Parandus ebaõnnestus', message: 'Serveri päring ebaõnnestus. Palun valige õpetaja käsitsi.', duration: 6000 })
-          } catch (e) { Logger.debug(`[${this.name}] showMessageOverlay failed:`, e) }
+            await this.#safeNotify({ title: 'Parandus ebaõnnestus', message: 'Serveri päring ebaõnnestus. Palun valige õpetaja käsitsi.', duration: 6000 })
+          } catch (e) {
+            Logger.debug(`[${this.name}] safeNotify failed:`, e)
+          }
           return
         }
       }
