@@ -370,6 +370,30 @@ class TahvelNewAssignmentSyncFeature extends BaseFeature {
   async createAssignmentInTahvel(journalId, assignment) {
     try {
       // Build the request payload based on the example in postentry.txt
+      // Build homework text: include instructions and append any assignment link provided by Kriit
+      const buildHomeworkText = (instructions, link) => {
+        const instr = instructions ? String(instructions).trim() : ''
+        const l = link ? String(link).trim() : ''
+        if (instr && l) return `${instr}\n\n${l}`
+        if (l) return l
+        return instr
+      }
+
+      // Try to include the journal's teacher id so the created entry has a teacher
+      let journalEntryTeachers = []
+      try {
+        const journalInfo = await this.api.tahvel.get(`/journals/${journalId}`)
+        if (journalInfo && journalInfo.journalTeachers && journalInfo.journalTeachers.length > 0) {
+          const t = journalInfo.journalTeachers[0]
+          if (t && typeof t.id !== 'undefined') {
+            journalEntryTeachers = [String(t.id)]
+            Logger.debug(`Adding journal teacher ${t.id} to created assignment payload for journal ${journalId}`)
+          }
+        }
+      } catch (err) {
+        Logger.warning(`Could not fetch journal info for ${journalId} to populate teacher: ${err.message}`)
+      }
+
       const payload = {
         // Keep `startLessonNr` present for Tahvel; always send null here (simplified)
         startLessonNr: null,
@@ -379,12 +403,12 @@ class TahvelNewAssignmentSyncFeature extends BaseFeature {
         nameEt: assignment.assignmentName,
         studyPeriodEvent: null,
         entryDate: this.formatDateForTahvel(assignment.assignmentEntryDate),
-        homework: assignment.assignmentInstructions || '',
+        homework: buildHomeworkText(assignment.assignmentInstructions, assignment.assignmentLink),
         homeworkDuedate: this.formatDateForTahvel(assignment.assignmentDueAt),
         journalOmoduleTheme: null,
         journalEntryStudents: [],
         journalEntryCapacityTypes: ['MAHT_i'], // Independent work capacity type
-        journalEntryTeachers: [] // Will be filled by Tahvel
+        journalEntryTeachers: journalEntryTeachers
       }
 
       Logger.debug(`Creating assignment payload:`, payload)
@@ -565,6 +589,33 @@ class TahvelNewAssignmentSyncFeature extends BaseFeature {
             }
           })
         }
+      }
+
+      // After sending external IDs, remove those assignments from runtime cache so the banner updates
+      try {
+        if (typeof window !== 'undefined' && window.journalListSync && window.journalListSync.newAssignments) {
+          for (const sync of successfulSyncs) {
+            const kriitId = String(sync.kriitAssignmentId)
+            for (const subjectId of Object.keys(window.journalListSync.newAssignments)) {
+              const arr = window.journalListSync.newAssignments[subjectId] || []
+              const filtered = arr.filter(a => String(a.createdAssignmentId) !== kriitId)
+              if (filtered.length !== arr.length) {
+                if (filtered.length > 0) {
+                  window.journalListSync.newAssignments[subjectId] = filtered
+                } else {
+                  delete window.journalListSync.newAssignments[subjectId]
+                }
+              }
+            }
+          }
+
+          if (Object.keys(window.journalListSync.newAssignments || {}).length === 0) {
+            window.journalListSync.newAssignments = {}
+          }
+          Logger.debug('Updated runtime newAssignments cache after sending external IDs')
+        }
+      } catch (err) {
+        Logger.debug('Failed to update runtime newAssignments cache:', err)
       }
 
       if (successCount > 0) {
