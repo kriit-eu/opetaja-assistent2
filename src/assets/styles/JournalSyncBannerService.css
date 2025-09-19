@@ -104,6 +104,11 @@
   color: #856404;
 }
 
+.ta-sync-banner-container .badge-hours {
+  background-color: #fff8e1;
+  color: #f57f17;
+}
+
 /* New assignment badge */
 .ta-sync-banner-container .badge-new {
   background-color: #e0f7fa;
@@ -153,6 +158,11 @@
 .ta-sync-banner-container .badge-assignment {
   background-color: #fff3cd;
   color: #856404;
+}
+
+.ta-sync-banner-container .badge-hours {
+  background-color: #fff8e1;
+  color: #f57f17;
 }
 
 .ta-sync-banner-container .student-name {

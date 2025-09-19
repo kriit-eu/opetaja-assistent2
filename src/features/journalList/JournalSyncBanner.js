@@ -4,10 +4,17 @@ import { bannerService } from '../../services/BannerService.js'
 import Logger from '../../services/Logger.js'
 
 class DifferenceRenderer {
-  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments) {
+  render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, assignmentHoursDiffs, newAssignments) {
     // Only render on journal list page, never on edit page - accept modern variants
     if (!(window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1)) return
-    const groupedDiffs = this.collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments)
+    const groupedDiffs = this.collectAndGroupDifferences(
+      assignmentNameDiffs,
+      gradeDiffs,
+      dueDateDiffs,
+      entryDateDiffs,
+      assignmentHoursDiffs,
+      newAssignments
+    )
 
     for (const subjectName in groupedDiffs) {
       const subjectContainer = this.createSubjectContainer(container, subjectName)
@@ -56,7 +63,7 @@ class DifferenceRenderer {
     }
   }
 
-  collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments) {
+  collectAndGroupDifferences(assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, assignmentHoursDiffs, newAssignments) {
     const grouped = {}
     // Improved normalization: extract string from object, fallback to JSON if needed
     const normalize = val => {
@@ -203,6 +210,45 @@ class DifferenceRenderer {
         studentName: '',
         oldValue: formatDate(normalize(diff.Tahvel)) || 'puudub',
         newValue: formatDate(normalize(diff.kriit)) || 'puudub'
+      })
+    })
+
+    // Assignment Hours Diffs
+    ;(assignmentHoursDiffs || []).forEach(diff => {
+      let assignmentName = getNewNameIfChanged(diff.assignmentExternalId)
+      if (!assignmentName)
+        assignmentName = getAssignmentName(
+          diff.assignmentExternalId,
+          typeof diff.assignmentName === 'object' && diff.assignmentName !== null
+            ? diff.assignmentName.kriit || diff.assignmentName.Tahvel
+            : diff.assignmentName
+        )
+      if (!assignmentName) assignmentName = diff.assignmentName
+      assignmentName = normalize(assignmentName) || '—'
+
+      // Get the current lessons value from Tahvel data sent to Kriit
+      let currentLessons = 'määramata'
+      try {
+        const tahvelData = (window.journalListSync && window.journalListSync.tahvelData) || []
+        // Find the subject and assignment to get the current lessons value
+        const subject = tahvelData.find(s => String(s.subjectExternalId) === String(diff.subjectExternalId))
+        if (subject && subject.assignments) {
+          const assignment = subject.assignments.find(a => String(a.assignmentExternalId) === String(diff.assignmentExternalId))
+          if (assignment && typeof assignment.lessons !== 'undefined' && assignment.lessons !== null) {
+            currentLessons = `${assignment.lessons} tundi`
+          }
+        }
+      } catch (err) {
+        // If we can't find the current value, fall back to 'määramata'
+      }
+
+      addDiff(diff.subjectName || '', {
+        type: 'hours',
+        typeName: 'Tundide arv',
+        assignmentName: assignmentName,
+        studentName: '',
+        oldValue: currentLessons,
+        newValue: `${diff.kriitHours} tundi`
       })
     })
 

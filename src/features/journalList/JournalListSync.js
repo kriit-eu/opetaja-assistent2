@@ -238,6 +238,35 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
+   * Extract assignment hours differences from Kriit response
+   */
+  extractAssignmentHoursDifferences() {
+    const hoursDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) {
+      return hoursDiffs
+    }
+    this.differences.forEach(subjectDiff => {
+      if (!Array.isArray(subjectDiff.assignments)) return
+      subjectDiff.assignments.forEach(assignment => {
+        if (typeof assignment.assignmentHours !== 'undefined' && assignment.assignmentHours !== null) {
+          let assignmentName = assignment.assignmentName
+          if (assignmentName && typeof assignmentName === 'object') {
+            assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
+          }
+          hoursDiffs.push({
+            assignmentExternalId: assignment.assignmentExternalId,
+            assignmentName,
+            kriitHours: assignment.assignmentHours,
+            subjectName: subjectDiff.subjectName || '',
+            subjectExternalId: subjectDiff.subjectExternalId || ''
+          })
+        }
+      })
+    })
+    return hoursDiffs
+  }
+
+  /**
    * Send only outcome entries (SISSEKANNE_O) to Kriit API
    */
   async sendOutcomeEntriesToKriit() {
@@ -673,6 +702,19 @@ class JournalListSyncFeature extends BaseFeature {
             Logger.warning(`Could not get last lesson date for journal ${id}:`, error)
           }
 
+          // Extract planned hours for MAHT_i (independent work) capacity
+          let plannedHours = null
+          try {
+            if (journalInfo.lessonHours && Array.isArray(journalInfo.lessonHours.capacityHours)) {
+              const mahtICapacity = journalInfo.lessonHours.capacityHours.find(c => c.capacity === 'MAHT_i')
+              if (mahtICapacity && typeof mahtICapacity.plannedHours === 'number') {
+                plannedHours = mahtICapacity.plannedHours
+              }
+            }
+          } catch (error) {
+            Logger.warning(`Could not extract planned hours for journal ${id}:`, error)
+          }
+
           let teacherName = ''
           let teacherPersonalCode = ''
 
@@ -716,7 +758,8 @@ class JournalListSyncFeature extends BaseFeature {
               teacherPersonalCode,
               teacherName,
               assignments,
-              lastLessonDate
+              lastLessonDate,
+              plannedHours
             }
           }
 
@@ -760,7 +803,8 @@ class JournalListSyncFeature extends BaseFeature {
               teacherPersonalCode,
               teacherName,
               assignments: filteredAssignments,
-              lastLessonDate
+              lastLessonDate,
+              plannedHours
             })
           }
 
@@ -1089,6 +1133,9 @@ class JournalListSyncFeature extends BaseFeature {
           }
         }
 
+        // Update assignment hours in Tahvel if there are differences
+        await this.updateAssignmentHoursInTahvel()
+
         // Run the batched sync which now includes assignment-level changes
         await this.syncWithKriit()
         // Ensure we clear caches so fetchJournalData gets fresh Tahvel data
@@ -1105,8 +1152,9 @@ class JournalListSyncFeature extends BaseFeature {
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
         const dueDateDiffs = this.extractDueDateDifferences()
         const entryDateDiffs = this.extractEntryDateDifferences()
+        const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
         const newAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, newAssignments)
+        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, assignmentHoursDiffs, newAssignments)
       }
     )
   }
@@ -1224,6 +1272,10 @@ class JournalListSyncFeature extends BaseFeature {
 
       // Log the request data
       Logger.debug('Sending request to Kriit API:', JSON.stringify(journalData))
+
+      // Store Tahvel data for banner to access current lesson values
+      if (!window.journalListSync) window.journalListSync = {}
+      window.journalListSync.tahvelData = journalData
 
       // Check if we have a Kriit API token
       if (!this.api.kriit.authToken) {
@@ -1526,6 +1578,10 @@ class JournalListSyncFeature extends BaseFeature {
     // Count entry date differences
     const entryDateDiffs = this.extractEntryDateDifferences()
     count += entryDateDiffs.length
+
+    // Count assignment hours differences
+    const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
+    count += assignmentHoursDiffs.length
 
     return count
   }
@@ -2382,6 +2438,8 @@ class JournalListSyncFeature extends BaseFeature {
           assignmentInstructions: entry.content || '',
           assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
           assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
+          // If Tahvel entry contains lessons, include it for Kriit to consume; coerce to Number or null
+          lessons: typeof entry.lessons !== 'undefined' && entry.lessons !== null ? Number(entry.lessons) : null,
           results
         })
 
@@ -2461,6 +2519,52 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Sync data with Kriit
    */
+  /**
+   * Update assignments in Tahvel when there are lesson hour changes from Kriit
+   */
+  async updateAssignmentHoursInTahvel() {
+    try {
+      const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
+
+      if (!assignmentHoursDiffs || assignmentHoursDiffs.length === 0) {
+        Logger.debug('No assignment hours differences to update')
+        return
+      }
+
+      Logger.info(`🕐 Updating ${assignmentHoursDiffs.length} assignments with lesson hour changes`)
+
+      for (const diff of assignmentHoursDiffs) {
+        try {
+          const journalId = diff.subjectExternalId
+          const assignmentId = diff.assignmentExternalId
+
+          // Get current assignment data from Tahvel
+          const currentAssignment = await this.api.tahvel.get(`/journals/${journalId}/journalEntry/${assignmentId}`, {}, { cache: false })
+
+          if (!currentAssignment) {
+            Logger.warning(`Could not fetch assignment ${assignmentId} from journal ${journalId}`)
+            continue
+          }
+
+          // Update only the lessons field with the new hours from Kriit
+          const updatedPayload = {
+            ...currentAssignment,
+            lessons: diff.kriitHours
+          }
+
+          // PUT request to update the assignment
+          await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, updatedPayload, { cache: false })
+
+          Logger.info(`✅ Updated assignment "${diff.assignmentName}" lessons to ${diff.kriitHours} hours`)
+        } catch (error) {
+          Logger.error(`❌ Failed to update assignment ${diff.assignmentExternalId} hours:`, error)
+        }
+      }
+    } catch (error) {
+      Logger.error('Error updating assignment hours in Tahvel:', error)
+    }
+  }
+
   async syncWithKriit() {
     // Debug: Log all journal students and their personal codes before syncing
     if (Array.isArray(this.differences)) {
