@@ -151,8 +151,8 @@ class HighlightFinalGradesFeature extends BaseFeature {
 
   findColumnIndices(table) {
     const headerRows = Array.from(table.querySelectorAll('thead tr'))
-    const finalGradeCols = []
-    const ovCols = []
+    const finalGradeCols = new Set()
+    const ovCols = new Set()
     const debugHeaders = []
     headerRows.forEach(row => {
       let colIdx = 0
@@ -161,26 +161,52 @@ class HighlightFinalGradesFeature extends BaseFeature {
         const rawText = th.innerText || th.textContent
         // Normalize: replace all whitespace (including line breaks) with single space, trim, lowercase
         const normalized = (rawText || '').replace(/\s+/g, ' ').trim().toLowerCase()
+        const attrTextParts = [normalized]
+        const ariaLabel = (th.getAttribute('aria-label') || '').trim().toLowerCase()
+        const titleAttr = (th.getAttribute('title') || '').trim().toLowerCase()
+        const dataColumnType = (th.dataset?.columnType || th.getAttribute('data-column-type') || '').trim().toLowerCase()
+        const className = (th.className || '').toLowerCase()
+        const styleAttr = (th.getAttribute('style') || '').toLowerCase()
+        if (ariaLabel) attrTextParts.push(ariaLabel)
+        if (titleAttr) attrTextParts.push(titleAttr)
+        if (dataColumnType) attrTextParts.push(dataColumnType)
+        if (className) attrTextParts.push(className)
+        const attrText = attrTextParts.join(' ')
+        const hasPinkBackground = /249\s*,\s*168\s*,\s*212/.test(styleAttr) || styleAttr.includes('#f9a8d4')
         let ovMatch = false
         let finalMatch = false
         // ÕV: match 'õv', 'õv1', 'õv2', 'õv 2', 'õv_2', 'õv-2', 'õv2 forward', or contains 'õpiväljund'
         if (/^õv(\d+)?([ _-]?.*)?$/i.test(normalized) || normalized.includes('õpiväljund')) {
           ovMatch = true
-          for (let i = 0; i < colspan; i++) ovCols.push(colIdx + i)
+          for (let i = 0; i < colspan; i++) ovCols.add(colIdx + i)
         }
-        // Final grade: match 'lõpptulemus', 'lõpptulemus 1', 'lõpptulemus_2', etc.
-        if (/lõpptulemus/.test(normalized)) {
+        const finalTextPatterns = [/lõpp\s*tulemus/, /final\s*grade/, /lõpphinne/, /kokkuvõt/, /perioodi\s*hinne/, /lopp\s*tulemus/]
+        if (finalTextPatterns.some(pattern => pattern.test(attrText)) || hasPinkBackground || className.includes('final-grade')) {
           finalMatch = true
-          for (let i = 0; i < colspan; i++) finalGradeCols.push(colIdx + i)
+          for (let i = 0; i < colspan; i++) finalGradeCols.add(colIdx + i)
         }
-        debugHeaders.push(`[${colIdx}] "${rawText.trim()}" => "${normalized}" | OV: ${ovMatch} | FINAL: ${finalMatch} | colspan=${colspan}`)
+        debugHeaders.push(
+          `[${colIdx}] "${rawText.trim()}" => "${normalized}" | attrs="${attrText}" | style="${styleAttr}" | OV: ${ovMatch} | FINAL: ${finalMatch} | colspan=${colspan}`
+        )
         colIdx += colspan
       })
     })
+    if (finalGradeCols.size === 0 && ovCols.size > 0) {
+      const candidateIndex = Math.max(...ovCols) + 1
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+      const hasCandidate = rows.some(row => {
+        const cells = Array.from(row.children).filter(node => node.nodeType === 1)
+        return cells.length > candidateIndex
+      })
+      if (hasCandidate) {
+        finalGradeCols.add(candidateIndex)
+        if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: using fallback final grade column index:', candidateIndex)
+      }
+    }
     if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: header debug:', debugHeaders.join(' | '))
-    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: detected final grade columns:', finalGradeCols)
-    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: detected ÕV columns:', ovCols)
-    return { finalGradeCols: Array.from(new Set(finalGradeCols)), ovCols: Array.from(new Set(ovCols)) }
+    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: detected final grade columns:', Array.from(finalGradeCols))
+    if (Logger.isDebugMode()) Logger.info('✨ HighlightFinalGrades: detected ÕV columns:', Array.from(ovCols))
+    return { finalGradeCols: Array.from(finalGradeCols), ovCols: Array.from(ovCols) }
   }
 
   onActivate() {
@@ -258,6 +284,19 @@ class HighlightFinalGradesFeature extends BaseFeature {
     }
     const rows = Array.from(table.querySelectorAll('tbody tr'))
     table.querySelectorAll('.highlight-final-grade-yellow, .highlight-final-grade-red, .highlight-ov-red, .highlight-ov-yellow').forEach(cell => {
+      // Do not remove highlight classes that were applied by Angular templates.
+      // If a cell has `ng-star-inserted` AND already contains one of the highlight classes,
+      // leave it untouched. Otherwise remove the classes as normal.
+      if (
+        cell.classList &&
+        cell.classList.contains('ng-star-inserted') &&
+        (cell.classList.contains('highlight-final-grade-yellow') ||
+          cell.classList.contains('highlight-final-grade-red') ||
+          cell.classList.contains('highlight-ov-red') ||
+          cell.classList.contains('highlight-ov-yellow'))
+      ) {
+        return
+      }
       cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red', 'highlight-ov-red', 'highlight-ov-yellow')
     })
 
@@ -363,6 +402,27 @@ class HighlightFinalGradesFeature extends BaseFeature {
       finalGradeCols.forEach(colIdx => {
         const cell = cells[colIdx]
         if (cell) {
+          // If this cell was highlighted by Angular (ng-star-inserted + highlight class), leave it unchanged.
+          if (
+            cell.classList &&
+            cell.classList.contains('ng-star-inserted') &&
+            (cell.classList.contains('highlight-final-grade-yellow') ||
+              cell.classList.contains('highlight-final-grade-red') ||
+              cell.classList.contains('highlight-ov-red') ||
+              cell.classList.contains('highlight-ov-yellow'))
+          ) {
+            return
+          }
+          // If the cell is Angular-rendered (ng-star-inserted) but DOES NOT contain the
+          // expected Angular form state classes, skip adding/removing highlights. This prevents
+          // highlighting nodes like icons/links that only have `ng-star-inserted`.
+          if (
+            cell.classList &&
+            cell.classList.contains('ng-star-inserted') &&
+            !(cell.classList.contains('ng-untouched') && cell.classList.contains('ng-pristine') && cell.classList.contains('ng-valid'))
+          ) {
+            return
+          }
           // Skip highlighting for students on academic leave
           if (isRowAP) {
             cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red')
@@ -390,6 +450,27 @@ class HighlightFinalGradesFeature extends BaseFeature {
       ovCols.forEach(colIdx => {
         const cell = cells[colIdx]
         if (cell) {
+          // If this cell was highlighted by Angular (ng-star-inserted + highlight class), leave it unchanged.
+          if (
+            cell.classList &&
+            cell.classList.contains('ng-star-inserted') &&
+            (cell.classList.contains('highlight-final-grade-yellow') ||
+              cell.classList.contains('highlight-final-grade-red') ||
+              cell.classList.contains('highlight-ov-red') ||
+              cell.classList.contains('highlight-ov-yellow'))
+          ) {
+            return
+          }
+          // If the cell is Angular-rendered (ng-star-inserted) but DOES NOT contain the
+          // expected Angular form state classes, skip adding/removing highlights. This prevents
+          // highlighting nodes like icons/links that only have `ng-star-inserted`.
+          if (
+            cell.classList &&
+            cell.classList.contains('ng-star-inserted') &&
+            !(cell.classList.contains('ng-untouched') && cell.classList.contains('ng-pristine') && cell.classList.contains('ng-valid'))
+          ) {
+            return
+          }
           // Skip highlighting for students on academic leave
           if (isRowAP) {
             cell.classList.remove('highlight-ov-yellow', 'highlight-ov-red')
