@@ -7,30 +7,16 @@
     "48": "icon48.png",
     "128": "icon128.png"
   },
-  "permissions": [
-    "scripting",
-    "storage",
-    "unlimitedStorage",
-    "tabs",
-    "activeTab"
-  ],
-  "host_permissions": [
-    "*://*.tahvel.edu.ee/*",
-    "*://*.tahvel.eenet.ee/*"
-  ],
+  "permissions": ["scripting", "storage", "unlimitedStorage", "tabs", "activeTab"],
+  "host_permissions": ["*://*.tahvel.edu.ee/*", "*://*.tahvel.eenet.ee/*", "*://test.uustahvel.eenet.ee/*", "*://*.uustahvel.eenet.ee/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": [
-        "*://*.tahvel.edu.ee/*",
-        "*://*.tahvel.eenet.ee/*"
-      ],
-      "js": [
-        "content.js"
-      ]
+      "matches": ["*://*.tahvel.edu.ee/*", "*://*.tahvel.eenet.ee/*", "*://test.uustahvel.eenet.ee/*", "*://*.uustahvel.eenet.ee/*"],
+      "js": ["content.js"]
     }
   ],
   "action": {

@@ -257,7 +257,13 @@ function toggleKriitEnabled(enabled, settingsContainer) {
 
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
+      if (
+        tabs[0] &&
+        (tabs[0].url.includes('tahvel.edu.ee') ||
+          tabs[0].url.includes('tahvel.eenet.ee') ||
+          tabs[0].url.includes('uustahvel.eenet.ee') ||
+          tabs[0].url.includes('test.uustahvel.eenet.ee'))
+      ) {
         chrome.tabs
           .sendMessage(tabs[0].id, {
             action: 'kriitEnabledChanged',
@@ -305,7 +311,13 @@ function saveKriitSettings(apiUrl, apiKey, statusElement) {
 
       // Notify content script about the settings change
       chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-        if (tabs[0] && (tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee'))) {
+        if (
+          tabs[0] &&
+          (tabs[0].url.includes('tahvel.edu.ee') ||
+            tabs[0].url.includes('tahvel.eenet.ee') ||
+            tabs[0].url.includes('uustahvel.eenet.ee') ||
+            tabs[0].url.includes('test.uustahvel.eenet.ee'))
+        ) {
           chrome.tabs
             .sendMessage(tabs[0].id, {
               action: 'kriitSettingsUpdated',
