@@ -122,9 +122,18 @@ export default class LastLessonNotificationFeature extends BaseFeature {
 
   _showBanner(date, allPast = false) {
     this._removeBanner()
-    const subjectSpan = document.querySelector('.hois-collapse-header .flex-gt-md-50 span')
+    // Try the original subject span, then try the new accordion header selector and a few sensible fallbacks
+    const selectors = ['.hois-collapse-header .flex-gt-md-50 span', '.accordion-header', '.hois-collapse-header span']
+    let subjectSpan = null
+    for (const sel of selectors) {
+      subjectSpan = document.querySelector(sel)
+      if (subjectSpan) {
+        if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Found insertion target with selector:', sel)
+        break
+      }
+    }
     if (!subjectSpan) {
-      if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Subject span not found, cannot show notification')
+      if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] No suitable insertion target found, cannot show notification')
       return
     }
     const oldNotif = document.getElementById('last-lesson-inline-notification')
@@ -187,7 +196,48 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       vertical-align: middle;
     `
     notif.textContent = bannerMessage
-    subjectSpan.parentNode.insertBefore(notif, subjectSpan.nextSibling)
+    // Prefer inserting to the left of the label wrapper if present so the badge appears before the subject name
+    try {
+      const labelSelectors = ['.label-wrapper']
+      let inserted = false
+      for (const ls of labelSelectors) {
+        const labelEl = subjectSpan.closest(ls) || document.querySelector(ls)
+        if (labelEl && labelEl.parentNode) {
+          // Prefer inserting after the label wrapper but before the next element that has the generated ng class
+          const nextNg = labelEl.parentNode.querySelector('.ng-tns-c1628529983-16')
+          if (nextNg && nextNg !== labelEl) {
+            labelEl.parentNode.insertBefore(notif, nextNg)
+            inserted = true
+            if (Logger.isDebugMode())
+              Logger.debug('[LastLessonNotificationFeature] Inserted notification between label and ng element using selector:', ls)
+            break
+          }
+          // Fallback: insert after the label element (i.e., before labelEl.nextSibling)
+          if (labelEl.nextSibling) {
+            labelEl.parentNode.insertBefore(notif, labelEl.nextSibling)
+          } else {
+            labelEl.parentNode.appendChild(notif)
+          }
+          inserted = true
+          if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Inserted notification immediately after label with selector:', ls)
+          break
+        }
+      }
+      if (!inserted) {
+        // Fallback to appending to accordion header or inserting after the found element
+        const isHeaderLike = subjectSpan.classList && subjectSpan.classList.contains('accordion-header')
+        if (isHeaderLike) {
+          subjectSpan.appendChild(notif)
+        } else if (subjectSpan.parentNode) {
+          subjectSpan.parentNode.insertBefore(notif, subjectSpan.nextSibling)
+        } else {
+          document.body.appendChild(notif)
+        }
+      }
+    } catch (e) {
+      if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Error inserting notification:', e)
+      document.body.appendChild(notif)
+    }
   }
 
   _removeBanner() {
@@ -243,8 +293,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Raw timetable data:', timetableData)
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Timetable events count:', timetableData?.timetableEvents?.length || 0)
 
-    const timetable =
-      timetableData?.timetableEvents?.filter(event => event.journalId == journalId) || []
+    const timetable = timetableData?.timetableEvents?.filter(event => event.journalId == journalId) || []
 
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Filtered timetable events for journal:', timetable)
 
