@@ -33,8 +33,74 @@ class HighlightMissingGradesFeature extends BaseFeature {
       })()
     }, 1000)
     if (!this._observer) {
-      this._observer = new MutationObserver(() => this.run())
-      this._observer.observe(document.body, { childList: true, subtree: true })
+      this._debounceTimer = null
+      this._isUpdating = false // Flag to prevent recursive updates
+      this._observer = new MutationObserver(mutations => {
+        // Skip if we're currently updating (to prevent infinite loops)
+        if (this._isUpdating) {
+          return
+        }
+
+        // Filter out mutations that are just our own highlighting changes
+        const relevantMutations = mutations.filter(mutation => {
+          // Ignore class changes that only involve our highlight class
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            const target = mutation.target
+            const oldValue = mutation.oldValue || ''
+            const newValue = target.className || ''
+            // If the only change is adding/removing highlight-missing-grade, ignore it
+            const oldHasHighlight = oldValue.includes('highlight-missing-grade')
+            const newHasHighlight = newValue.includes('highlight-missing-grade')
+            const otherClassesOld = oldValue.replace(/\s*highlight-missing-grade\s*/g, ' ').trim()
+            const otherClassesNew = newValue.replace(/\s*highlight-missing-grade\s*/g, ' ').trim()
+            if (oldHasHighlight !== newHasHighlight && otherClassesOld === otherClassesNew) {
+              return false // This is just our highlight change, ignore it
+            }
+          }
+
+          // Ignore title attribute changes (our tooltips)
+          if (mutation.type === 'attributes' && mutation.attributeName === 'title') {
+            return false
+          }
+
+          return true
+        })
+
+        if (relevantMutations.length === 0) {
+          return // No relevant mutations
+        }
+
+        // Check if any relevant mutation affects the studentTable or its descendants
+        const affectsStudentTable = relevantMutations.some(mutation => {
+          const target = mutation.target
+          // Check if the mutation target is within #studentTable
+          const studentTable = document.getElementById('studentTable')
+          if (!studentTable) return true // If studentTable not found, react to any change
+
+          // Check if target is studentTable itself or a descendant
+          return target === studentTable || studentTable.contains(target) || target.contains(studentTable)
+        })
+
+        if (affectsStudentTable) {
+          console.debug('[HighlightMissingGradesFeature] studentTable change detected, scheduling re-run')
+          // Debounce to avoid excessive re-runs during rapid DOM changes
+          if (this._debounceTimer) {
+            clearTimeout(this._debounceTimer)
+          }
+          this._debounceTimer = setTimeout(() => {
+            this.run()
+          }, 300) // Increased debounce time
+        }
+      })
+
+      // Observe the entire document but filter mutations in the callback
+      this._observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-grade', 'data-absence', 'data-student-id', 'data-journal-student', 'style'],
+        attributeOldValue: true // This helps us compare old vs new values
+      })
     }
   }
 
@@ -44,16 +110,60 @@ class HighlightMissingGradesFeature extends BaseFeature {
       this._observer.disconnect()
       this._observer = null
     }
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer)
+      this._debounceTimer = null
+    }
+    this._isUpdating = false
   }
 
   async run() {
-    this.injectMissingGradeCSS()
-    const layoutPadding = document.querySelector('.layout-padding')
-    if (!layoutPadding) {
+    // Prevent recursive calls
+    if (this._isUpdating) {
       return
     }
-    const table = layoutPadding.querySelector('table.journalTable')
+
+    this._isUpdating = true
+    this.injectMissingGradeCSS()
+
+    // First try to find table within #studentTable container
+    let table = null
+    const studentTableContainer = document.getElementById('studentTable')
+    if (studentTableContainer) {
+      table = studentTableContainer.querySelector('table')
+      console.debug('[HighlightMissingGradesFeature] run(): found table inside #studentTable')
+    }
+
     if (!table) {
+      const layoutPadding = document.querySelector('.layout-padding')
+      if (!layoutPadding) {
+        console.debug('[HighlightMissingGradesFeature] run(): .layout-padding not found, attempting fallbacks')
+      }
+      // Prefer table inside layoutPadding, but fall back to global selectors if not present
+      if (layoutPadding) table = layoutPadding.querySelector('table.journalTable')
+      if (!table) {
+        // Try a few common alternative selectors used in different UI versions
+        const candidates = ['table.journalTable', '#main-content table.journalTable', 'table[class*="journal"]', '#main-content table']
+        for (const sel of candidates) {
+          try {
+            const t = document.querySelector(sel)
+            if (t) {
+              table = t
+              console.debug('[HighlightMissingGradesFeature] run(): found table via fallback selector', sel)
+              break
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      } else {
+        console.debug('[HighlightMissingGradesFeature] run(): found table inside .layout-padding')
+      }
+    }
+
+    if (!table) {
+      console.debug('[HighlightMissingGradesFeature] run(): journal table not found, aborting')
+      this._isUpdating = false
       return
     }
     // Remove all previous highlights
@@ -62,12 +172,14 @@ class HighlightMissingGradesFeature extends BaseFeature {
       cell.title = ''
     })
     const headerCells = Array.from(table.querySelectorAll('thead th'))
+    console.debug('[HighlightMissingGradesFeature] run(): headerCells count', headerCells.length)
     const nowDate = new Date()
 
     // Try to extract journalId from URL
     const journalIdMatch = window.location.href.match(/\/journal\/(\d+)/)
     const journalId = journalIdMatch ? parseInt(journalIdMatch[1], 10) : null
     if (!journalId) {
+      this._isUpdating = false
       return
     }
 
@@ -80,18 +192,61 @@ class HighlightMissingGradesFeature extends BaseFeature {
         { cache: true, cacheExpiration: 6e4 }
       )
     } catch (e) {
+      console.info('[HighlightMissingGradesFeature] run(): failed to fetch journalEntries', e)
+      this._isUpdating = false
       return
     }
     if (!Array.isArray(journalEntries) || journalEntries.length === 0) {
+      console.debug('[HighlightMissingGradesFeature] run(): journalEntries empty or not array', journalEntries)
+      this._isUpdating = false
       return
     }
+    console.debug('[HighlightMissingGradesFeature] run(): journalEntries length', journalEntries.length)
 
-    // Map columns to journalEntries by order (assumes first two columns are not entries)
+    // Map columns to journalEntries by matching header cell date text to entry.entryDate
     const entryColumns = headerCells.slice(2)
     const iseseisevColumns = []
-    // Prepare to fetch extra details for each SISSEKANNE_I entry
+
+    // Build lookup by day-month string for entries (e.g. '18.09' -> [entries])
+    const entriesByDayMonth = {}
+    journalEntries.forEach(e => {
+      const dStr =
+        e && e.entryDate
+          ? (() => {
+              try {
+                const d = new Date(e.entryDate)
+                return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
+              } catch (err) {
+                return null
+              }
+            })()
+          : null
+      if (dStr) {
+        if (!entriesByDayMonth[dStr]) entriesByDayMonth[dStr] = []
+        entriesByDayMonth[dStr].push(e)
+      }
+    })
+
     const entryDetailPromises = entryColumns.map(async(th, i) => {
-      const entry = journalEntries[i]
+      const rawHeader = (th.textContent || th.innerText || '').replace(/\s+/g, ' ').trim()
+      // Try to extract day.month from header (e.g. '18.09' or '18.09.2025' or '18.09')
+      const dmMatch = rawHeader.match(/(\d{1,2})[./](\d{1,2})/)
+      let matchedEntry = null
+      if (dmMatch) {
+        const day = String(dmMatch[1]).padStart(2, '0')
+        const month = String(dmMatch[2]).padStart(2, '0')
+        const key = `${day}.${month}`
+        const candidates = entriesByDayMonth[key] || []
+        if (candidates.length === 1) {
+          matchedEntry = candidates[0]
+        } else if (candidates.length > 1) {
+          // Prefer independent-work entry if present
+          const pref = candidates.find(c => c.entryType === 'SISSEKANNE_I')
+          matchedEntry = pref || candidates[0]
+        }
+      }
+      // Fallback to positional mapping if no match
+      const entry = matchedEntry || journalEntries[i]
       if (entry && entry.entryType === 'SISSEKANNE_I') {
         let entryDetail = entry
         // Fetch full entry details to get homeworkDuedate if not present
@@ -114,19 +269,89 @@ class HighlightMissingGradesFeature extends BaseFeature {
       }
     })
     await Promise.all(entryDetailPromises)
-    if (iseseisevColumns.length > 0) {
+    console.debug(
+      '[HighlightMissingGradesFeature] run(): detected iseseisevColumns (pre-filter)',
+      iseseisevColumns.map(c => c.idx)
+    )
+    // Only keep columns whose header cell has the independent-work background color (#ecfccb / rgb(236, 252, 203))
+    const isGreenHeader = th => {
+      if (!th) return false
+      try {
+        // check inline style first
+        const inline = th.style && th.style.backgroundColor
+        const comp = window.getComputedStyle ? window.getComputedStyle(th).backgroundColor : null
+        const bg = (inline && inline.trim()) || (comp && comp.trim()) || ''
+        // normalize rgb/rgba to lowercase
+        const normalized = (bg || '').replace(/\s+/g, '').toLowerCase()
+        // possible representations
+        const greenRgb = 'rgb(236,252,203)'
+        const greenRgba = 'rgba(236,252,203,1)'
+        const greenHex = '#ecfccb'
+        return normalized === greenRgb || normalized === greenRgba || normalized === greenHex
+      } catch (e) {
+        return false
+      }
+    }
+    const preFilterIdxs = iseseisevColumns.map(c => c.idx)
+    const filtered = iseseisevColumns.filter(c => {
+      const th = headerCells[c.idx]
+      return isGreenHeader(th)
+    })
+    if (filtered.length !== iseseisevColumns.length) {
+      console.debug(
+        '[HighlightMissingGradesFeature] run(): filtered iseseisevColumns to only green headers. before:',
+        preFilterIdxs,
+        'after:',
+        filtered.map(c => c.idx)
+      )
+    }
+    // Use filtered list from now on
+    const finalIseseisevColumns = filtered
+    if (finalIseseisevColumns.length > 0) {
       const rows = Array.from(table.querySelectorAll('tbody tr'))
+      console.debug('[HighlightMissingGradesFeature] run(): rows count', rows.length)
+
+      // helper: robustly extract student id from row/cell
+      const extractStudentId = (r, c) => {
+        // Try several attributes used in the app: data-student-id, data-journal-student, dataset.journalStudent
+        const attrs = ['data-student-id', 'data-journal-student', 'data-journal-student-id', 'data-journalstudent', 'data-journal-student-id']
+        for (const a of attrs) {
+          const v = (c && c.getAttribute && c.getAttribute(a)) || (r && r.getAttribute && r.getAttribute(a))
+          if (v) return v.toString()
+        }
+        if (r && r.dataset) {
+          if (r.dataset.journalStudent) return r.dataset.journalStudent.toString()
+          if (r.dataset.studentId) return r.dataset.studentId.toString()
+        }
+        return null
+      }
+
+      // helper: get visible text from a cell (prefer direct inner text of specific child elements)
+      const getCellText = c => {
+        if (!c) return ''
+        // If there's an element that likely contains the grade, prefer its text
+        const selectors = ['[data-grade]', '[data-absence]', '.grade', '.grade-value', '.value', 'span', 'div']
+        for (const s of selectors) {
+          try {
+            const el = c.querySelector && c.querySelector(s)
+            if (el && el.textContent && el.textContent.trim()) return el.textContent.trim()
+          } catch (e) {
+            // ignore selector errors
+          }
+        }
+        return (c.textContent || '').trim()
+      }
+
       rows.forEach((row, _rowIdx) => {
-        iseseisevColumns.forEach(({ idx, entry }) => {
+        finalIseseisevColumns.forEach(({ idx, entry }) => {
           const cells = Array.from(row.children)
           const cell = cells[idx]
           if (!cell) return
-          // Try to get studentId from row or cell (may need to adjust selector)
-          const studentId = cell.getAttribute('data-student-id') || row.getAttribute('data-student-id')
+          const studentId = extractStudentId(row, cell)
+          console.debug('[HighlightMissingGradesFeature] run(): row idx', _rowIdx, 'col idx', idx, 'studentId', studentId)
           let grade = ''
           let absence = ''
           if (studentId && entry.journalStudentResults && entry.journalStudentResults[studentId]) {
-            // Array of results for this student
             const results = entry.journalStudentResults[studentId]
             if (Array.isArray(results) && results.length > 0) {
               const g = results[0].grade
@@ -137,23 +362,31 @@ class HighlightMissingGradesFeature extends BaseFeature {
               } else {
                 grade = g
               }
-              // Accept also verbalGrade if present
-              if (!grade && results[0].verbalGrade) {
-                grade = results[0].verbalGrade
-              }
+              if (!grade && results[0].verbalGrade) grade = results[0].verbalGrade
               absence = results[0].absence || ''
             }
           } else {
-            grade = cell.getAttribute('data-grade') || cell.textContent.trim()
-            absence = cell.getAttribute('data-absence') || cell.textContent.trim()
+            // DOM-only fallback: try attributes first, then inner text
+            grade = cell.getAttribute && (cell.getAttribute('data-grade') || cell.getAttribute('data-grade-value'))
+            if (!grade && cell.dataset) grade = cell.dataset.grade || cell.dataset.value
+            if (!grade) grade = getCellText(cell)
+            const absenceAttr = cell.getAttribute && (cell.getAttribute('data-absence') || cell.getAttribute('data-absence-code'))
+            absence = absenceAttr || ''
+            // If absence not in attribute, try to detect from text (common short markers H, P, PUUDUMINE)
+            if (!absence) {
+              const txt = (cell.textContent || '').trim()
+              if (/puudumine/i.test(txt)) absence = 'PUUDUMINE'
+              else if (/^\s*[HP]\s*$/i.test(txt)) absence = txt.trim().toUpperCase()
+            }
           }
           // Unified valid grades set
           const validGrades = new Set(['A', 'MA', '1', '2', '3', '4', '5'])
           // Highlight if grade is missing (not in validGrades) and absence is empty or PUUDUMINE_H/PUUDUMINE_P/H/P
-          if (
+          const shouldHighlight =
             (!grade || !validGrades.has(grade)) &&
             (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
-          ) {
+          if (shouldHighlight) {
+            console.debug('[HighlightMissingGradesFeature] run(): will highlight cell', { row: _rowIdx, col: idx, studentId, grade, absence })
             cell.classList.add('highlight-missing-grade')
             // Set tooltip with due date in required format
             const dueDateStr = entry.homeworkDuedate || entry.entryDate
@@ -164,11 +397,16 @@ class HighlightMissingGradesFeature extends BaseFeature {
             }
             cell.title = tooltipDate ? `Tähtaeg oli ${tooltipDate}, aga hinne puudub` : 'Hinne puudub'
           } else {
+            if (console && console.debug)
+              console.debug('[HighlightMissingGradesFeature] run(): not highlighting', { row: _rowIdx, col: idx, studentId, grade, absence })
             cell.classList.remove('highlight-missing-grade')
           }
         })
       })
     }
+
+    // Reset the updating flag
+    this._isUpdating = false
   }
 }
 
