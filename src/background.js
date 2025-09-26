@@ -129,7 +129,13 @@ async function getFutureSubjects(comparisonDate) {
     }
 
     // Check if the tab is on Tahvel
-    if (!activeTab.url.includes('tahvel.edu.ee') && !activeTab.url.includes('tahvel.eenet.ee')) {
+    // Treat 'tahvel.edu.ee', 'tahvel.eenet.ee', and 'uustahvel.eenet.ee' (including test subdomain) as valid Tahvel hosts
+    if (
+      !activeTab.url.includes('tahvel.edu.ee') &&
+      !activeTab.url.includes('tahvel.eenet.ee') &&
+      !activeTab.url.includes('uustahvel.eenet.ee') &&
+      !activeTab.url.includes('test.uustahvel.eenet.ee')
+    ) {
       throw new Error('Palun avage Tahvel lehekülg')
     }
 
