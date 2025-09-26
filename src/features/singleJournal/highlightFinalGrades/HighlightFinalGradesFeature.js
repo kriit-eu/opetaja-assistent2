@@ -9,6 +9,8 @@ class HighlightFinalGradesFeature extends BaseFeature {
     this._observer = null
     this._docObserver = null
     this._debounceTimeout = null
+    this._docObserverTable = null
+    this._tableRetryTimeout = null
   }
 
   injectFinalGradeCSS() {
@@ -43,6 +45,37 @@ class HighlightFinalGradesFeature extends BaseFeature {
         this.finalGradeStyleId
       )
     }
+  }
+
+  _isJournalEntriesTable(table) {
+    if (!table) return false
+    const headerTexts = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').toLowerCase())
+    if (headerTexts.length === 0) return false
+    if (headerTexts.some(text => text.includes('õppija'))) return true
+    if (headerTexts.some(text => text.includes('lõpptulemus'))) return true
+    if (headerTexts.some(text => /õv/.test(text))) return true
+    return false
+  }
+
+  _findJournalTable() {
+    const selectors = [
+      '#studentTable table.tahvel-table',
+      '#studentTable table',
+      '.tahvel-table-wrapper#studentTable table',
+      '.layout-padding table.tahvel-table',
+      '.layout-padding table.journalTable',
+      'table.journalTable'
+    ]
+    for (const selector of selectors) {
+      const candidate = document.querySelector(selector)
+      if (candidate && this._isJournalEntriesTable(candidate)) return candidate
+    }
+    const layoutPadding = document.querySelector('.layout-padding')
+    if (layoutPadding) {
+      const fallback = layoutPadding.querySelector('table.tahvel-table, table.journalTable')
+      if (fallback && this._isJournalEntriesTable(fallback)) return fallback
+    }
+    return null
   }
 
   _getStudyYearRange(info) {
@@ -164,10 +197,15 @@ class HighlightFinalGradesFeature extends BaseFeature {
       this._docObserver.disconnect()
       this._docObserver = null
     }
-    const layoutPadding = document.querySelector('.layout-padding')
-    if (!layoutPadding) return
-    const table = layoutPadding.querySelector('table.journalTable')
-    if (!table) return
+    const table = this._findJournalTable()
+    if (!table) {
+      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] MutationObserver setup skipped: journal table not found')
+      return
+    }
+    if (this._tableRetryTimeout) {
+      clearTimeout(this._tableRetryTimeout)
+      this._tableRetryTimeout = null
+    }
     this._docObserver = new MutationObserver(mutations => {
       let relevant = false
       for (const m of mutations) {
@@ -185,20 +223,26 @@ class HighlightFinalGradesFeature extends BaseFeature {
       }
     })
     this._docObserver.observe(table, { childList: true, subtree: true, attributes: false })
+    this._docObserverTable = table
   }
 
   async run() {
     if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] run() called')
     this.injectFinalGradeCSS()
-    const layoutPadding = document.querySelector('.layout-padding')
-    if (!layoutPadding) {
-      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] .layout-padding not found')
+    const table = this._findJournalTable()
+    if (!table) {
+      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] Journal table not found, skipping highlight')
+      if (!this._tableRetryTimeout) {
+        this._tableRetryTimeout = setTimeout(() => {
+          this._tableRetryTimeout = null
+          void this.run()
+        }, 250)
+      }
       return
     }
-    const table = layoutPadding.querySelector('table.journalTable')
-    if (!table) {
-      if (Logger.isDebugMode()) Logger.info('✨ [HighlightFinalGradesFeature] .journalTable not found')
-      return
+    if (this._tableRetryTimeout) {
+      clearTimeout(this._tableRetryTimeout)
+      this._tableRetryTimeout = null
     }
     // If observer is not set or table changed, re-setup observer
     if (!this._docObserver || this._docObserverTable !== table) {
@@ -213,8 +257,8 @@ class HighlightFinalGradesFeature extends BaseFeature {
       return
     }
     const rows = Array.from(table.querySelectorAll('tbody tr'))
-    table.querySelectorAll('.highlight-final-grade-yellow, .highlight-final-grade-red, .highlight-ov-red').forEach(cell => {
-      cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red', 'highlight-ov-red')
+    table.querySelectorAll('.highlight-final-grade-yellow, .highlight-final-grade-red, .highlight-ov-red, .highlight-ov-yellow').forEach(cell => {
+      cell.classList.remove('highlight-final-grade-yellow', 'highlight-final-grade-red', 'highlight-ov-red', 'highlight-ov-yellow')
     })
 
     // Get journalId from URL/hash robustly (support both hash and pathname)
@@ -385,6 +429,10 @@ class HighlightFinalGradesFeature extends BaseFeature {
     if (this._debounceTimeout) {
       clearTimeout(this._debounceTimeout)
       this._debounceTimeout = null
+    }
+    if (this._tableRetryTimeout) {
+      clearTimeout(this._tableRetryTimeout)
+      this._tableRetryTimeout = null
     }
     this.removeFinalGradeBanner()
   }
