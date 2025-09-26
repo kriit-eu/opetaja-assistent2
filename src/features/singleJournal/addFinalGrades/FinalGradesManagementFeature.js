@@ -132,15 +132,17 @@ class FinalGradesByOvFeature extends BaseFeature {
         // Fetch statuses for students in filteredOutput so we can apply OPPURSTAATUS_A rule
         const uniqueStudentIds = Array.from(new Set((filteredOutput || []).map(r => Number(r.studentId)).filter(Boolean)))
         const studentStatusMap = {}
-        await Promise.all(uniqueStudentIds.map(async sid => {
-          try {
-            const det = await this.api.tahvel.get(`/students/${sid}`)
-            studentStatusMap[String(sid)] = det && det.status ? det.status : null
-          } catch (e) {
-            Logger.error('FinalGradesByOvFeature: Failed to fetch student details, defaulting to include', { studentId: sid, err: e })
-            studentStatusMap[String(sid)] = null
-          }
-        }))
+        await Promise.all(
+          uniqueStudentIds.map(async sid => {
+            try {
+              const det = await this.api.tahvel.get(`/students/${sid}`)
+              studentStatusMap[String(sid)] = det && det.status ? det.status : null
+            } catch (e) {
+              Logger.error('FinalGradesByOvFeature: Failed to fetch student details, defaulting to include', { studentId: sid, err: e })
+              studentStatusMap[String(sid)] = null
+            }
+          })
+        )
         const outcomeStudents = filteredOutput
           .map(r => {
             let grade = r.ovGrades[ovNum]
@@ -154,7 +156,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             const status = studentStatusMap[String(studentId)]
             const normalizedGrade = String(grade || '').toUpperCase()
             if (status === 'OPPURSTAATUS_A' && (normalizedGrade === 'MA' || normalizedGrade === '1' || normalizedGrade === '2')) {
-              Logger.info('FinalGradesByOvFeature: Skipping ÕV grade for OPPURSTAATUS_A student due to disallowed grade', { studentId, ovNum, grade: normalizedGrade })
+              Logger.info('FinalGradesByOvFeature: Skipping ÕV grade for OPPURSTAATUS_A student due to disallowed grade', {
+                studentId,
+                ovNum,
+                grade: normalizedGrade
+              })
               return null
             }
             const lookupKey = `${studentId}|${ovNum}`
@@ -167,7 +173,12 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const existingCode = existing.grade.code || (existing.grade.value ? `KUTSEHINDAMINE_${String(existing.grade.value)}` : null)
                 const existingValue = existing.grade.value != null ? String(existing.grade.value) : null
                 if (existingCode === mapped.code || existingValue === String(mapped.value)) {
-                  Logger.info('FinalGradesByOvFeature: Skipping no-op ÕV update (existing equals calculated)', { studentId, ovNum, existingCode, mappedCode: mapped.code })
+                  Logger.info('FinalGradesByOvFeature: Skipping no-op ÕV update (existing equals calculated)', {
+                    studentId,
+                    ovNum,
+                    existingCode,
+                    mappedCode: mapped.code
+                  })
                   return null
                 }
               }
@@ -232,10 +243,16 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.disabled = true
             button.style.opacity = '0.6'
             button.title = 'Hinded saadetud — enam pole midagi saata'
-              try {
-                const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
-                button.textContent = isL ? 'Lõpptulemused saadetud' : 'Õpiväljundite hinded saadetud'
-              } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
+            try {
+              const isL =
+                button &&
+                String(button.textContent || '')
+                  .toLowerCase()
+                  .includes('lõpptulemus')
+              button.textContent = isL ? 'Lõpptulemused saadetud' : 'Õpiväljundite hinded saadetud'
+            } catch (innerErr) {
+              Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr)
+            }
           } catch (e) {
             Logger.warn('FinalGradesByOvFeature: Failed to update button state after sync', e)
           }
@@ -248,9 +265,12 @@ class FinalGradesByOvFeature extends BaseFeature {
     } catch (err) {
       if (statusDiv) statusDiv.textContent = 'Viga saatmisel.'
       throw err
-    }
-    finally {
-      try { this._oaSyncRunning = false } catch (e) { void e }
+    } finally {
+      try {
+        this._oaSyncRunning = false
+      } catch (e) {
+        void e
+      }
     }
   }
   constructor() {
@@ -271,7 +291,11 @@ class FinalGradesByOvFeature extends BaseFeature {
 
   async onActivate() {
     // Console log to ensure visibility in page devtools (extension Logger may be quiet)
-    try { console.log('✨ FinalGradesByOvFeature: onActivate called', window.location.href) } catch (e) { void e }
+    try {
+      console.log('✨ FinalGradesByOvFeature: onActivate called', window.location.href)
+    } catch (e) {
+      void e
+    }
     Logger.info('✨ FinalGradesByOvFeature: onActivate called')
     Logger.info('✨ FinalGradesByOvFeature: Current URL:', window.location.href)
 
@@ -330,7 +354,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             btn.style.background = '#d32f2f'
           } finally {
             // Clear running flag so future clicks can proceed (if not intentionally disabled)
-            try { btn._oaRunning = false } catch (e) { void e }
+            try {
+              btn._oaRunning = false
+            } catch (e) {
+              void e
+            }
             setTimeout(() => {
               try {
                 if (!btn._oaFinalGradesDisabled) {
@@ -348,20 +376,20 @@ class FinalGradesByOvFeature extends BaseFeature {
       }
     }
 
-    // Observe changes to #main-content
-    const mainContent = document.querySelector('#main-content')
-    Logger.info('[DEBUG] mainContent found:', mainContent)
-    if (mainContent) {
+    // Observe changes to #studentTable so we re-attach handlers if the table/button is replaced
+    const tableForObserver = document.querySelector('#studentTable')
+    Logger.info('[DEBUG] #studentTable found for observer:', tableForObserver)
+    if (tableForObserver) {
       const observer = new MutationObserver(() => {
-        Logger.info('[DEBUG] MutationObserver triggered')
+        Logger.info('[DEBUG] MutationObserver triggered on #studentTable')
         attachAsyncHandler()
       })
-      observer.observe(mainContent, { childList: true, subtree: true })
+      observer.observe(tableForObserver, { childList: true, subtree: true })
       // Initial attach
       Logger.info('[DEBUG] Initial attachAsyncHandler call')
       attachAsyncHandler()
     } else {
-      Logger.warning('[DEBUG] #main-content not found on page load')
+      Logger.warning('[DEBUG] #studentTable not found on page load')
     }
 
     Logger.info('✨ FinalGradesByOvFeature: Test button logic start')
@@ -407,58 +435,35 @@ class FinalGradesByOvFeature extends BaseFeature {
         Logger.info('[DEBUG] Not activating: hasSissekanneL:', hasSissekanneL, 'allOvNums:', results.allOvNums)
         return
       }
-      // Wait for the table container in #main-content
+      // Wait for the student table element (#studentTable) - strict placement under the real table
       let tableContainer = null
       try {
-        Logger.info('[DEBUG] Waiting for .journalTableContainer')
-        tableContainer = await domService.waitForElement('.journalTableContainer', 20000, 100)
-        Logger.info('✨ FinalGradesByOvFeature: Table container found', tableContainer)
+        Logger.info('[DEBUG] Waiting for #studentTable')
+        tableContainer = await domService.waitForElement('#studentTable', 20000, 100)
+        Logger.info('✨ FinalGradesByOvFeature: #studentTable found', tableContainer)
       } catch (e) {
-        Logger.warning('FinalGradesByOvFeature: Table container not found, will try fallback', e)
-        Logger.info('[DEBUG] Table container not found, fallback to #main-content')
+        Logger.error('FinalGradesByOvFeature: #studentTable not found, aborting feature initialization', e)
+        return
       }
       // Use existing button if present, otherwise insert
       let button = document.querySelector('.oa-final-grades-btn')
       Logger.info('[DEBUG] Existing button found:', button)
       const buttonText = hasSissekanneL ? 'Lisa lõpptulemuse hinded' : 'Lisa õpiväljundite hinded'
       if (!button) {
-        Logger.info('[DEBUG] No existing button, will insert new button')
-        if (tableContainer) {
-          button = domService.createAndInsertElement(
-            'button',
-            {
-              type: 'button',
-              class: 'oa-final-grades-btn',
-              style: FinalGradesByOvFeature.OA_BTN_STYLE
-            },
-            buttonText,
-            tableContainer,
-            'afterend'
-          )
-          Logger.info('✨ FinalGradesByOvFeature: Button inserted after table container', button)
-        } else {
-          // Fallback: insert at end of #main-content
-          const mainContent = document.querySelector('#main-content')
-          Logger.info('[DEBUG] Fallback mainContent:', mainContent)
-          if (mainContent) {
-            button = domService.createAndInsertElement(
-              'button',
-              {
-                type: 'button',
-                class: 'oa-final-grades-btn',
-                style: FinalGradesByOvFeature.OA_BTN_STYLE
-              },
-              buttonText,
-              mainContent,
-              'beforeend'
-            )
-            Logger.info('✨ FinalGradesByOvFeature: Button inserted at end of #main-content', button)
-          } else {
-            Logger.error('FinalGradesByOvFeature: #main-content not found, cannot insert button')
-            Logger.info('[DEBUG] Could not insert button: #main-content missing')
-            return
-          }
-        }
+        Logger.info('[DEBUG] No existing button, will insert new button under #studentTable')
+        // Strictly insert right after the #studentTable element (no legacy fallbacks)
+        button = domService.createAndInsertElement(
+          'button',
+          {
+            type: 'button',
+            class: 'oa-final-grades-btn',
+            style: FinalGradesByOvFeature.OA_BTN_STYLE
+          },
+          buttonText,
+          tableContainer,
+          'afterend'
+        )
+        Logger.info('✨ FinalGradesByOvFeature: Button inserted after #studentTable', button)
       } else {
         Logger.info('✨ FinalGradesByOvFeature: Using existing button', button)
         Logger.info('✨ FinalGradesByOvFeature: Button visibility:', {
@@ -558,10 +563,16 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.disabled = true
             button.style.opacity = '0.6'
             button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
-              try {
-                const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
-                button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
-              } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
+            try {
+              const isL =
+                button &&
+                String(button.textContent || '')
+                  .toLowerCase()
+                  .includes('lõpptulemus')
+              button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
+            } catch (innerErr) {
+              Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr)
+            }
             // mark as intentionally disabled (no further re-enable)
             button._oaFinalGradesDisabled = true
             Logger.info('✨ FinalGradesByOvFeature: No grade changes detected — disabled button')
@@ -647,7 +658,11 @@ class FinalGradesByOvFeature extends BaseFeature {
           btn.style.background = '#d32f2f'
         } finally {
           // Clear running flag so future clicks can proceed (if not intentionally disabled)
-          try { btn._oaRunning = false } catch (e) { void e }
+          try {
+            btn._oaRunning = false
+          } catch (e) {
+            void e
+          }
           setTimeout(() => {
             try {
               if (!btn._oaFinalGradesDisabled) {
@@ -674,14 +689,14 @@ class FinalGradesByOvFeature extends BaseFeature {
       // No need to add a direct event listener here; handled by mutation observer logic above
       // --- NEW: Observe journal table for changes and re-evaluate button state ---
       try {
-        const tableEl = document.querySelector('.journalTableContainer') || document.querySelector('#main-content')
+        const tableEl = document.querySelector('#studentTable')
         if (tableEl) {
           let debounceTimer = null
           let lastSnapshot = null
           const getSnapshot = () => {
             try {
               // Lightweight visible text snapshot — trim to avoid huge strings
-              const txt = (tableEl && tableEl.innerText) ? tableEl.innerText.trim() : ''
+              const txt = tableEl && tableEl.innerText ? tableEl.innerText.trim() : ''
               return txt ? txt.slice(0, 20000) : ''
             } catch (e) {
               return ''
@@ -701,28 +716,20 @@ class FinalGradesByOvFeature extends BaseFeature {
                 Logger.info('✨ FinalGradesByOvFeature: Detected meaningful DOM change — re-evaluating grade diffs')
                 const journalId = this.#extractJournalId()
                 if (!journalId) return
-                    let newEntries, newStudents
-                    if (this._lastJournalId && this._lastJournalId === journalId && this._lastEntries && this._lastStudents) {
-                      newEntries = this._lastEntries
-                      newStudents = this._lastStudents
-                      Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId (DOM change):', journalId)
-                    } else {
-                      [newEntries, newStudents] = await Promise.all([
-                        this.api.tahvel.get(
-                          `/journals/${journalId}/journalEntriesByDate`,
-                          { allStudents: true },
-                          { cache: false }
-                        ),
-                        this.api.tahvel.get(
-                          `/journals/${journalId}/journalStudents`,
-                          { allStudents: true },
-                          { cache: false }
-                        )
-                      ])
-                      this._lastEntries = newEntries
-                      this._lastStudents = newStudents
-                      this._lastJournalId = journalId
-                    }
+                let newEntries, newStudents
+                if (this._lastJournalId && this._lastJournalId === journalId && this._lastEntries && this._lastStudents) {
+                  newEntries = this._lastEntries
+                  newStudents = this._lastStudents
+                  Logger.info('✨ FinalGradesByOvFeature: Reusing cached entries/students for journalId (DOM change):', journalId)
+                } else {
+                  [newEntries, newStudents] = await Promise.all([
+                    this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+                    this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+                  ])
+                  this._lastEntries = newEntries
+                  this._lastStudents = newStudents
+                  this._lastJournalId = journalId
+                }
                 const hasLLocal = this.detectLGrades(newEntries)
                 let newResults
                 if (hasLLocal) {
@@ -744,13 +751,13 @@ class FinalGradesByOvFeature extends BaseFeature {
                       button.title = ''
                       try {
                         // Decide proper label based on whether L-flow is present
-                          const hasLNow = this.detectLGrades(this._lastEntries || [])
-                          if (hasLNow) {
-                            button.textContent = 'Lisa lõpptulemuse hinded'
-                          } else {
-                            const hasExistingOvNow = this.#hasAnyOvGrades(this._lastEntries || [])
-                            button.textContent = hasExistingOvNow ? 'Uuenda õpiväljundite hinded' : 'Lisa õpiväljundite hinded'
-                          }
+                        const hasLNow = this.detectLGrades(this._lastEntries || [])
+                        if (hasLNow) {
+                          button.textContent = 'Lisa lõpptulemuse hinded'
+                        } else {
+                          const hasExistingOvNow = this.#hasAnyOvGrades(this._lastEntries || [])
+                          button.textContent = hasExistingOvNow ? 'Uuenda õpiväljundite hinded' : 'Lisa õpiväljundite hinded'
+                        }
                         button.style.background = 'rgb(21, 101, 192)'
                       } catch (innerErr) {
                         // ignore and leave title/style as-is
@@ -766,10 +773,17 @@ class FinalGradesByOvFeature extends BaseFeature {
                       button.style.opacity = '0.6'
                       button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
                       try {
-                        const isL = (typeof buttonText !== 'undefined' && buttonText) ? buttonText.toLowerCase().includes('lõpptulemus')
-                          : (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+                        const isL =
+                          typeof buttonText !== 'undefined' && buttonText
+                            ? buttonText.toLowerCase().includes('lõpptulemus')
+                            : button &&
+                              String(button.textContent || '')
+                                .toLowerCase()
+                                .includes('lõpptulemus')
                         button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
-                        } catch (innerErr) { Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr) }
+                      } catch (innerErr) {
+                        Logger.warn('FinalGradesByOvFeature: Ignored inner error', innerErr)
+                      }
                     }
                     Logger.info('✨ FinalGradesByOvFeature: Button disabled after DOM change — no changes detected')
                   }
@@ -843,13 +857,18 @@ class FinalGradesByOvFeature extends BaseFeature {
         const parenOvMatches = entry.nameEt.match(/\(\s*ÕV(\d+)(?:,\s*ÕV(\d+))*\s*\)/gi)
         if (parenOvMatches) {
           parenOvMatches.forEach(m => {
-            [...m.matchAll(/ÕV(\d+)/gi)].forEach(x => { if (x && x[1]) foundNums.add(x[1]) })
+            [...m.matchAll(/ÕV(\d+)/gi)].forEach(x => {
+              if (x && x[1]) foundNums.add(x[1])
+            })
           })
         }
         // Also support plain ÕVn mentions elsewhere in the nameEt
         const plainMatches = entry.nameEt.match(/ÕV(\d+)/gi)
         if (plainMatches) {
-          plainMatches.forEach(m => { const n = (m.match(/\d+/) || [])[0]; if (n) foundNums.add(n) })
+          plainMatches.forEach(m => {
+            const n = (m.match(/\d+/) || [])[0]
+            if (n) foundNums.add(n)
+          })
         }
         if (foundNums.size > 0) {
           hasOvSissekanneI = true
@@ -999,7 +1018,11 @@ class FinalGradesByOvFeature extends BaseFeature {
         } else {
           finalGrade = ''
         }
-        Logger.info('✨ FinalGradesByOvFeature: Initial placeholder grade (will be overridden by grading mode)', { student: student.name, finalGrade, grades })
+        Logger.info('✨ FinalGradesByOvFeature: Initial placeholder grade (will be overridden by grading mode)', {
+          student: student.name,
+          finalGrade,
+          grades
+        })
       }
 
       // Per-ÕV grades
@@ -1009,9 +1032,10 @@ class FinalGradesByOvFeature extends BaseFeature {
         let ovGrade = ''
 
         // Convert all grades to numeric for calculation, including MA→2
-          // Convert all grades to numeric for calculation, including MA→2.
-          // Treat missing/ungraded/unknown tokens as numeric 2 per requirement.
-          const allGradesAsNumeric = gradesArr.map(g => {
+        // Convert all grades to numeric for calculation, including MA→2.
+        // Treat missing/ungraded/unknown tokens as numeric 2 per requirement.
+        const allGradesAsNumeric = gradesArr
+          .map(g => {
             // Normalize
             if (g === null || g === undefined || String(g).trim() === '') {
               // Missing/ungraded -> treat as 2
@@ -1030,7 +1054,8 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
             // Unknown token -> treat as 2
             return 2
-          }).filter(g => g !== null)
+          })
+          .filter(g => g !== null)
 
         // If there are expected assignments for this ÕV, ensure student has submitted all of them.
         // If not all assignments are present, force the ÕV grade to 2 (low) instead of averaging partial data.
@@ -1048,15 +1073,15 @@ class FinalGradesByOvFeature extends BaseFeature {
 
           if (allGradesAsNumeric.length > 0) {
             const average = (allGradesAsNumeric.reduce((a, b) => a + b, 0) / allGradesAsNumeric.length).toFixed(2)
-          // Check if any individual grade is ≤ 2 (important for mitte mode)
-          const hasLowGrade = allGradesAsNumeric.some(grade => grade <= 2)
-          // Store both average and low-grade flag for later processing
-          ovGrade = hasLowGrade ? `${average}_hasLow` : average
-        } else if (gradesArr.includes('A')) {
-          ovGrade = 'A'
-        } else if (gradesArr.includes('MA')) {
-          ovGrade = 'MA'
-        }
+            // Check if any individual grade is ≤ 2 (important for mitte mode)
+            const hasLowGrade = allGradesAsNumeric.some(grade => grade <= 2)
+            // Store both average and low-grade flag for later processing
+            ovGrade = hasLowGrade ? `${average}_hasLow` : average
+          } else if (gradesArr.includes('A')) {
+            ovGrade = 'A'
+          } else if (gradesArr.includes('MA')) {
+            ovGrade = 'MA'
+          }
         }
 
         ovGrades[ovNum] = ovGrade
@@ -1144,7 +1169,7 @@ class FinalGradesByOvFeature extends BaseFeature {
               student.finalGrade = 'MA'
             } else {
               const allA = ovVals.length > 0 && ovVals.every(v => String(v).toUpperCase() === 'A')
-              student.finalGrade = (allA && !anyUngraded) ? 'A' : 'MA'
+              student.finalGrade = allA && !anyUngraded ? 'A' : 'MA'
             }
           } else {
             // Fallback: map previously computed finalGrade
@@ -1154,7 +1179,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             else if (/^MA$/i.test(rawFg)) student.finalGrade = 'MA'
             else if (/^\d+(?:\.\d+)?$/.test(rawFg)) {
               const n = Math.round(Number(rawFg))
-              student.finalGrade = (n >= 3) ? 'A' : 'MA'
+              student.finalGrade = n >= 3 ? 'A' : 'MA'
             }
           }
         } else if (mode === 'eristav') {
@@ -1208,8 +1233,7 @@ class FinalGradesByOvFeature extends BaseFeature {
     Logger.info('✨ FinalGradesByOvFeature: #showResults called', { results, button, opts })
     // Only perform sync logic, do not render a table
     // eslint-disable-next-line no-unused-vars
-    const { allOvNums, ovNumToOutcomeId,
-      hasOvSissekanneI, output } = results
+    const { allOvNums, ovNumToOutcomeId, hasOvSissekanneI, output } = results
     // Build a map of (studentId|ovNum) => existing grade object for updating
     const existingGradesMap = {}
     if (this._lastEntries) {
@@ -1264,13 +1288,17 @@ class FinalGradesByOvFeature extends BaseFeature {
           // (any grade that is 'A', 'MA', or numeric 1-2 suggests mitte mode)
           const shouldUseMitte = (output || []).some(s => {
             // Check final grade for A/MA tokens
-            const fg = String(s.finalGrade || '').trim().toUpperCase()
+            const fg = String(s.finalGrade || '')
+              .trim()
+              .toUpperCase()
             if (fg === 'A' || fg === 'MA') return true
 
             // Check per-ÕV grades for A/MA tokens or low numeric values (1-2)
             if (s.ovGrades) {
               return Object.values(s.ovGrades).some(ovGrade => {
-                const g = String(ovGrade || '').trim().toUpperCase()
+                const g = String(ovGrade || '')
+                  .trim()
+                  .toUpperCase()
                 if (g === 'A' || g === 'MA') return true
                 // Check if numeric grade is 1 or 2 (would map to MA in mitte mode)
                 if (/^\d+(?:\.\d+)?$/.test(g)) {
@@ -1288,7 +1316,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             return /^\d+(?:\.\d+)?$/.test(fg)
           })
 
-          modeToApply = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
+          modeToApply = shouldUseMitte ? 'mitte' : hasNumeric ? 'eristav' : ''
         }
       }
       if (modeToApply) this.#applyGradingModeToResults(results, modeToApply)
@@ -1325,8 +1353,8 @@ class FinalGradesByOvFeature extends BaseFeature {
       container.innerHTML = '<div style="margin:16px 0;color:#d32f2f;font-weight:bold;">Ühtegi õpiväljundit pole märgitud iseseisvatesse töödesse!</div>'
       return
     }
-  // If ÕV columns exist, automatically sync grades silently (no status message unless error)
-  if (allOvNums.length > 0) {
+    // If ÕV columns exist, automatically sync grades silently (no status message unless error)
+    if (allOvNums.length > 0) {
       container.innerHTML = ''
       // Create or update grading-mode dropdown next to the button.
       try {
@@ -1358,13 +1386,17 @@ class FinalGradesByOvFeature extends BaseFeature {
           // (any grade that is 'A', 'MA', or numeric 1-2 suggests mitte mode)
           const shouldUseMitte = (output || []).some(s => {
             // Check final grade for A/MA tokens
-            const fg = String(s.finalGrade || '').trim().toUpperCase()
+            const fg = String(s.finalGrade || '')
+              .trim()
+              .toUpperCase()
             if (fg === 'A' || fg === 'MA') return true
 
             // Check per-ÕV grades for A/MA tokens or low numeric values (1-2)
             if (s.ovGrades) {
               return Object.values(s.ovGrades).some(ovGrade => {
-                const g = String(ovGrade || '').trim().toUpperCase()
+                const g = String(ovGrade || '')
+                  .trim()
+                  .toUpperCase()
                 if (g === 'A' || g === 'MA') return true
                 // Check if numeric grade is 1 or 2 (would map to MA in mitte mode)
                 if (/^\d+(?:\.\d+)?$/.test(g)) {
@@ -1382,7 +1414,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             return /^\d+(?:\.\d+)?$/.test(fg)
           })
 
-          defaultMode = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
+          defaultMode = shouldUseMitte ? 'mitte' : hasNumeric ? 'eristav' : ''
         }
 
         if (!existingSelect) {
@@ -1411,7 +1443,9 @@ class FinalGradesByOvFeature extends BaseFeature {
               const opt = sel.querySelector(`option[value="${defaultMode}"]`)
               if (opt) opt.dataset.apiDefault = 'true'
             }
-          } catch (e) { void e }
+          } catch (e) {
+            void e
+          }
           if (defaultMode && !(button && button._oaFinalGradesDisabled)) {
             sel.value = defaultMode
           }
@@ -1419,13 +1453,23 @@ class FinalGradesByOvFeature extends BaseFeature {
           sel.addEventListener('change', () => {
             try {
               sel.dataset.userSet = 'true'
-            } catch (e) { void e }
+            } catch (e) {
+              void e
+            }
             try {
               const selected = sel.value
               this.#applyGradingModeToResults(results, selected)
               // Re-run showResults to update highlights/UI without auto-sync
-              setTimeout(() => { try { this.#showResults(results, button, { autoSync: false }) } catch (e) { Logger.warn('Failed to re-run showResults after grading mode change', e) } }, 0)
-            } catch (e) { Logger.warn('FinalGradesByOvFeature: Error handling grading-mode change', e) }
+              setTimeout(() => {
+                try {
+                  this.#showResults(results, button, { autoSync: false })
+                } catch (e) {
+                  Logger.warn('Failed to re-run showResults after grading mode change', e)
+                }
+              }, 0)
+            } catch (e) {
+              Logger.warn('FinalGradesByOvFeature: Error handling grading-mode change', e)
+            }
           })
           // Insert the select. If API provided a default, visually emphasise the select's displayed value by making it bold
           try {
@@ -1440,7 +1484,9 @@ class FinalGradesByOvFeature extends BaseFeature {
                 }
                 sel.style.display = 'inline-block'
                 sel.style.verticalAlign = 'middle'
-              } catch (e) { void e }
+              } catch (e) {
+                void e
+              }
             } else {
               document.body.appendChild(sel)
             }
@@ -1452,7 +1498,9 @@ class FinalGradesByOvFeature extends BaseFeature {
                 }
                 if (defaultMode && sel.value === defaultMode) sel.style.fontWeight = '700'
                 else sel.style.fontWeight = '400'
-              } catch (e) { void e }
+              } catch (e) {
+                void e
+              }
             }
             // Mark the API-provided option for debugging and potential future styling
             try {
@@ -1460,15 +1508,26 @@ class FinalGradesByOvFeature extends BaseFeature {
                 const opt = sel.querySelector(`option[value="${defaultMode}"]`)
                 if (opt) opt.dataset.apiDefault = 'true'
               }
-            } catch (e) { void e }
+            } catch (e) {
+              void e
+            }
             // Apply initial bold state and keep it in sync with user actions
             applyApiBold()
-            sel.addEventListener('change', () => { try { sel.dataset.userSet = 'true'; applyApiBold() } catch (e) { void e } })
+            sel.addEventListener('change', () => {
+              try {
+                sel.dataset.userSet = 'true'
+                applyApiBold()
+              } catch (e) {
+                void e
+              }
+            })
             // Apply initial grading mode to computed results
             try {
-              const initialMode = (sel.value && sel.value !== '') ? sel.value : defaultMode
+              const initialMode = sel.value && sel.value !== '' ? sel.value : defaultMode
               if (initialMode) this.#applyGradingModeToResults(results, initialMode)
-            } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to apply initial grading mode', e) }
+            } catch (e) {
+              Logger.warn('FinalGradesByOvFeature: Failed to apply initial grading mode', e)
+            }
           } catch (e) {
             // fallback
             document.body.appendChild(sel)
@@ -1489,7 +1548,9 @@ class FinalGradesByOvFeature extends BaseFeature {
                   try {
                     if (defaultMode && existingSelect.value === defaultMode) existingSelect.style.fontWeight = '700'
                     else existingSelect.style.fontWeight = '400'
-                  } catch (e) { void e }
+                  } catch (e) {
+                    void e
+                  }
                 }
                 // Ensure select and button sit inline
                 try {
@@ -1500,19 +1561,34 @@ class FinalGradesByOvFeature extends BaseFeature {
                     button.style.verticalAlign = 'middle'
                     button.style.marginRight = '8px'
                   }
-                } catch (e) { void e }
+                } catch (e) {
+                  void e
+                }
                 applyExistingApiBold()
-                existingSelect.addEventListener('change', () => { try { existingSelect.dataset.userSet = 'true'; applyExistingApiBold() } catch (e) { void e } })
+                existingSelect.addEventListener('change', () => {
+                  try {
+                    existingSelect.dataset.userSet = 'true'
+                    applyExistingApiBold()
+                  } catch (e) {
+                    void e
+                  }
+                })
                 // Apply initial grading mode mapping if user hasn't changed selection
                 try {
                   const toApply = existingSelect.value || defaultMode
                   if (toApply) this.#applyGradingModeToResults(results, toApply)
-                } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to apply grading mode for existing select', e) }
+                } catch (e) {
+                  Logger.warn('FinalGradesByOvFeature: Failed to apply grading mode for existing select', e)
+                }
               } else {
                 existingSelect.style.fontWeight = '400'
               }
-            } catch (e) { void e }
-          } catch (e) { void e }
+            } catch (e) {
+              void e
+            }
+          } catch (e) {
+            void e
+          }
         }
       } catch (e) {
         Logger.warn('FinalGradesByOvFeature: Failed to create/update grading-mode select', e)
@@ -1574,27 +1650,37 @@ class FinalGradesByOvFeature extends BaseFeature {
           }
 
           // Helper: extract canonical grade token from text: 'MA', 'A', or numeric (supports comma decimal)
-          const extractGradeToken = txt => {
-            if (!txt) return ''
-            const s = String(txt || '')
+          const extractGradeToken = input => {
+            if (!input) return ''
+            let s = ''
+            try {
+              if (typeof input === 'object' && input !== null && input.innerText != null) {
+                s = String(input.innerText || '')
+              } else {
+                s = String(input || '')
+              }
+            } catch (e) {
+              s = String(input || '')
+            }
+            s = s
               .replace(/\u00A0/g, ' ') // NBSP
               .replace(/[,\s]+(?=\d{1,2}$)/, '.') // convert comma decimals like '4,0' to '4.0' conservatively
               .trim()
-              // Find all tokens (MA, A, or numeric) and prefer the last occurring token in the cell
-              const tokens = []
-              // push MA/A tokens with an explicit marker
-              Array.from(s.matchAll(/\bMA\b/ig)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
-              Array.from(s.matchAll(/\bA\b/ig)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
-              // numeric tokens
-              Array.from(s.matchAll(/\b([1-5](?:[.,]\d+)?)\b/g)).forEach(m => tokens.push({ type: 'NUM', value: m[1].replace(',', '.'), index: m.index }))
-              if (tokens.length) {
-                // sort by occurrence index and pick last
-                tokens.sort((a, b) => (a.index || 0) - (b.index || 0))
-                const lastTok = tokens[tokens.length - 1]
-                if (lastTok.type === 'MA') return 'MA'
-                if (lastTok.type === 'A') return 'A'
-                if (lastTok.type === 'NUM') return lastTok.value
-              }
+            // Find all tokens (MA, A, or numeric) and prefer the last occurring token in the cell
+            const tokens = []
+            // push MA/A tokens with an explicit marker
+            Array.from(s.matchAll(/\bMA\b/gi)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
+            Array.from(s.matchAll(/\bA\b/gi)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
+            // numeric tokens
+            Array.from(s.matchAll(/\b([1-5](?:[.,]\d+)?)\b/g)).forEach(m => tokens.push({ type: 'NUM', value: m[1].replace(',', '.'), index: m.index }))
+            if (tokens.length) {
+              // sort by occurrence index and pick last
+              tokens.sort((a, b) => (a.index || 0) - (b.index || 0))
+              const lastTok = tokens[tokens.length - 1]
+              if (lastTok.type === 'MA') return 'MA'
+              if (lastTok.type === 'A') return 'A'
+              if (lastTok.type === 'NUM') return lastTok.value
+            }
             return ''
           }
 
@@ -1628,7 +1714,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             finalGradeCols.forEach(colIdx => {
               const cell = cells[colIdx]
               if (!cell) return
-              const cellToken = extractGradeToken(cell.textContent || '')
+              const cellToken = extractGradeToken(cell)
               const calcToken = extractGradeToken(String(student.finalGrade || ''))
               const setTooltip = (current, calculated) => {
                 try {
@@ -1637,7 +1723,13 @@ class FinalGradesByOvFeature extends BaseFeature {
                   void e
                 }
               }
-              const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
+              const clearTooltip = () => {
+                try {
+                  cell.title = ''
+                } catch (e) {
+                  void e
+                }
+              }
               // If both empty, consider equal
               if (!cellToken && !calcToken) {
                 clearMismatch(cell)
@@ -1690,7 +1782,7 @@ class FinalGradesByOvFeature extends BaseFeature {
                 return
               }
               // Fallback: strict comparison
-                if (calcToken !== cellToken) {
+              if (calcToken !== cellToken) {
                 markMismatch(cell, cellToken, calcToken)
                 setTooltip(cellToken, calcToken)
               } else {
@@ -1704,15 +1796,23 @@ class FinalGradesByOvFeature extends BaseFeature {
               const colIdx = Number(colIdxStr)
               const cell = cells[colIdx]
               if (!cell) return
-              const cellToken = extractGradeToken(cell.textContent || '')
-              const calcToken = extractGradeToken(String((student.ovGrades && student.ovGrades[ovNum]) ? student.ovGrades[ovNum] : ''))
+              const cellToken = extractGradeToken(cell)
+              const calcToken = extractGradeToken(String(student.ovGrades && student.ovGrades[ovNum] ? student.ovGrades[ovNum] : ''))
               // (debug logs removed)
               const setTooltipOv = (current, calculated) => {
                 try {
                   cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
-                } catch (e) { void e }
+                } catch (e) {
+                  void e
+                }
               }
-              const clearTooltipOv = () => { try { cell.title = '' } catch (e) { void e } }
+              const clearTooltipOv = () => {
+                try {
+                  cell.title = ''
+                } catch (e) {
+                  void e
+                }
+              }
               if (!cellToken && !calcToken) {
                 clearMismatch(cell)
                 clearTooltipOv()
@@ -1773,7 +1873,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         Logger.warn('FinalGradesByOvFeature: Failed to highlight mismatched cells', e)
       }
       // If autoSync is false, we only compute filteredOutput and update button/UI state, do not post grades
-  if (!opts.autoSync) {
+      if (!opts.autoSync) {
         Logger.info('✨ FinalGradesByOvFeature: autoSync disabled on page load — skipping POST')
         // If there are no changes, disable the button (this logic mirrors earlier checks)
         if (filteredOutput.length === 0) {
@@ -1784,7 +1884,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
             // Prefer to set visible text when possible (use existing button text to detect L-flow)
             try {
-              const isL = (button && String(button.textContent || '').toLowerCase().includes('lõpptulemus'))
+              const isL =
+                button &&
+                String(button.textContent || '')
+                  .toLowerCase()
+                  .includes('lõpptulemus')
               button.textContent = isL ? 'Kõik hinded on õiged' : 'Kõik hinded on õiged'
             } catch (innerErr) {
               Logger.warn('FinalGradesByOvFeature: Ignored inner error setting button text', innerErr)
@@ -1973,21 +2077,28 @@ class FinalGradesByOvFeature extends BaseFeature {
       const table = document.querySelector('.layout-padding table.journalTable') || document.querySelector('table.journalTable')
       if (!table) return
 
-  // Ensure local CSS is injected for OA final-grade mismatch highlights
-  injectFinalGradeCSS()
+      // Ensure local CSS is injected for OA final-grade mismatch highlights
+      injectFinalGradeCSS()
 
       const { finalGradeCols } = this.findColumnIndices(table)
       if (!finalGradeCols || finalGradeCols.length === 0) return
 
-      const extractGradeToken = txt => {
-        if (!txt) return ''
-        const s = String(txt || '')
+      const extractGradeToken = input => {
+        if (!input) return ''
+        let s = ''
+        try {
+          if (typeof input === 'object' && input !== null && input.innerText != null) s = String(input.innerText || '')
+          else s = String(input || '')
+        } catch (e) {
+          s = String(input || '')
+        }
+        s = s
           .replace(/\u00A0/g, ' ')
           .replace(/[,\s]+(?=\d{1,2}$)/, '.')
           .trim()
         const tokens = []
-        Array.from(s.matchAll(/\bMA\b/ig)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
-        Array.from(s.matchAll(/\bA\b/ig)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
+        Array.from(s.matchAll(/\bMA\b/gi)).forEach(m => tokens.push({ type: 'MA', value: 'MA', index: m.index }))
+        Array.from(s.matchAll(/\bA\b/gi)).forEach(m => tokens.push({ type: 'A', value: 'A', index: m.index }))
         Array.from(s.matchAll(/\b([1-5](?:[.,]\d+)?)\b/g)).forEach(m => tokens.push({ type: 'NUM', value: m[1].replace(',', '.'), index: m.index }))
         if (tokens.length) {
           tokens.sort((a, b) => (a.index || 0) - (b.index || 0))
@@ -2019,19 +2130,25 @@ class FinalGradesByOvFeature extends BaseFeature {
           if (rowHasAcademicLeave(row)) return
           const cells = Array.from(row.children).filter(n => n.nodeType === 1)
 
-          const ds = (row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') || (row.dataset ? row.dataset.journalStudent : null) || '').toString()
+          const ds = (
+            row.getAttribute('data-student-id') ||
+            row.getAttribute('data-journal-student') ||
+            (row.dataset ? row.dataset.journalStudent : null) ||
+            ''
+          ).toString()
           let student = null
           if (ds && resultMap[ds]) student = resultMap[ds]
 
           if (!student) {
-            const txt = (row.textContent || '')
-            student = results.output.find(r => {
-              const name = (r.name || '').trim()
-              const idcode = (r.idcode || '').trim()
-              if (name && txt.includes(name)) return true
-              if (idcode && txt.includes(idcode)) return true
-              return false
-            }) || null
+            const txt = row.textContent || ''
+            student =
+              results.output.find(r => {
+                const name = (r.name || '').trim()
+                const idcode = (r.idcode || '').trim()
+                if (name && txt.includes(name)) return true
+                if (idcode && txt.includes(idcode)) return true
+                return false
+              }) || null
           }
 
           if (!student) student = results.output[rowIdx] || null
@@ -2041,12 +2158,22 @@ class FinalGradesByOvFeature extends BaseFeature {
             const cell = cells[colIdx]
             if (!cell) return
             try {
-              const cellToken = extractGradeToken(cell.getAttribute('data-grade') || cell.textContent || '')
-              const calcToken = extractGradeToken(String((student.finalGrade || '')).toString())
+              const cellToken = extractGradeToken(cell)
+              const calcToken = extractGradeToken(String(student.finalGrade || '').toString())
               const setTooltip = (current, calculated) => {
-                try { cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}` } catch (e) { void e }
+                try {
+                  cell.title = `Praegune hinne erineb arvutatud hindest\nPraegune: ${current}\nArvutatud: ${calculated}`
+                } catch (e) {
+                  void e
+                }
               }
-              const clearTooltip = () => { try { cell.title = '' } catch (e) { void e } }
+              const clearTooltip = () => {
+                try {
+                  cell.title = ''
+                } catch (e) {
+                  void e
+                }
+              }
 
               if (!cellToken && !calcToken) {
                 clearMismatch(cell)
@@ -2171,11 +2298,15 @@ class FinalGradesByOvFeature extends BaseFeature {
         else if (journalAssessment === 'KUTSEHINDAMISVIIS_E') defaultMode = 'eristav'
         else {
           const shouldUseMitte = (results.output || []).some(s => {
-            const fg = String(s.finalGrade || '').trim().toUpperCase()
+            const fg = String(s.finalGrade || '')
+              .trim()
+              .toUpperCase()
             if (fg === 'A' || fg === 'MA') return true
             if (s.ovGrades) {
               return Object.values(s.ovGrades).some(ovGrade => {
-                const g = String(ovGrade || '').trim().toUpperCase()
+                const g = String(ovGrade || '')
+                  .trim()
+                  .toUpperCase()
                 if (g === 'A' || g === 'MA') return true
                 if (/^\d+(?:\.\d+)?$/.test(g)) {
                   const n = Math.round(Number(g))
@@ -2190,34 +2321,48 @@ class FinalGradesByOvFeature extends BaseFeature {
             const fg = String(s.finalGrade || '').trim()
             return /^\d+(?:\.\d+)?$/.test(fg)
           })
-          defaultMode = shouldUseMitte ? 'mitte' : (hasNumeric ? 'eristav' : '')
+          defaultMode = shouldUseMitte ? 'mitte' : hasNumeric ? 'eristav' : ''
         }
 
         // Only set default if user hasn't selected and button isn't intentionally disabled
         try {
           if (!sel.dataset.userSet && defaultMode && !(button && button._oaFinalGradesDisabled)) sel.value = defaultMode
-        } catch (e) { void e }
+        } catch (e) {
+          void e
+        }
 
         // Apply initial grading mode to results so subsequent logic uses mapped finalGrade
         try {
-          const initialMode = (sel.value && sel.value !== '') ? sel.value : defaultMode
+          const initialMode = sel.value && sel.value !== '' ? sel.value : defaultMode
           if (initialMode) this.#applyGradingModeToResults(results, initialMode)
-        } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to apply initial grading mode for L flow', e) }
+        } catch (e) {
+          Logger.warn('FinalGradesByOvFeature: Failed to apply initial grading mode for L flow', e)
+        }
 
         // Recompute highlights/UI when user changes selection without auto-syncing
         try {
           sel.addEventListener('change', async() => {
             try {
               sel.dataset.userSet = 'true'
-            } catch (e) { void e }
+            } catch (e) {
+              void e
+            }
             try {
               const selected = sel.value
               this.#applyGradingModeToResults(results, selected)
               // Re-run L show results in non-auto mode to refresh UI/highlights only
-              try { await this.showLGradeResults(results, button, lastEntries, { autoSync: false }) } catch (e) { Logger.warn('FinalGradesByOvFeature: Failed to refresh L UI after grading mode change', e) }
-            } catch (e) { Logger.warn('FinalGradesByOvFeature: Error handling grading-mode change in L flow', e) }
+              try {
+                await this.showLGradeResults(results, button, lastEntries, { autoSync: false })
+              } catch (e) {
+                Logger.warn('FinalGradesByOvFeature: Failed to refresh L UI after grading mode change', e)
+              }
+            } catch (e) {
+              Logger.warn('FinalGradesByOvFeature: Error handling grading-mode change in L flow', e)
+            }
           })
-        } catch (e) { void e }
+        } catch (e) {
+          void e
+        }
       }
     } catch (e) {
       Logger.warn('FinalGradesByOvFeature: Error while wiring grading-mode select for L flow', e)
@@ -2281,7 +2426,9 @@ class FinalGradesByOvFeature extends BaseFeature {
               // Use a clearer disabled text
               try {
                 button.textContent = 'Kõik hinded on õiged'
-              } catch (inner) { Logger.warn('FinalGradesByOvFeature: Ignored inner error setting button text', inner) }
+              } catch (inner) {
+                Logger.warn('FinalGradesByOvFeature: Ignored inner error setting button text', inner)
+              }
             } catch (innerErr) {
               Logger.warn('FinalGradesByOvFeature: Failed to set disabled button state', innerErr)
             }
@@ -2307,7 +2454,7 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
             // Decide label: if there are existing L grades, present update action; otherwise present add action
             try {
-              const hasExistingL = this.#hasAnyLGrades(currentEntry ? [currentEntry] : (lastEntries || []))
+              const hasExistingL = this.#hasAnyLGrades(currentEntry ? [currentEntry] : lastEntries || [])
               if (hasExistingL) {
                 button.textContent = 'Uuenda õpiväljundite hinded'
               } else {
@@ -2331,22 +2478,28 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Fetch student statuses for filtered students so we can apply OPPURSTAATUS_A rule
       const uniqueStudentIds = Array.from(new Set(filteredOutput.map(r => r.studentId).filter(Boolean)))
       const studentStatusMap = {}
-      await Promise.all(uniqueStudentIds.map(async id => {
-        try {
-          const det = await this.api.tahvel.get(`/students/${id}`, {}, { cache: false })
-          studentStatusMap[String(id)] = det && det.status ? det.status : null
-        } catch (e) {
-          Logger.error('✨ FinalGradesByOvFeature: Failed to fetch student details, defaulting to include', { studentId: id, err: e })
-          studentStatusMap[String(id)] = null
-        }
-      }))
+      await Promise.all(
+        uniqueStudentIds.map(async id => {
+          try {
+            const det = await this.api.tahvel.get(`/students/${id}`, {}, { cache: false })
+            studentStatusMap[String(id)] = det && det.status ? det.status : null
+          } catch (e) {
+            Logger.error('✨ FinalGradesByOvFeature: Failed to fetch student details, defaulting to include', { studentId: id, err: e })
+            studentStatusMap[String(id)] = null
+          }
+        })
+      )
       const mappedStudents = filteredOutput
         .map(r => {
           // If student is on status A (OPPURSTAATUS_A) only allow adding if finalGrade is not MA, 1 or 2
           const status = studentStatusMap[String(r.studentId)]
           const gradeStr = String(r.finalGrade || '').toUpperCase()
           if (status === 'OPPURSTAATUS_A' && (gradeStr === 'MA' || gradeStr === '1' || gradeStr === '2')) {
-            Logger.info('✨ FinalGradesByOvFeature: Skipping L grade for OPPURSTAATUS_A student due to disallowed grade', { journalStudentId: r.journalStudentId, studentId: r.studentId, grade: gradeStr })
+            Logger.info('✨ FinalGradesByOvFeature: Skipping L grade for OPPURSTAATUS_A student due to disallowed grade', {
+              journalStudentId: r.journalStudentId,
+              studentId: r.studentId,
+              grade: gradeStr
+            })
             return null
           }
           const existing = (currentEntry.journalEntryStudents || []).find(js => String(js.journalStudent) === String(r.journalStudentId))
@@ -2509,8 +2662,8 @@ class FinalGradesByOvFeature extends BaseFeature {
   #createLGradeDropdown(cell, row) {
     try {
       // Extract student identifier from row
-      const studentId = row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') ||
-                       (row.dataset ? row.dataset.journalStudent : null)
+      const studentId =
+        row.getAttribute('data-student-id') || row.getAttribute('data-journal-student') || (row.dataset ? row.dataset.journalStudent : null)
       if (!studentId) return
 
       // Create a select element for grade selection
@@ -2545,7 +2698,7 @@ class FinalGradesByOvFeature extends BaseFeature {
       })
 
       // Set current value if one exists in the cell
-      const currentText = (cell.textContent || '').trim()
+      const currentText = (cell.innerText || cell.textContent || '').trim()
       const currentGrade = this.#extractGradeFromText(currentText)
       if (currentGrade && grades.some(g => g.value === currentGrade)) {
         select.value = currentGrade
@@ -2559,7 +2712,6 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Replace cell content with the dropdown
       cell.innerHTML = ''
       cell.appendChild(select)
-
     } catch (e) {
       Logger.warn('FinalGradesByOvFeature: Error creating L-grade dropdown', e)
     }
@@ -2578,7 +2730,11 @@ class FinalGradesByOvFeature extends BaseFeature {
             button.insertAdjacentElement('afterend', existing)
           }
           // ensure moved select appears bold per UI preference
-          try { existing.style.fontWeight = 'bold' } catch (e) { void e }
+          try {
+            existing.style.fontWeight = 'bold'
+          } catch (e) {
+            void e
+          }
         } catch (e) {
           // fallback: no-op
         }
@@ -2588,11 +2744,11 @@ class FinalGradesByOvFeature extends BaseFeature {
       // Create a grading-mode select identical to the ÕV select so labels and titles match exactly
       const sel = document.createElement('select')
       sel.id = 'oa-grading-mode-select'
-  sel.style.marginLeft = '8px'
-  sel.style.padding = '6px 8px'
-  sel.style.fontSize = '14px'
-  // Make the control visually bold to improve prominence
-  sel.style.fontWeight = 'bold'
+      sel.style.marginLeft = '8px'
+      sel.style.padding = '6px 8px'
+      sel.style.fontSize = '14px'
+      // Make the control visually bold to improve prominence
+      sel.style.fontWeight = 'bold'
       sel.setAttribute('aria-label', 'Hindamissüsteem')
       sel.title = 'Vali hindamissüsteem: Mitteeristav või Eristav (mõjutab, kuidas ÕV ja lõpptulemused teisendatakse)'
       const optM = document.createElement('option')
@@ -2618,13 +2774,19 @@ class FinalGradesByOvFeature extends BaseFeature {
             }
             sel.style.display = 'inline-block'
             sel.style.verticalAlign = 'middle'
-          } catch (e) { void e }
+          } catch (e) {
+            void e
+          }
         } else {
           document.body.appendChild(sel)
         }
       } catch (e) {
         // fallback: append to body
-        try { document.body.appendChild(sel) } catch (ee) { void ee }
+        try {
+          document.body.appendChild(sel)
+        } catch (ee) {
+          void ee
+        }
       }
     } catch (e) {
       Logger.warn('FinalGradesByOvFeature: Error while creating/moving grading-mode select', e)
@@ -2663,7 +2825,6 @@ class FinalGradesByOvFeature extends BaseFeature {
           cell.style.backgroundColor = ''
         }, 2000)
       }, 500)
-
     } catch (e) {
       Logger.error('FinalGradesByOvFeature: Error handling L-grade change', e)
       cell.style.backgroundColor = '#f8d7da' // Light red to indicate error
@@ -2674,13 +2835,16 @@ class FinalGradesByOvFeature extends BaseFeature {
   // Uses a lightweight visible-text snapshot to avoid API calls for minor/no-op mutations
   attachDomObserver(button, initialEntries) {
     try {
-      const tableEl = document.querySelector('.journalTableContainer') || document.querySelector('#main-content')
-      if (!tableEl) return null
+      const tableEl = document.querySelector('#studentTable')
+      if (!tableEl) {
+        Logger.info('FinalGradesByOvFeature: attachDomObserver - #studentTable not found, skipping')
+        return null
+      }
       let debounceTimer = null
       let lastSnapshot = null
       const getSnapshot = () => {
         try {
-          const txt = (tableEl && tableEl.innerText) ? tableEl.innerText.trim() : ''
+          const txt = tableEl && tableEl.innerText ? tableEl.innerText.trim() : ''
           return txt ? txt.slice(0, 20000) : ''
         } catch (e) {
           return ''
