@@ -715,6 +715,49 @@ class JournalListSyncFeature extends BaseFeature {
             Logger.warning(`Could not extract planned hours for journal ${id}:`, error)
           }
 
+          // Try to fetch journal theme content (if any) so it can be sent to Kriit
+          let journalTheme = null
+          try {
+            // Prefer curriculumVersions -> top-level themes -> journalThemes.
+            // Many Tahvel responses include the canonical theme under curriculumVersions[0].themes
+            // while journalThemes may contain a different (derived) id. Prefer the curriculum one.
+            let themeId = null
+            try {
+              if (
+                journalInfo &&
+                Array.isArray(journalInfo.curriculumVersions) &&
+                journalInfo.curriculumVersions[0] &&
+                Array.isArray(journalInfo.curriculumVersions[0].themes) &&
+                journalInfo.curriculumVersions[0].themes[0] &&
+                journalInfo.curriculumVersions[0].themes[0].id
+              ) {
+                themeId = journalInfo.curriculumVersions[0].themes[0].id
+              } else if (journalInfo && Array.isArray(journalInfo.themes) && journalInfo.themes[0] && journalInfo.themes[0].id) {
+                themeId = journalInfo.themes[0].id
+              } else if (journalInfo && Array.isArray(journalInfo.journalThemes) && journalInfo.journalThemes[0] && journalInfo.journalThemes[0].id) {
+                themeId = journalInfo.journalThemes[0].id
+              }
+            } catch (err) {
+              themeId = null
+            }
+
+            if (themeId) {
+              // Endpoint: /journals/{journalId}/theme/{themeId}
+              try {
+                const themeEndpoint = `/journals/${id}/theme/${themeId}`
+                // Fetch without using the JSON-only cache path so we can accept plain text/HTML responses
+                const themeContent = await this.api.tahvel.get(themeEndpoint, {}, { cache: false })
+                journalTheme = { id: themeId, content: themeContent }
+              } catch (err) {
+                Logger.debug(`Could not fetch theme ${themeId} for journal ${id}: ${err.message}`)
+                journalTheme = { id: themeId, content: null }
+              }
+            }
+          } catch (err) {
+            Logger.debug(`Error while trying to resolve journal theme for ${id}: ${err.message}`)
+            journalTheme = null
+          }
+
           let teacherName = ''
           let teacherPersonalCode = ''
 
@@ -759,7 +802,8 @@ class JournalListSyncFeature extends BaseFeature {
               teacherName,
               assignments,
               lastLessonDate,
-              plannedHours
+              plannedHours,
+              journalTheme
             }
           }
 
@@ -804,7 +848,8 @@ class JournalListSyncFeature extends BaseFeature {
               teacherName,
               assignments: filteredAssignments,
               lastLessonDate,
-              plannedHours
+              plannedHours,
+              journalTheme
             })
           }
 
@@ -1760,24 +1805,84 @@ class JournalListSyncFeature extends BaseFeature {
 
       const studyYear = await detectStudyYear()
 
-      // Use query params matching example; size=20 by default
-      const params = { onlyMyJournals: true, sort: '2, 5, 3', size: 50, page: 0 }
+      // Use query params matching example; request pages of size 50 by default
+      const baseParams = { onlyMyJournals: true, sort: '2, 5, 3', size: 50 }
       if (studyYear) {
-        params.studyYear = studyYear
+        baseParams.studyYear = studyYear
         if (Logger.isDebugMode()) Logger.debug('Detected studyYear for journals API:', studyYear)
       } else {
         if (Logger.isDebugMode()) Logger.debug('No studyYear detected; calling journals API without studyYear param')
       }
 
-      const response = await this.api.tahvel.get(endpoint, params, { cache: true, cacheExpiration: 5 * 60 * 1000 })
+      // Fetch all pages from the paginated journals endpoint
+      const allItems = []
+      let page = 0
+      let totalPages = null
+      let safetyCounter = 0
+      const SAFETY_MAX_PAGES = 50 // very large upper bound to prevent infinite loops
 
-      if (!response || !response.content || !Array.isArray(response.content)) {
-        if (Logger.isDebugMode()) Logger.debug('Unexpected /hois_back/journals response format', response)
+      // Loop while we haven't exceeded safety counter and either we don't know
+      // totalPages yet or there are still pages left to fetch. Using an explicit
+      // condition avoids an ESLint `no-constant-condition` error for `while(true)`.
+      while (safetyCounter <= SAFETY_MAX_PAGES && (totalPages === null || page < totalPages)) {
+        // Build per-request params to avoid accidental mutation issues
+        const params = Object.assign({}, baseParams, { page })
+        if (Logger.isDebugMode()) Logger.debug(`Fetching journals page ${page} (params: ${JSON.stringify(params)})`)
+
+        // Use a short cache for each page to avoid hammering during quick reloads
+        const response = await this.api.tahvel.get(endpoint, params, { cache: true, cacheExpiration: 5 * 60 * 1000 })
+
+        if (!response) {
+          if (Logger.isDebugMode()) Logger.debug('Unexpected /hois_back/journals response (null) on page', page)
+          break
+        }
+
+        // Typical Spring-style paged response contains 'content' array and 'totalPages' or 'totalElements'
+        let items = []
+        if (Array.isArray(response.content)) {
+          items = response.content
+        } else if (Array.isArray(response)) {
+          // Some endpoints may return an array directly (not paged) - treat as single page
+          items = response
+        } else {
+          if (Logger.isDebugMode()) Logger.debug('Unexpected /hois_back/journals response format on page', page, response)
+          break
+        }
+
+        if (items && items.length > 0) {
+          allItems.push(...items)
+        }
+
+        // Try to determine totalPages from several possible response shapes
+        if (totalPages === null) {
+          if (typeof response.totalPages === 'number') {
+            totalPages = response.totalPages
+          } else if (response.pageable && typeof response.pageable.totalPages === 'number') {
+            totalPages = response.pageable.totalPages
+          } else if (typeof response.totalElements === 'number' && typeof params.size === 'number') {
+            totalPages = Math.ceil(response.totalElements / params.size)
+          }
+        }
+
+        // If server didn't provide totalPages, stop when we received fewer items than requested
+        if (totalPages === null && items.length < params.size) break
+
+        // If totalPages known, stop when we've fetched all pages
+        if (totalPages !== null && page + 1 >= totalPages) break
+
+        // Increment page and safety counter. Safety is enforced by the loop
+        // condition above; keep incrementing so we make progress.
+        page += 1
+        safetyCounter += 1
+      }
+
+      if (allItems.length === 0) {
+        if (Logger.isDebugMode()) Logger.debug('No journals found from API')
         return null
       }
 
       // Map response items to a minimal shape used by collectJournalData when using API path
-      const mapped = response.content.map(item => ({
+      const mapped = allItems.map(item => ({
         id: item.id,
         nameEt: item.nameEt || item.name || '',
         studentCount: item.studentCount || 0,
@@ -4585,6 +4690,34 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
           groupName = journalStudents[0].studentGroup
         }
 
+        // Resolve and fetch journal theme (prefer curriculumVersions -> top-level themes -> journalThemes)
+        let journalTheme = null
+        try {
+          let themeId = null
+          if (
+            journalInfo &&
+            Array.isArray(journalInfo.curriculumVersions) &&
+            journalInfo.curriculumVersions[0] &&
+            Array.isArray(journalInfo.curriculumVersions[0].themes) &&
+            journalInfo.curriculumVersions[0].themes[0] &&
+            journalInfo.curriculumVersions[0].themes[0].id
+          ) {
+            themeId = journalInfo.curriculumVersions[0].themes[0].id
+          } else if (journalInfo && Array.isArray(journalInfo.themes) && journalInfo.themes[0] && journalInfo.themes[0].id) {
+            themeId = journalInfo.themes[0].id
+          } else if (journalInfo && Array.isArray(journalInfo.journalThemes) && journalInfo.journalThemes[0] && journalInfo.journalThemes[0].id) {
+            themeId = journalInfo.journalThemes[0].id
+          }
+
+          if (themeId) {
+            const themeContent = await fetchCachedData(this.api, `/journals/${journalId}/theme/${themeId}`, 24 * 60 * 60 * 1000)
+            journalTheme = { id: themeId, content: themeContent }
+          }
+        } catch (err) {
+          Logger.debug(`Could not fetch theme for journal ${journalId}: ${err.message}`)
+          journalTheme = null
+        }
+
         // Only add journals that have assignments with grades
         if (assignments.length > 0) {
           results.push({
@@ -4593,7 +4726,8 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
             groupName,
             teacherPersonalCode,
             teacherName,
-            assignments
+            assignments,
+            journalTheme
           })
         }
       } catch (error) {

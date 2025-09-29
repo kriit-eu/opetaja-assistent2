@@ -26,6 +26,67 @@ class ApiService {
 
   // Track pending in-flight GET requests to avoid duplicate identical network calls
   static pendingRequests = {}
+  // Global throttling controls to avoid too many simultaneous fetches which may
+  // cause the server or browser to drop/ignore some requests when syncing many pages.
+  // Defaults are conservative but can be changed at runtime via setConcurrencyLimit.
+  static concurrencyLimit = 10
+  static activeRequests = 0
+  static requestQueue = []
+  static delayBetweenRequestsMs = 0
+
+  /**
+   * Set global concurrency limit for underlying fetch calls.
+   * @param {number} limit - Max parallel fetches
+   * @param {number} delayMs - Optional delay (ms) between dequeued requests
+   */
+  static setConcurrencyLimit(limit, delayMs = 0) {
+    ApiService.concurrencyLimit = Math.max(1, parseInt(limit, 10) || 1)
+    ApiService.delayBetweenRequestsMs = Math.max(0, parseInt(delayMs, 10) || 0)
+  }
+
+  /**
+   * Internal helper which throttles fetch calls using a simple FIFO queue.
+   * Returns a Promise that resolves to the fetch Response.
+   */
+  static _throttledFetch(url, options) {
+    return new Promise((resolve, reject) => {
+      const run = async() => {
+        try {
+          if (Logger.isDebugMode())
+            Logger.debug(`✨ [ApiService] Starting fetch (${ApiService.activeRequests + 1}/${ApiService.concurrencyLimit}): ${url}`)
+          const res = await fetch(url, options)
+          resolve(res)
+        } catch (err) {
+          reject(err)
+        } finally {
+          ApiService.activeRequests = Math.max(0, ApiService.activeRequests - 1)
+
+          // Dequeue next task (if any) and run it after optional delay
+          const next = ApiService.requestQueue.shift()
+          if (next) {
+            if (ApiService.delayBetweenRequestsMs > 0) {
+              setTimeout(() => {
+                ApiService.activeRequests++
+                next()
+              }, ApiService.delayBetweenRequestsMs)
+            } else {
+              ApiService.activeRequests++
+              next()
+            }
+          }
+        }
+      }
+
+      // If we have capacity, run immediately
+      if (ApiService.activeRequests < ApiService.concurrencyLimit) {
+        ApiService.activeRequests++
+        run()
+      } else {
+        if (Logger.isDebugMode()) Logger.debug(`✨ [ApiService] Queueing fetch: ${url}`)
+        ApiService.requestQueue.push(run)
+      }
+    })
+  }
 
   /**
    * Set the base URL for API requests
@@ -192,7 +253,7 @@ class ApiService {
         return cacheService.getOrFetch(
           cacheKey,
           async() => {
-            const response = await fetch(urlString, requestOptions)
+            const response = await ApiService._throttledFetch(urlString, requestOptions)
 
             if (!response.ok) {
               throw new Error(`API Error: ${response.status} ${response.statusText}`)
@@ -216,7 +277,7 @@ class ApiService {
           // Create a fetch promise and store it
           const fetchPromise = (async() => {
             try {
-              const r = await fetch(urlString, requestOptions)
+              const r = await ApiService._throttledFetch(urlString, requestOptions)
               if (!r.ok) throw r
               return r
             } catch (err) {
@@ -231,7 +292,7 @@ class ApiService {
           }
         }
       } else {
-        response = await fetch(urlString, requestOptions)
+        response = await ApiService._throttledFetch(urlString, requestOptions)
       }
 
       if (!response.ok) {
@@ -295,11 +356,7 @@ class ApiService {
    */
   async get(endpoint, params = {}, options = {}) {
     // Default options
-    const {
-      cache = undefined,
-      cacheExpiration = undefined,
-      forceRefresh = false
-    } = options
+    const { cache = undefined, cacheExpiration = undefined, forceRefresh = false } = options
 
     // Smart defaults for specific endpoints. Do not override explicit caller choices.
     let finalCache = typeof cache === 'undefined' ? true : cache
