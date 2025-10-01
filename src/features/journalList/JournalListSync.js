@@ -326,6 +326,10 @@ class JournalListSyncFeature extends BaseFeature {
     // Mapping from journalStudentId to studentId for API cache lookups
     this.journalStudentIdToStudentId = {}
 
+    // Study year selector state
+    this.tableObserver = null
+    this.lastStudyYear = null
+
     // Set up message listener for settings changes using global service
     setupKriitMessageListener(this)
   }
@@ -375,6 +379,196 @@ class JournalListSyncFeature extends BaseFeature {
       Logger.warning('No Kriit API token found - JournalListSync feature will be disabled')
       this.showMissingApiKeyBanner()
     }
+
+    // Set up study year selector monitoring
+    this.setupStudyYearMonitoring()
+  }
+
+  /**
+   * Get currently selected study year from the dropdown
+   * @returns {string|null} Selected study year text (e.g., "2025/2026") or null if not found
+   */
+  getSelectedStudyYear() {
+    const studyYearSelector = document.querySelector('.selected-option.ng-tns-c929221873-0')
+    if (studyYearSelector) {
+      const yearText = studyYearSelector.textContent.trim()
+      Logger.debug('Selected study year from dropdown:', yearText)
+      return yearText
+    }
+    Logger.debug('Study year selector not found in DOM')
+    return null
+  }
+
+  /**
+   * Convert study year text (e.g., "2025/2026") to study year ID by querying the API
+   * @param {string} yearText - Study year text from dropdown
+   * @returns {Promise<number|null>} Study year ID or null if not found
+   */
+  async getStudyYearIdFromText(yearText) {
+    if (!yearText) return null
+
+    try {
+      const base = this.api && this.api.tahvel && this.api.tahvel.baseUrl ? String(this.api.tahvel.baseUrl) : ''
+      let studyYearsEndpoint = '/hois_back/autocomplete/studyYears'
+      if (base.endsWith('/hois_back')) studyYearsEndpoint = '/autocomplete/studyYears'
+
+      const studyYearsResponse = await this.api.tahvel.get(
+        studyYearsEndpoint,
+        {},
+        {
+          cache: true,
+          cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
+        }
+      )
+
+      if (Array.isArray(studyYearsResponse)) {
+        const matchingYear = studyYearsResponse.find(sy => sy.nameEt === yearText)
+        if (matchingYear && matchingYear.id) {
+          Logger.debug(`Resolved study year "${yearText}" to ID: ${matchingYear.id}`)
+          return matchingYear.id
+        }
+      }
+    } catch (err) {
+      Logger.warning('Failed to resolve study year ID from text:', err.message)
+    }
+
+    return null
+  }
+
+  /**
+   * Set up monitoring for study year selector changes and submit button clicks
+   */
+  setupStudyYearMonitoring() {
+    // Store initial study year
+    this.lastStudyYear = this.getSelectedStudyYear()
+    Logger.debug('Initial study year:', this.lastStudyYear)
+
+    // Find submit button
+    const submitButton = document.querySelector('button[type="submit"]')
+    if (!submitButton) {
+      Logger.debug('Submit button not found for study year monitoring')
+      return
+    }
+
+    // Add click listener to submit button
+    submitButton.addEventListener('click', () => {
+      Logger.debug('Submit button clicked - monitoring for table changes')
+      this.waitForTableUpdate()
+        .then(() => {
+          Logger.debug('Table updated - refreshing journal sync data')
+          this.fetchJournalData()
+        })
+        .catch(err => {
+          Logger.warning('Error waiting for table update:', err)
+          // Fallback: refresh after a delay
+          setTimeout(() => this.fetchJournalData(), 2000)
+        })
+    })
+
+    Logger.debug('Study year monitoring set up successfully')
+  }
+
+  /**
+   * Wait for the journal table to update after study year change
+   * @returns {Promise} Resolves when table has updated
+   */
+  waitForTableUpdate() {
+    return new Promise((resolve, _reject) => {
+      let timeout
+      const timeoutDuration = 10000 // 10 seconds max wait
+
+      // Try multiple selectors for the table container
+      const findTableContainer = () => {
+        const selectors = [
+          'md-table-container',
+          '#main-content md-table-container',
+          'md-table-container table',
+          '#main-content table',
+          '[role="table"]',
+          'table tbody'
+        ]
+
+        for (const selector of selectors) {
+          const element = document.querySelector(selector)
+          if (element) {
+            Logger.debug(`Found table container with selector: ${selector}`)
+            return element
+          }
+        }
+        return null
+      }
+
+      // Initial attempt to find table container
+      let tableContainer = findTableContainer()
+
+      if (!tableContainer) {
+        // Table might not be rendered yet - wait a bit and try again
+        Logger.debug('Table container not found immediately, waiting 500ms...')
+        setTimeout(() => {
+          tableContainer = findTableContainer()
+
+          if (!tableContainer) {
+            Logger.warning('Table container not found after delay - using fallback timeout')
+            // Don't reject - just use timeout fallback
+            timeout = setTimeout(() => {
+              Logger.debug('Fallback timeout - proceeding with refresh')
+              resolve()
+            }, 2000)
+            return
+          }
+
+          setupObserver(tableContainer)
+        }, 500)
+        return
+      }
+
+      // Setup observer function
+      const setupObserver = container => {
+        // Disconnect any existing observer
+        if (this.tableObserver) {
+          this.tableObserver.disconnect()
+        }
+
+        // Create mutation observer to detect table changes
+        this.tableObserver = new MutationObserver(mutations => {
+          // Check if table content has changed (rows added/removed/modified)
+          const hasTableChanges = mutations.some(
+            mutation =>
+              mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0 || mutation.type === 'characterData' || mutation.type === 'attributes'
+          )
+
+          if (hasTableChanges) {
+            Logger.debug('Table content changed - mutations detected')
+            clearTimeout(timeout)
+            if (this.tableObserver) {
+              this.tableObserver.disconnect()
+            }
+            // Add small delay to ensure table is fully rendered
+            setTimeout(() => resolve(), 500)
+          }
+        })
+
+        // Start observing table changes
+        this.tableObserver.observe(container, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true
+        })
+
+        // Set timeout as fallback
+        timeout = setTimeout(() => {
+          Logger.debug('Table update timeout - proceeding anyway')
+          if (this.tableObserver) {
+            this.tableObserver.disconnect()
+          }
+          resolve()
+        }, timeoutDuration)
+      }
+
+      // If we found the container immediately, setup observer
+      setupObserver(tableContainer)
+    })
   }
 
   /**
@@ -384,6 +578,12 @@ class JournalListSyncFeature extends BaseFeature {
     this.isActive = false
     // Call parent method to clean up observers
     super.onDeactivate()
+
+    // Clean up table observer
+    if (this.tableObserver) {
+      this.tableObserver.disconnect()
+      this.tableObserver = null
+    }
 
     // Clean up UI elements
     bannerService.removeBanner()
@@ -1125,7 +1325,23 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
-      () => this.proceedWithKriitApiCall(),
+      async() => {
+        // When refresh button is clicked, trigger Tahvel search and wait for table update
+        Logger.debug('Värskenda button clicked - triggering Tahvel search for current study year')
+        try {
+          const submitButton = document.querySelector('button[type="submit"]')
+          if (submitButton) {
+            submitButton.click()
+            await this.waitForTableUpdate()
+          } else {
+            Logger.warning('Submit button not found, refreshing without triggering search')
+          }
+          await this.clearCache()
+        } catch (err) {
+          Logger.warning('Failed to trigger search or clear cache:', err.message)
+        }
+        await this.fetchJournalData()
+      },
       () => bannerService.removeBanner()
     )
   }
@@ -1191,7 +1407,23 @@ class JournalListSyncFeature extends BaseFeature {
         }
         await this.fetchJournalData()
       },
-      () => this.proceedWithKriitApiCall(),
+      async() => {
+        // Trigger Tahvel search and wait for table update before refreshing
+        Logger.debug('Refresh button clicked - triggering Tahvel search for current study year')
+        try {
+          const submitButton = document.querySelector('button[type="submit"]')
+          if (submitButton) {
+            submitButton.click()
+            await this.waitForTableUpdate()
+          } else {
+            Logger.warning('Submit button not found, refreshing without triggering search')
+          }
+          await this.clearCache()
+        } catch (err) {
+          Logger.warning('Failed to trigger search or clear cache:', err.message)
+        }
+        await this.fetchJournalData()
+      },
       container => {
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
@@ -1718,88 +1950,21 @@ class JournalListSyncFeature extends BaseFeature {
       let endpoint = '/hois_back/journals'
       if (base.endsWith('/hois_back')) endpoint = '/journals'
 
-      // Detect studyYear id from the page if possible (heuristics)
+      // Get studyYear from dropdown - no fallbacks
       const detectStudyYear = async() => {
-        try {
-          // First try the new reliable method: fetch current study year from API
-          try {
-            // Determine correct endpoint to avoid duplicating '/hois_back'
-            const base = this.api && this.api.tahvel && this.api.tahvel.baseUrl ? String(this.api.tahvel.baseUrl) : ''
-            let studyYearsEndpoint = '/hois_back/autocomplete/studyYears'
-            if (base.endsWith('/hois_back')) studyYearsEndpoint = '/autocomplete/studyYears'
-
-            const studyYearsResponse = await this.api.tahvel.get(
-              studyYearsEndpoint,
-              {},
-              {
-                cache: true,
-                cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
-              }
-            )
-
-            if (Array.isArray(studyYearsResponse)) {
-              const currentDate = new Date()
-
-              // Find the study year that contains the current date
-              const currentStudyYear = studyYearsResponse.find(sy => {
-                if (!sy.startDate || !sy.endDate) return false
-                const startDate = new Date(sy.startDate)
-                const endDate = new Date(sy.endDate)
-                return currentDate >= startDate && currentDate <= endDate
-              })
-
-              if (currentStudyYear && currentStudyYear.id) {
-                if (Logger.isDebugMode()) {
-                  Logger.debug(`Found current study year from API: ${currentStudyYear.id} (${currentStudyYear.nameEt})`)
-                }
-                return currentStudyYear.id
-              }
-            }
-          } catch (apiError) {
-            Logger.debug('Failed to fetch study year from API, falling back to DOM detection:', apiError.message)
-          }
-
-          // Fallback to original DOM-based detection methods
-          // Common global states used by SPA apps
-          const globals = [window.__INITIAL_STATE, window.__PRELOADED_STATE, window.__TAHVEL, window.__TAHVEL_STATE, window.appState]
-          for (const g of globals) {
-            if (g && typeof g === 'object') {
-              for (const key of ['studyYear', 'study_year', 'studyYearId', 'studyYearId']) {
-                if (typeof g[key] !== 'undefined' && g[key] !== null) {
-                  const v = parseInt(g[key], 10)
-                  if (!isNaN(v)) return v
-                }
-              }
-            }
-          }
-
-          // Meta tag <meta name="studyYear" content="726">
-          const meta = document.querySelector('meta[name="studyYear"]')
-          if (meta && meta.content) {
-            const v = parseInt(meta.content, 10)
-            if (!isNaN(v)) return v
-          }
-
-          // Data attributes
-          const el = document.querySelector('[data-studyyear], [data-study-year]')
-          if (el) {
-            const v = parseInt(el.getAttribute('data-studyyear') || el.getAttribute('data-study-year'), 10)
-            if (!isNaN(v)) return v
-          }
-
-          // Search in script tags for studyYear-like tokens
-          const scripts = document.querySelectorAll('script')
-          for (const s of scripts) {
-            const txt = s.textContent
-            if (!txt) continue
-            const m = txt.match(/studyYear\W*[:=]\W*(\d{2,6})/i)
-            if (m && m[1]) return parseInt(m[1], 10)
-            const m2 = txt.match(/study_year\W*[:=]\W*(\d{2,6})/i)
-            if (m2 && m2[1]) return parseInt(m2[1], 10)
-          }
-        } catch (err) {
-          // ignore
+        const selectedYearText = this.getSelectedStudyYear()
+        if (!selectedYearText) {
+          Logger.warning('No study year selected in dropdown')
+          return null
         }
+
+        const yearId = await this.getStudyYearIdFromText(selectedYearText)
+        if (yearId) {
+          Logger.debug(`Using study year from dropdown: ${selectedYearText} (ID: ${yearId})`)
+          return yearId
+        }
+
+        Logger.warning(`Could not resolve study year ID for: ${selectedYearText}`)
         return null
       }
 
