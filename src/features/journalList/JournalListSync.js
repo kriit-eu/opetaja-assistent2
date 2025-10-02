@@ -958,28 +958,31 @@ class JournalListSyncFeature extends BaseFeature {
             journalTheme = null
           }
 
-          let teacherName = ''
-          let teacherPersonalCode = ''
+          const teachers = []
 
           if (journalInfo.journalTeachers && journalInfo.journalTeachers.length > 0) {
-            const teacher = journalInfo.journalTeachers[0]
-            teacherName = teacher.nameEt || teacher.fullname || ''
+            for (const teacher of journalInfo.journalTeachers) {
+              const teacherName = teacher.nameEt || teacher.fullname || ''
 
-            if (teacherName) {
-              try {
-                const teacherId = teacher.id
-                if (!teacherId) {
-                  Logger.warning(`No teacher ID available for teacher ${teacherName}`)
-                } else {
-                  // Use the shared global teacher cache function to prevent duplicate requests
-                  const teacherData = await getTeacherPersonalCodeCached(this.api, teacher)
-                  teacherPersonalCode = teacherData.personalCode
+              if (teacherName) {
+                try {
+                  const teacherId = teacher.id
+                  if (!teacherId) {
+                    Logger.warning(`No teacher ID available for teacher ${teacherName}`)
+                    teachers.push({ name: teacherName, personalCode: '' })
+                  } else {
+                    const teacherData = await getTeacherPersonalCodeCached(this.api, teacher)
+                    teachers.push({
+                      name: teacherName,
+                      personalCode: teacherData.personalCode
+                    })
 
-                  // Also store in instance cache for backward compatibility
-                  this.globalTeacherCache[teacherId] = teacherData
+                    this.globalTeacherCache[teacherId] = teacherData
+                  }
+                } catch (error) {
+                  Logger.warning(`Failed to get teacher personal code: ${error.message}`)
+                  teachers.push({ name: teacherName, personalCode: '' })
                 }
-              } catch (error) {
-                Logger.warning(`Failed to get teacher personal code: ${error.message}`)
               }
             }
           }
@@ -998,8 +1001,7 @@ class JournalListSyncFeature extends BaseFeature {
               subjectName: journalInfo.nameEt || name,
               subjectExternalId: id,
               groupName: '',
-              teacherPersonalCode,
-              teacherName,
+              teachers,
               assignments,
               lastLessonDate,
               plannedHours,
@@ -1044,8 +1046,7 @@ class JournalListSyncFeature extends BaseFeature {
               subjectName: journalInfo.nameEt || name,
               subjectExternalId: id,
               groupName,
-              teacherPersonalCode,
-              teacherName,
+              teachers,
               assignments: filteredAssignments,
               lastLessonDate,
               plannedHours,
