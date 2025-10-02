@@ -1361,8 +1361,8 @@ class JournalListSyncFeature extends BaseFeature {
               assignment.results.forEach(result => {
                 const tahvelGrade = result.currentGrade || '(puudub)'
                 const kriitGrade = result.grade || '(puudub)'
-                // Only log if there is a difference and kriitGrade is not null/empty
-                if (kriitGrade !== '(puudub)' && tahvelGrade !== kriitGrade) {
+                // Log when there is a difference (treat kriit null as a valid value)
+                if (tahvelGrade !== kriitGrade) {
                   Logger.debug(
                     `[GRADE DIFF] Subject: ${subject.subjectName}, Assignment: ${assignment.assignmentName}, Student: ${result.studentName || '(nimi puudub)'}, Tahvel: ${tahvelGrade}, Kriit: ${kriitGrade}`
                   )
@@ -2974,13 +2974,8 @@ class JournalListSyncFeature extends BaseFeature {
 
             Logger.debug(`    Grade comparison: Tahvel="${tahvelGrade}" vs Kriit="${kriitGrade}"`)
 
-            // Skip null grades from Kriit entirely - don't sync them
-            if (kriitGrade === null) {
-              Logger.debug(`⏭️ Result ${resultIndex + 1}: Skipping null/empty grade from Kriit - not syncing`)
-              return // Skip this result entirely
-            }
-
-            // Only sync if grades are actually different
+            // Only sync if grades are actually different. Treat kriitGrade === null as a valid
+            // value that indicates the grade should be cleared in Tahvel.
             if (tahvelGrade !== kriitGrade) {
               // Log the types we're getting for debugging
               if (Logger.isDebugMode()) {
@@ -2990,12 +2985,13 @@ class JournalListSyncFeature extends BaseFeature {
               Logger.debug(`Grade type: ${typeof result.grade}, value: "${result.grade}"`)
               Logger.debug(`Will sync: Tahvel="${tahvelGrade}" -> Kriit="${kriitGrade}"`)
 
-              // Convert studentPersonalCode and grade to strings to ensure they're the correct type
+              // Convert studentPersonalCode to string and preserve null grade as null
               const personalCode = result.studentPersonalCode ? String(result.studentPersonalCode) : null
-              const gradeStr = result.grade ? String(result.grade) : null
+              const gradeStr = result.grade === null ? null : result.grade === undefined ? undefined : String(result.grade)
 
-              // Double-check that we have valid data before adding to sync list
-              if (!personalCode || !gradeStr) {
+              // Double-check that we have valid data before adding to sync list. personalCode is required;
+              // gradeStr may be null which means the grade should be cleared in Tahvel.
+              if (!personalCode || gradeStr === undefined) {
                 Logger.warning(`⚠️ Result ${resultIndex + 1}: Skipping sync item due to missing data: personalCode="${personalCode}", grade="${gradeStr}"`)
                 return
               }
@@ -3004,6 +3000,7 @@ class JournalListSyncFeature extends BaseFeature {
                 journalId: subject.subjectExternalId,
                 assignmentId: assignment.assignmentExternalId,
                 studentPersonalCode: personalCode,
+                // grade: null => clear grade in Tahvel; otherwise a string value
                 grade: gradeStr
               }
 
@@ -3203,7 +3200,7 @@ class JournalListSyncFeature extends BaseFeature {
             const studentsToUpdate = []
             for (const s of batch.students) {
               const personalCode = String(s.studentPersonalCode)
-              const targetGrade = String(s.grade)
+              const targetGrade = s.grade === null ? null : String(s.grade)
 
               // Try to find existing student entry in assignment data by cached personal codes
               let studentEntry = null
@@ -3243,16 +3240,21 @@ class JournalListSyncFeature extends BaseFeature {
               if (studentEntry) {
                 // Update existing student's grade
                 finalStudentEntry = { ...studentEntry }
-                finalStudentEntry.grade = {
-                  code: `KUTSEHINDAMINE_${targetGrade}`,
-                  gradingSchemaRowId: null,
-                  value: String(targetGrade),
-                  value2: String(targetGrade),
-                  extraval1: null,
-                  extraval2: null,
-                  nameEt: `Hinne ${targetGrade}`,
-                  nameEn: `Grade ${targetGrade}`,
-                  valid: true
+                if (targetGrade === null) {
+                  // Clearing the grade in Tahvel: set grade to null
+                  finalStudentEntry.grade = null
+                } else {
+                  finalStudentEntry.grade = {
+                    code: `KUTSEHINDAMINE_${targetGrade}`,
+                    gradingSchemaRowId: null,
+                    value: String(targetGrade),
+                    value2: String(targetGrade),
+                    extraval1: null,
+                    extraval2: null,
+                    nameEt: `Hinne ${targetGrade}`,
+                    nameEn: `Grade ${targetGrade}`,
+                    valid: true
+                  }
                 }
                 // ensure removeStudentHistory is present
                 finalStudentEntry.removeStudentHistory = true
@@ -3266,17 +3268,21 @@ class JournalListSyncFeature extends BaseFeature {
                   id: null,
                   journalStudent: Number(info.journalStudentId),
                   absence: null,
-                  grade: {
-                    code: `KUTSEHINDAMINE_${targetGrade}`,
-                    gradingSchemaRowId: null,
-                    value: String(targetGrade),
-                    value2: String(targetGrade),
-                    extraval1: null,
-                    extraval2: null,
-                    nameEt: `Hinne ${targetGrade}`,
-                    nameEn: `Grade ${targetGrade}`,
-                    valid: true
-                  },
+                  // If targetGrade is null, request an empty grade (null) so Tahvel clears it.
+                  grade:
+                    targetGrade === null
+                      ? null
+                      : {
+                          code: `KUTSEHINDAMINE_${targetGrade}`,
+                          gradingSchemaRowId: null,
+                          value: String(targetGrade),
+                          value2: String(targetGrade),
+                          extraval1: null,
+                          extraval2: null,
+                          nameEt: `Hinne ${targetGrade}`,
+                          nameEn: `Grade ${targetGrade}`,
+                          valid: true
+                        },
                   verbalGrade: null,
                   removeStudentHistory: true,
                   addInfo: this.getAddInfoFromExistingStudents(entryData.journalEntryStudents),
