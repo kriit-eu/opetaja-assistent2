@@ -604,11 +604,14 @@ class JournalListSyncFeature extends BaseFeature {
 
   /**
    * Called when required elements (journal links) are found
+   * Note: DOM elements are only used to detect when we're on the journals page.
+   * All journal data is fetched via the Tahvel API for reliability.
    * @param {NodeList} elements - The found elements
    * @param {string} selector - The selector that matched
    */
   onRequiredElementsFound(elements, selector) {
     Logger.debug(`Found ${elements.length} journal links with selector: ${selector}`)
+    Logger.debug('Note: DOM elements are used for activation only, journal data will be fetched via API')
     this.journalLinks = elements
 
     // Log the first 3 links for debugging
@@ -641,102 +644,31 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.updateUI()
 
-      // First try to fetch the journal list from Tahvel REST API as it's more reliable
-      let apiJournalList = null
-      apiJournalList = await this.fetchJournalsFromApi()
+      // Always fetch the journal list from Tahvel REST API (most reliable method)
+      const apiJournalList = await this.fetchJournalsFromApi()
       if (Logger.isDebugMode()) Logger.debug(`Fetched ${apiJournalList ? apiJournalList.length : 0} journals from Tahvel API`)
 
-      // If API provided a non-empty list, use it and skip DOM scanning
-      if (apiJournalList && apiJournalList.length > 0) {
-        Logger.debug('Using API-provided journal list for data collection')
-        // Map API items into a minimal journalLinks-like structure for compatibility
-        // We create placeholder objects that collectJournalData knows how to handle when passed as apiJournalList
-        const mapped = apiJournalList.map(item => ({
-          __apiJournal: true,
-          id: item.id,
-          nameEt: item.nameEt || item.name || item.nameEt,
-          studentCount: item.studentCount || 0,
-          canEdit: item.canEdit
-        }))
-        // Collect data using API-provided journal ids
-        const journalData = await this.collectJournalData(mapped)
-        // Continue with Kriit call and outcome sync
-        if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
-          Logger.warning('No journal data to send to Kriit (API path)')
-          this.isLoading = false
-          this.differences = []
-          this.updateUI()
-          return
-        }
-
-        this.isLoading = true
-        this.error = null
-        this.differences = []
-        await this.proceedWithKriitApiCall(journalData)
-        await this.sendOutcomeEntriesToKriit()
-        return
-      }
-
-      // Always get the latest journal links from the DOM to handle filtering/sorting
-      const journalLinkSelectors = [
-        '#main-content md-table-container td:nth-child(2) > a',
-        '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a',
-        '#main-content a[ng-href^="/#/journal/"][ng-if="row.canEdit"]',
-        'a[href^="/#/journal/"]',
-        'a[data-test*="journal"]',
-        'a[href*="/journal/"]',
-        // New Tahvel markup: visible journal name may be inside a non-anchor element
-        'span.linked-name',
-        // Clickable row/element attributes used by Angular/JS frameworks
-        '[ng-reflect-router-link*="/journal/"]',
-        '[routerlink*="/journal/"]',
-        '[data-href*="/journal/"]',
-        '[onclick*="/journal/"]',
-        '[data-journal-id]',
-        '[role="link"]',
-        '[tabindex][onclick]',
-        '#main-content a',
-        'md-table-container a'
-      ]
-
-      // Debug: scan each selector and log how many matched — helps find the right one on modern pages
-      let totalFound = 0
-      journalLinkSelectors.forEach(sel => {
-        try {
-          const n = document.querySelectorAll(sel).length
-          Logger.debug(`Selector scan: '${sel}' -> ${n} nodes`)
-          totalFound += n
-        } catch (err) {
-          Logger.debug(`Selector scan error for '${sel}': ${err.message}`)
-        }
-      })
-
-      // Re-scan using our selectors. If nothing is found but we already had journalLinks
-      // provided by the observer (for example span.linked-name nodes), keep the
-      // previously-discovered NodeList instead of overwriting it with an empty list.
-      const scannedNodes = document.querySelectorAll(journalLinkSelectors.join(', '))
-      Logger.debug(`Re-scanned for journal links, found ${scannedNodes.length} (total scanned nodes: ${totalFound})`)
-
-      if (scannedNodes.length === 0 && this.journalLinks && this.journalLinks.length > 0) {
-        Logger.debug('No scanned nodes found — keeping previously-observed journalLinks')
-        // keep this.journalLinks as-is (observer provided them)
-      } else {
-        this.journalLinks = scannedNodes
-      }
-
-      // Verify that we have journal links
-      if (!this.journalLinks || this.journalLinks.length === 0) {
-        Logger.warning('No journal links available for data collection')
+      if (!apiJournalList || apiJournalList.length === 0) {
+        Logger.warning('No journals returned from API')
         this.isLoading = false
-        this.error = 'No journal links found on the page. Please make sure you are on the journal list page.'
+        this.differences = []
+        this.error = 'Could not fetch journal list from Tahvel API'
         this.updateUI()
         return
       }
 
-      // Collect data from Tahvel (DOM path)
-      const journalData = await this.collectJournalData()
-      // Store Tahvel assignments for due date diff feature
-      if (!window.journalListSync) window.journalListSync = {}
+      Logger.debug('Using API-provided journal list for data collection')
+      // Map API items into a minimal structure for collectJournalData
+      const mapped = apiJournalList.map(item => ({
+        __apiJournal: true,
+        id: item.id,
+        nameEt: item.nameEt || item.name || item.nameEt,
+        studentCount: item.studentCount || 0,
+        canEdit: item.canEdit
+      }))
+
+      // Collect data using API-provided journal ids
+      const journalData = await this.collectJournalData(mapped)
 
       // Validate data before sending
       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
@@ -751,8 +683,6 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.error = null
       this.differences = []
-
-      // Make the API call directly
       await this.proceedWithKriitApiCall(journalData)
 
       // Automatically sync outcome entries (SISSEKANNE_O) to Kriit
@@ -898,12 +828,14 @@ class JournalListSyncFeature extends BaseFeature {
           let firstLessonDateIsApproximate = false
           let nextLessonDate = null
           let lastLessonDate = null
+          let lastLessonDateIsApproximate = false
           try {
             const lessonDates = await this.getLessonDates(id, journalInfo)
             firstLessonDate = lessonDates.firstLessonDate
             firstLessonDateIsApproximate = lessonDates.firstLessonDateIsApproximate
             nextLessonDate = lessonDates.nextLessonDate
             lastLessonDate = lessonDates.lastLessonDate
+            lastLessonDateIsApproximate = lessonDates.lastLessonDateIsApproximate
           } catch (error) {
             Logger.warning(`Could not get lesson dates for journal ${id}:`, error)
           }
@@ -1061,6 +993,7 @@ class JournalListSyncFeature extends BaseFeature {
               firstLessonDateIsApproximate,
               nextLessonDate,
               lastLessonDate,
+              lastLessonDateIsApproximate,
               plannedHours,
               journalTheme
             })
@@ -1548,8 +1481,22 @@ class JournalListSyncFeature extends BaseFeature {
       this.isLoading = true
       this.updateUI()
 
-      // Use provided data or collect fresh data
-      const journalData = providedJournalData || (await this.collectJournalData())
+      // Use provided data or fetch fresh data from API
+      let journalData = providedJournalData
+
+      if (!journalData) {
+        const apiJournalList = await this.fetchJournalsFromApi()
+        if (apiJournalList && apiJournalList.length > 0) {
+          const mapped = apiJournalList.map(item => ({
+            __apiJournal: true,
+            id: item.id,
+            nameEt: item.nameEt || item.name || item.nameEt,
+            studentCount: item.studentCount || 0,
+            canEdit: item.canEdit
+          }))
+          journalData = await this.collectJournalData(mapped)
+        }
+      }
 
       // Check if we have valid data
       if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
@@ -1888,7 +1835,8 @@ class JournalListSyncFeature extends BaseFeature {
         firstLessonDate: null,
         firstLessonDateIsApproximate: false,
         nextLessonDate: null,
-        lastLessonDate: null
+        lastLessonDate: null,
+        lastLessonDateIsApproximate: false
       }
 
       if (!journalInfo) {
@@ -1930,12 +1878,19 @@ class JournalListSyncFeature extends BaseFeature {
         .sort((a, b) => new Date(a.date) - new Date(b.date))
 
       if (journalTimetable.length === 0) {
-        // No timetable entries - try fallback to lesson plan (plankoormused)
+        // No timetable entries - try fallback to lesson plan (plankoormused) for both first and last dates
         const firstLessonFromPlan = await this.getFirstLessonFromPlan(journalId, teacherId)
         if (firstLessonFromPlan) {
           result.firstLessonDate = firstLessonFromPlan
           result.firstLessonDateIsApproximate = true
         }
+
+        const lastLessonFromPlan = await this.getLastLessonFromPlan(journalId, teacherId)
+        if (lastLessonFromPlan) {
+          result.lastLessonDate = lastLessonFromPlan
+          result.lastLessonDateIsApproximate = true
+        }
+
         return result
       }
 
@@ -1956,9 +1911,26 @@ class JournalListSyncFeature extends BaseFeature {
       const plannedMahtALessons = mahtACapacity?.plannedHours || 0
       const timetableLessons = journalTimetable.length
 
+      Logger.debug(`[getLessonDates] Journal ${journalId}: plannedMahtALessons=${plannedMahtALessons}, timetableLessons=${timetableLessons}`)
+
       if (plannedMahtALessons === timetableLessons) {
-        // Timetable matches MAHT_a planned lessons - use last timetable entry
+        // Timetable matches MAHT_a planned lessons - use last timetable entry (exact)
         result.lastLessonDate = journalTimetable[journalTimetable.length - 1]?.date || null
+        result.lastLessonDateIsApproximate = false
+        Logger.debug(`[getLessonDates] Journal ${journalId}: Using exact last lesson from timetable: ${result.lastLessonDate}`)
+      } else if (timetableLessons < plannedMahtALessons) {
+        // Timetable doesn't have all entries - get last lesson date from lesson plan (approximate)
+        Logger.debug(`[getLessonDates] Journal ${journalId}: Timetable incomplete, fetching from lesson plan`)
+        const lastLessonFromPlan = await this.getLastLessonFromPlan(journalId, teacherId)
+        if (lastLessonFromPlan) {
+          result.lastLessonDate = lastLessonFromPlan
+          result.lastLessonDateIsApproximate = true
+          Logger.debug(`[getLessonDates] Journal ${journalId}: Using approximate last lesson from plan: ${result.lastLessonDate}`)
+        } else {
+          Logger.debug(`[getLessonDates] Journal ${journalId}: Could not get last lesson from plan`)
+        }
+      } else {
+        Logger.debug(`[getLessonDates] Journal ${journalId}: Timetable has MORE lessons than planned (${timetableLessons} > ${plannedMahtALessons})`)
       }
       // Otherwise leave lastLessonDate as null (don't send it)
 
@@ -1969,7 +1941,8 @@ class JournalListSyncFeature extends BaseFeature {
         firstLessonDate: null,
         firstLessonDateIsApproximate: false,
         nextLessonDate: null,
-        lastLessonDate: null
+        lastLessonDate: null,
+        lastLessonDateIsApproximate: false
       }
     }
   }
@@ -2042,6 +2015,98 @@ class JournalListSyncFeature extends BaseFeature {
       return null
     } catch (error) {
       Logger.debug(`Could not get first lesson from plan for journal ${journalId}:`, error.message)
+      return null
+    }
+  }
+
+  /**
+   * Get last lesson date from lesson plan (plankoormused) when timetable doesn't have all entries
+   * @param {number} journalId - Journal ID
+   * @param {number} teacherId - Teacher ID
+   * @returns {Promise<string|null>} Last lesson date in ISO format or null
+   */
+  async getLastLessonFromPlan(journalId, teacherId) {
+    try {
+      // Get study year ID
+      const now = new Date()
+      const currentYear = now.getFullYear()
+      const currentMonth = now.getMonth()
+
+      // Determine study year (starts in September)
+      const studyYearStart = currentMonth < 8 ? currentYear - 1 : currentYear
+
+      // Study year ID appears to be based on pattern from the data: 726 for 2025-26
+      // The pattern seems to be: year - 1299 (e.g., 2025 - 1299 = 726)
+      const studyYearId = studyYearStart - 1299
+
+      const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
+
+      Logger.debug(`[getLastLessonFromPlan] Fetching lesson plan for journal ${journalId}, teacher ${teacherId}, studyYear ${studyYearId}`)
+
+      const planData = await this.api.tahvel.get(
+        endpoint,
+        {},
+        {
+          cache: true,
+          cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
+        }
+      )
+
+      if (!planData?.journals || !planData?.studyPeriods) {
+        Logger.debug(`[getLastLessonFromPlan] No plan data found for journal ${journalId}`)
+        return null
+      }
+
+      // Find the journal in the plan
+      const journalPlan = planData.journals.find(j => j.id === journalId)
+      if (!journalPlan?.hours?.MAHT_a) {
+        Logger.debug(`[getLastLessonFromPlan] No MAHT_a hours found for journal ${journalId}`)
+        return null
+      }
+
+      // Find the last week with MAHT_a hours (non-null value)
+      const mahtAWeeks = journalPlan.hours.MAHT_a
+      let lastWeekIndex = -1
+
+      for (let i = mahtAWeeks.length - 1; i >= 0; i--) {
+        if (mahtAWeeks[i] !== null) {
+          lastWeekIndex = i
+          break
+        }
+      }
+
+      if (lastWeekIndex === -1) {
+        Logger.debug(`[getLastLessonFromPlan] No non-null MAHT_a hours found for journal ${journalId}`)
+        return null
+      }
+
+      Logger.debug(`[getLastLessonFromPlan] Found last week index: ${lastWeekIndex}, hours: ${mahtAWeeks[lastWeekIndex]}`)
+
+      // Get the week number for that index
+      const weekNr = planData.weekNrs[lastWeekIndex]
+
+      if (!weekNr) {
+        Logger.debug(`[getLastLessonFromPlan] No week number found at index ${lastWeekIndex}`)
+        return null
+      }
+
+      Logger.debug(`[getLastLessonFromPlan] Week number: ${weekNr}`)
+
+      // Find the study period that contains this week
+      for (const period of planData.studyPeriods) {
+        const weekPosition = period.weekNrs.indexOf(weekNr)
+        if (weekPosition !== -1 && period.weekBeginningDates?.[weekPosition]) {
+          // Return the Monday of that week
+          const lastLessonDate = period.weekBeginningDates[weekPosition]
+          Logger.debug(`[getLastLessonFromPlan] Found last lesson date: ${lastLessonDate} in period ${period.nameEt}`)
+          return lastLessonDate
+        }
+      }
+
+      Logger.debug(`[getLastLessonFromPlan] Week ${weekNr} not found in any study period`)
+      return null
+    } catch (error) {
+      Logger.debug(`Could not get last lesson from plan for journal ${journalId}:`, error.message)
       return null
     }
   }
