@@ -893,13 +893,19 @@ class JournalListSyncFeature extends BaseFeature {
           }
           const assignments = this.extractAssignmentsFromEntries(mergedEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
 
-          // Get last lesson date from timetable
+          // Get comprehensive lesson dates (first, next, last)
+          let firstLessonDate = null
+          let firstLessonDateIsApproximate = false
+          let nextLessonDate = null
           let lastLessonDate = null
           try {
-            const lastLessonData = await this.getLastLessonDate(id, journalInfo)
-            lastLessonDate = lastLessonData
+            const lessonDates = await this.getLessonDates(id, journalInfo)
+            firstLessonDate = lessonDates.firstLessonDate
+            firstLessonDateIsApproximate = lessonDates.firstLessonDateIsApproximate
+            nextLessonDate = lessonDates.nextLessonDate
+            lastLessonDate = lessonDates.lastLessonDate
           } catch (error) {
-            Logger.warning(`Could not get last lesson date for journal ${id}:`, error)
+            Logger.warning(`Could not get lesson dates for journal ${id}:`, error)
           }
 
           // Extract planned hours for MAHT_i (independent work) capacity
@@ -1003,6 +1009,9 @@ class JournalListSyncFeature extends BaseFeature {
               groupName: '',
               teachers,
               assignments,
+              firstLessonDate,
+              firstLessonDateIsApproximate,
+              nextLessonDate,
               lastLessonDate,
               plannedHours,
               journalTheme
@@ -1048,6 +1057,9 @@ class JournalListSyncFeature extends BaseFeature {
               groupName,
               teachers,
               assignments: filteredAssignments,
+              firstLessonDate,
+              firstLessonDateIsApproximate,
+              nextLessonDate,
               lastLessonDate,
               plannedHours,
               journalTheme
@@ -1865,23 +1877,30 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
-   * Get last lesson date from timetable
+   * Get comprehensive lesson dates (first, next, last) from timetable and õppetöögraafik
    * @param {number} journalId - Journal ID
    * @param {Object} journalInfo - Journal info object (already fetched)
-   * @returns {Promise<string|null>} Last lesson date in ISO format or null if not found
+   * @returns {Promise<Object>} Object with firstLessonDate, nextLessonDate, lastLessonDate (all ISO strings or null)
    */
-  async getLastLessonDate(journalId, journalInfo) {
+  async getLessonDates(journalId, journalInfo) {
     try {
-      if (!journalInfo) {
-        return null
+      const result = {
+        firstLessonDate: null,
+        firstLessonDateIsApproximate: false,
+        nextLessonDate: null,
+        lastLessonDate: null
       }
 
-      const schoolId = journalInfo.school?.id || 9 // Fallback to school ID 9
+      if (!journalInfo) {
+        return result
+      }
+
+      const schoolId = journalInfo.school?.id || 9
       const teacherId = journalInfo.journalTeachers?.[0]?.id
 
       if (!teacherId) {
         Logger.debug(`No teacher ID available for journal ${journalId}`)
-        return null
+        return result
       }
 
       // Get study year dates
@@ -1897,28 +1916,132 @@ class JournalListSyncFeature extends BaseFeature {
         {},
         {
           cache: true,
-          cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours cache
+          cacheExpiration: 24 * 60 * 60 * 1000
         }
       )
 
       if (!timetableData?.timetableEvents) {
-        return null
+        return result
       }
 
-      // Filter timetable events for this specific journal
-      const journalTimetable = timetableData.timetableEvents.filter(event => event.journalId == journalId)
+      // Filter and sort timetable events for this journal
+      const journalTimetable = timetableData.timetableEvents
+        .filter(event => event.journalId == journalId)
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
 
       if (journalTimetable.length === 0) {
+        // No timetable entries - try fallback to lesson plan (plankoormused)
+        const firstLessonFromPlan = await this.getFirstLessonFromPlan(journalId, teacherId)
+        if (firstLessonFromPlan) {
+          result.firstLessonDate = firstLessonFromPlan
+          result.firstLessonDateIsApproximate = true
+        }
+        return result
+      }
+
+      // First lesson date (exact from timetable)
+      result.firstLessonDate = journalTimetable[0]?.date || null
+      result.firstLessonDateIsApproximate = false
+
+      // Next lesson date (first future date after today, excluding today)
+      const nowDate = new Date()
+      nowDate.setHours(0, 0, 0, 0)
+      const tomorrowDate = new Date(nowDate)
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+      const futureLessons = journalTimetable.filter(event => new Date(event.date) >= tomorrowDate)
+      result.nextLessonDate = futureLessons[0]?.date || null
+
+      // Last lesson date - only send if timetable matches MAHT_a (auditory/contact lessons) capacity
+      const mahtACapacity = journalInfo.lessonHours?.capacityHours?.find(c => c.capacity === 'MAHT_a')
+      const plannedMahtALessons = mahtACapacity?.plannedHours || 0
+      const timetableLessons = journalTimetable.length
+
+      if (plannedMahtALessons === timetableLessons) {
+        // Timetable matches MAHT_a planned lessons - use last timetable entry
+        result.lastLessonDate = journalTimetable[journalTimetable.length - 1]?.date || null
+      }
+      // Otherwise leave lastLessonDate as null (don't send it)
+
+      return result
+    } catch (error) {
+      Logger.warning(`Error getting lesson dates for journal ${journalId}:`, error)
+      return {
+        firstLessonDate: null,
+        firstLessonDateIsApproximate: false,
+        nextLessonDate: null,
+        lastLessonDate: null
+      }
+    }
+  }
+
+  /**
+   * Get first lesson date from lesson plan (plankoormused) when timetable is empty
+   * @param {number} journalId - Journal ID
+   * @param {number} teacherId - Teacher ID
+   * @returns {Promise<string|null>} First lesson date in ISO format or null
+   */
+  async getFirstLessonFromPlan(journalId, teacherId) {
+    try {
+      // Get study year ID
+      const now = new Date()
+      const currentYear = now.getFullYear()
+      const currentMonth = now.getMonth()
+
+      // Determine study year (starts in September)
+      const studyYearStart = currentMonth < 8 ? currentYear - 1 : currentYear
+
+      // Study year ID appears to be based on pattern from the data: 726 for 2025-26
+      // The pattern seems to be: year - 1299 (e.g., 2025 - 1299 = 726)
+      const studyYearId = studyYearStart - 1299
+
+      const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
+
+      const planData = await this.api.tahvel.get(
+        endpoint,
+        {},
+        {
+          cache: true,
+          cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
+        }
+      )
+
+      if (!planData?.journals || !planData?.studyPeriods) {
         return null
       }
 
-      // Sort by date and get the last lesson
-      const sortedTimetable = journalTimetable.slice().sort((a, b) => new Date(a.date) - new Date(b.date))
-      const lastLessonDate = sortedTimetable[sortedTimetable.length - 1]?.date
+      // Find the journal in the plan
+      const journalPlan = planData.journals.find(j => j.id === journalId)
+      if (!journalPlan?.hours?.MAHT_a) {
+        return null
+      }
 
-      return lastLessonDate || null
+      // Find the first week with MAHT_a hours (non-null value)
+      const mahtAWeeks = journalPlan.hours.MAHT_a
+      const firstWeekIndex = mahtAWeeks.findIndex(hours => hours !== null)
+
+      if (firstWeekIndex === -1) {
+        return null
+      }
+
+      // Get the week number for that index
+      const weekNr = planData.weekNrs[firstWeekIndex]
+
+      if (!weekNr) {
+        return null
+      }
+
+      // Find the study period that contains this week
+      for (const period of planData.studyPeriods) {
+        const weekPosition = period.weekNrs.indexOf(weekNr)
+        if (weekPosition !== -1 && period.weekBeginningDates?.[weekPosition]) {
+          // Return the Monday of that week
+          return period.weekBeginningDates[weekPosition]
+        }
+      }
+
+      return null
     } catch (error) {
-      Logger.warning(`Error getting last lesson date for journal ${journalId}:`, error)
+      Logger.debug(`Could not get first lesson from plan for journal ${journalId}:`, error.message)
       return null
     }
   }
