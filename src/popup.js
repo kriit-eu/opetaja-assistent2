@@ -60,6 +60,8 @@ function initPopup() {
   const showFutureSubjectsButton = document.getElementById('show-future-subjects')
   const subjectsContainer = document.getElementById('subjects-container')
   const comparisonDateInput = document.getElementById('comparison-date')
+  const benchmarkSection = document.getElementById('benchmark-section')
+  const runBenchmarkButton = document.getElementById('run-benchmark')
 
   // Check if all elements are found
   if (!debugModeCheckbox) throw new Error('Debug mode checkbox not found')
@@ -75,6 +77,8 @@ function initPopup() {
   if (!showFutureSubjectsButton) throw new Error('Show future subjects button not found')
   if (!subjectsContainer) throw new Error('Subjects container not found')
   if (!comparisonDateInput) throw new Error('Comparison date input not found')
+  if (!benchmarkSection) throw new Error('Benchmark section not found')
+  if (!runBenchmarkButton) throw new Error('Run benchmark button not found')
 
   // Set version from manifest
   try {
@@ -92,7 +96,9 @@ function initPopup() {
 
   // Initialize debug mode checkbox
   chrome.storage.sync.get([DEBUG_MODE_KEY], function(result) {
-    debugModeCheckbox.checked = result[DEBUG_MODE_KEY] === true
+    const isDebug = result[DEBUG_MODE_KEY] === true
+    debugModeCheckbox.checked = isDebug
+    benchmarkSection.style.display = isDebug ? 'block' : 'none'
   })
 
   // Initialize Kriit API settings
@@ -150,7 +156,7 @@ function initPopup() {
   // Add event listeners
   debugModeCheckbox.addEventListener('change', function() {
     try {
-      toggleDebugMode(debugModeCheckbox.checked)
+      toggleDebugMode(debugModeCheckbox.checked, benchmarkSection)
     } catch (error) {
       console.error('Error toggling debug mode:', error)
       showError('Failed to toggle debug mode: ' + error.message)
@@ -213,6 +219,16 @@ function initPopup() {
     }
   })
 
+  // Add event listener for benchmark
+  runBenchmarkButton.addEventListener('click', function() {
+    try {
+      runBenchmark()
+    } catch (error) {
+      console.error('Error running benchmark:', error)
+      showError('Failed to run benchmark: ' + error.message)
+    }
+  })
+
   // Load cache statistics
   loadCacheStatistics()
 
@@ -222,10 +238,16 @@ function initPopup() {
 /**
  * Toggle debug mode
  * @param {boolean} enabled - Whether debug mode should be enabled
+ * @param {HTMLElement} benchmarkSection - Benchmark section to show/hide
  */
-function toggleDebugMode(enabled) {
+function toggleDebugMode(enabled, benchmarkSection) {
   chrome.storage.sync.set({ [DEBUG_MODE_KEY]: enabled }, function() {
     console.log('Debug mode set to:', enabled)
+
+    // Show/hide benchmark section
+    if (benchmarkSection) {
+      benchmarkSection.style.display = enabled ? 'block' : 'none'
+    }
 
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
@@ -612,6 +634,35 @@ function displaySubjects(subjects, comparisonDate) {
   }
 
   subjectsContent.innerHTML = html
+}
+
+/**
+ * Run performance benchmark
+ */
+function runBenchmark() {
+  console.log('Running performance benchmark...')
+
+  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+    if (tabs[0]) {
+      chrome.tabs
+        .sendMessage(tabs[0].id, {
+          action: 'runBenchmark'
+        })
+        .then(response => {
+          if (response && response.success) {
+            console.log('Benchmark started. Check the page console for results.')
+            alert('Jõudlustest käivitatud! Vaata tulemusi lehe konsoolis (F12).')
+          } else {
+            console.error('Benchmark failed:', response?.error)
+            showError('Benchmark failed: ' + (response?.error || 'Unknown error'))
+          }
+        })
+        .catch(error => {
+          console.error('Error sending benchmark message:', error)
+          showError('Error running benchmark: ' + error.message)
+        })
+    }
+  })
 }
 
 /**

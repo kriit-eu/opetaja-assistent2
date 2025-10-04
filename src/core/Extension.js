@@ -29,6 +29,9 @@ const tahvelExtension = {
       } else {
         Logger.error('No features were loaded')
       }
+
+      // Make extension globally accessible for debugging and feature access
+      window.OA2_Extension = this
     } catch (error) {
       Logger.error('Failed to load features:', error)
     }

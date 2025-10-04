@@ -12,6 +12,7 @@ effort and ensures data consistency across systems.
 ### Features:
 
 #### Implemented:
+
 - **Journal List Sync**: Comprehensive synchronization between Tahvel and Kriit systems
   - Compares grades between Tahvel and Kriit and highlights discrepancies
   - Syncs assignments, students, and their personal codes
@@ -32,6 +33,7 @@ effort and ensures data consistency across systems.
   - Integrates with the UI to allow fixing issues directly from the discrepancies table.
 
 #### Planned (TODO):
+
 - **Single Journal Features**: Features for individual journal pages
   - Missing Lessons Overview: Identify lessons in timetable but missing from journal
   - Assignment Sync for Single Journal: Sync assignments with external systems
@@ -39,7 +41,7 @@ effort and ensures data consistency across systems.
   - Journal Enhancements: Improve journal interface with better visualization
 - **Enhanced Journal List Indicators**: Additional visual indicators for various issues
 
-*Note: Additional features are under active development.*
+_Note: Additional features are under active development._
 
 ### Architecture:
 
@@ -92,37 +94,38 @@ src/
 ### Development Workflow
 
 1. Start the development server:
+
    ```bash
    bun start
    ```
 
    This single command:
-    - Installs dependencies
-    - Automatically formats and lints code
-    - Builds the extension
-    - Starts the file watcher
+   - Installs dependencies
+   - Automatically formats and lints code
+   - Builds the extension
+   - Starts the file watcher
 
 2. Load the extension in your browser:
-    - Navigate to `chrome://extensions/` (or equivalent for your browser)
-    - Enable "Developer mode"
-    - Click "Load unpacked" and select the `dist` directory
+   - Navigate to `chrome://extensions/` (or equivalent for your browser)
+   - Enable "Developer mode"
+   - Click "Load unpacked" and select the `dist` directory
 
 3. Set up Extensions Reloader:
-    - Install
-      the [Extensions Reloader](https://chrome.google.com/webstore/detail/extensions-reloader/fimgfedafeadlieiabdeeaodndnlbhid)
-      Chrome extension
-    - Configure it to reload the page automatically (via its options)
+   - Install
+     the [Extensions Reloader](https://chrome.google.com/webstore/detail/extensions-reloader/fimgfedafeadlieiabdeeaodndnlbhid)
+     Chrome extension
+   - Configure it to reload the page automatically (via its options)
 
 4. Make changes to the code:
-    - Edit files in the `src` directory and save the file
-    - The dev server will automatically rebuild when files change
-    - Click the Extensions Reloader's icon or use its keyboard shortcut (Alt+R or Opt+Shift+R) to reload the extension
-      and refresh the page
+   - Edit files in the `src` directory and save the file
+   - The dev server will automatically rebuild when files change
+   - Click the Extensions Reloader's icon or use its keyboard shortcut (Alt+R or Opt+Shift+R) to reload the extension
+     and refresh the page
 
 5. View debug output:
-    - Open browser's Developer Tools (F12 or Cmd+Option+I)
-    - Look for extension logs in the Console tab
-    - Filter console by "✨" to see only extension logs
+   - Open browser's Developer Tools (F12 or Cmd+Option+I)
+   - Look for extension logs in the Console tab
+   - Filter console by "✨" to see only extension logs
 
 ### Code Style and Linting
 
@@ -159,8 +162,27 @@ This will:
 3. Copy static assets and manifest.json
 4. Output production-ready files to the `dist` directory
 5. Open your browser and navigate to the extensions page
-    - Chrome: `chrome://extensions/`
-    - Edge: `edge://extensions/`
-    - Other Chromium browsers: Check your browser's extension management page
+   - Chrome: `chrome://extensions/`
+   - Edge: `edge://extensions/`
+   - Other Chromium browsers: Check your browser's extension management page
 6. Enable "Developer mode"
 7. Click "Load unpacked" and select the `dist` directory
+
+## Performance Analysis
+
+For algorithmic complexity analysis and optimization recommendations, see:
+
+- **[Big-O Analysis](doc/big-o-analysis.md)** - Comprehensive complexity analysis of core algorithms
+
+The analysis covers:
+
+- Time and space complexity of all major operations
+- Edge cases and worst-case scenarios
+- Optimization recommendations with impact estimates
+- Performance comparison of current vs optimized implementations
+
+Key findings:
+
+- Most operations are already optimized (O(1) cache lookups, request deduplication)
+- Identified 10x-100x performance improvements through Map-based lookups and parallelization
+- Detailed recommendations for high-priority optimizations

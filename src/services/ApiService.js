@@ -4,6 +4,7 @@
 
 import Logger from './Logger.js'
 import { cacheService } from './CacheService.js'
+import { apiMonitor } from './ApiPerformanceMonitor.js'
 
 /**
  * ApiService class for making API requests
@@ -138,6 +139,10 @@ class ApiService {
       cacheExpiration = cacheService.EXPIRATION.MEDIUM
     } = config
 
+    // Define these outside try block so they're accessible in catch
+    let urlString = ''
+    let startTime = performance.now()
+
     try {
       // Resolve the full URL
       let fullUrl
@@ -155,7 +160,7 @@ class ApiService {
         })
       }
 
-      const urlString = url.toString()
+      urlString = url.toString()
 
       // Set up request options
       const requestOptions = {
@@ -249,24 +254,38 @@ class ApiService {
       // Handle caching for GET requests
       if (method === 'GET' && cache) {
         const cacheKey = `${method}_${urlString}`
+        startTime = performance.now()
 
-        return cacheService.getOrFetch(
-          cacheKey,
-          async() => {
-            const response = await ApiService._throttledFetch(urlString, requestOptions)
+        return cacheService
+          .getOrFetch(
+            cacheKey,
+            async() => {
+              const fetchStart = performance.now()
+              const response = await ApiService._throttledFetch(urlString, requestOptions)
 
-            if (!response.ok) {
-              throw new Error(`API Error: ${response.status} ${response.statusText}`)
-            }
+              if (!response.ok) {
+                const duration = performance.now() - fetchStart
+                apiMonitor.recordCall(method, urlString, duration, false, new Error(`${response.status} ${response.statusText}`))
+                throw new Error(`API Error: ${response.status} ${response.statusText}`)
+              }
 
-            return await response.json()
-          },
-          cacheExpiration
-        )
+              const result = await response.json()
+              const duration = performance.now() - fetchStart
+              apiMonitor.recordCall(method, urlString, duration, false)
+              return result
+            },
+            cacheExpiration
+          )
+          .then(result => {
+            const duration = performance.now() - startTime
+            apiMonitor.recordCall(method, urlString, duration, true)
+            return result
+          })
       }
 
       // For GET requests, try to dedupe identical in-flight requests so multiple
       // callers don't trigger duplicate network traffic. We key by method+url.
+      startTime = performance.now()
       let response
       if (method === 'GET') {
         const reqKey = `${method}_${urlString}`
@@ -296,6 +315,7 @@ class ApiService {
       }
 
       if (!response.ok) {
+        const duration = performance.now() - startTime
         // Try to get error text if available
         const errorText = await response.text().catch(() => 'No response text')
 
@@ -319,8 +339,10 @@ class ApiService {
           }
         }
 
+        const errorMsg = `API Error: ${response.status} ${errorDetails ? `(${errorDetails})` : response.statusText}`
+        apiMonitor.recordCall(method, urlString, duration, false, new Error(errorMsg))
         // noinspection ExceptionCaughtLocallyJS
-        throw new Error(`API Error: ${response.status} ${errorDetails ? `(${errorDetails})` : response.statusText}`)
+        throw new Error(errorMsg)
       }
 
       // First, get the response as text
@@ -334,12 +356,19 @@ class ApiService {
 
       // Try to parse as JSON, fall back to text if that fails
       try {
-        return JSON.parse(responseText)
+        const result = JSON.parse(responseText)
+        const duration = performance.now() - startTime
+        apiMonitor.recordCall(method, urlString, duration, false)
+        return result
       } catch (error) {
+        const duration = performance.now() - startTime
+        apiMonitor.recordCall(method, urlString, duration, false)
         if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Response is not JSON, returning as text`)
         return responseText || { success: true, status: response.status }
       }
     } catch (error) {
+      const duration = performance.now() - startTime
+      apiMonitor.recordCall(method, urlString, duration, false, error)
       Logger.error(`[${this.name}] ${method} Error:`, error)
       throw error
     }

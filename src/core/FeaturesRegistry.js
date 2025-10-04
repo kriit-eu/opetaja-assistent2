@@ -100,6 +100,16 @@ export async function loadFeatures() {
     Logger.error('Error loading FinalGradesManagementFeature:', error)
   }
 
+  // Load performance tools feature (always loaded, but button only shows in debug mode)
+  try {
+    const PerformanceToolsFeature = (await import('../features/performance/PerformanceToolsFeature.js')).default
+    const performanceToolsFeature = new PerformanceToolsFeature()
+    allAvailableFeatures.singleJournal.push(performanceToolsFeature)
+    Logger.debug('Feature "PerformanceToolsFeature" created')
+  } catch (error) {
+    Logger.error('Error loading PerformanceToolsFeature:', error)
+  }
+
   // Create a copy of the features structure for returning
   const featureGroups = {
     journalList: [...allAvailableFeatures.journalList],
@@ -115,5 +125,6 @@ export async function loadFeatures() {
   }
 
   Logger.info(`Loaded ${allFeatures.length} feature(s)`)
+
   return allFeatures
 }

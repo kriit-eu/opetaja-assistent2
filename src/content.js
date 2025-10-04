@@ -23,6 +23,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       Logger.info('Debug mode disabled from popup')
     }
     sendResponse({ success: true })
+  } else if (message.action === 'runBenchmark') {
+    if (Logger.isDebugMode()) Logger.debug('Received runBenchmark request')
+    runPerformanceBenchmark()
+      .then(results => {
+        if (Logger.isDebugMode()) Logger.debug('Benchmark completed:', results)
+        sendResponse({ success: true, results })
+      })
+      .catch(error => {
+        Logger.error('Benchmark error:', error)
+        sendResponse({ success: false, error: error.message })
+      })
+    return true // Keep channel open for async response
   } else if (message.action === 'cacheClearedFromPopup') {
     Logger.info('Cache cleared from popup')
     // Refresh the page to reload data
@@ -48,6 +60,97 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return true // Keep the message channel open for async responses
 })
+
+/**
+ * Format benchmark results in a human-readable way
+ * @param {Object} results - The benchmark results
+ * @returns {string} Formatted summary
+ */
+function formatBenchmarkResults(results) {
+  const { benchmarks, iterations } = results
+  const { basic, memory } = benchmarks
+
+  const formatBytes = bytes => {
+    const mb = (bytes / 1024 / 1024).toFixed(2)
+    return `${mb} MB`
+  }
+
+  const formatMs = ms => `${ms.toFixed(3)} ms`
+
+  let output = '\n📊 PERFORMANCE BENCHMARK RESULTS\n'
+  output += '━'.repeat(60) + '\n\n'
+
+  output += `📝 What We're Testing:\n`
+  output += `   This benchmark measures extension performance across:\n`
+  output += `   • DOM query operations (finding elements)\n`
+  output += `   • Data processing (array operations, calculations)\n`
+  output += `   • Object creation and manipulation\n`
+  output += `   • JSON serialization/deserialization\n`
+  output += `   • Async task execution\n\n`
+
+  // Test types breakdown
+  if (basic.testTypes) {
+    output += `🔬 Test Types: ${basic.testTypes.join(', ')}\n\n`
+  }
+
+  // Performance metrics
+  output += `⚡ Performance (${iterations} iterations):\n`
+  output += `   Average time per operation: ${formatMs(basic.avgDuration)}\n`
+  output += `   Total execution time: ${formatMs(basic.totalDuration)}\n`
+  output += `   Fastest operation: ${formatMs(Math.min(...basic.results.map(r => r.duration)))}\n`
+  output += `   Slowest operation: ${formatMs(Math.max(...basic.results.map(r => r.duration)))}\n`
+  output += `   Operations per second: ${(1000 / basic.avgDuration).toFixed(0)}\n\n`
+
+  // Memory metrics
+  output += `💾 Memory Usage:\n`
+  output += `   Before tests: ${formatBytes(memory.before.used)} / ${formatBytes(memory.before.total)}\n`
+  output += `   After tests:  ${formatBytes(memory.after.used)} / ${formatBytes(memory.after.total)}\n`
+  output += `   Memory delta: ${formatBytes(Math.abs(memory.delta))} ${memory.delta > 0 ? '📈 increased' : memory.delta < 0 ? '📉 decreased' : '➡️ unchanged'}\n`
+  output += `   Heap limit:   ${formatBytes(memory.before.limit)}\n\n`
+
+  output += '━'.repeat(60)
+
+  return output
+}
+
+/**
+ * Run performance benchmark
+ * @returns {Promise<Object>} Benchmark results
+ */
+async function runPerformanceBenchmark() {
+  try {
+    // Get the performance feature from the extension
+    const extension = window.OA2_Extension
+    if (!extension || !extension.activeFeatures) {
+      throw new Error('Extension not initialized. Please reload the page.')
+    }
+
+    const perfFeature = extension.activeFeatures.find(f => f.name === 'PerformanceTools')
+    if (!perfFeature) {
+      throw new Error('Performance tools feature not found.')
+    }
+
+    // Run the benchmark through the feature
+    Logger.info('🚀 Starting performance benchmark suite...')
+    const results = await perfFeature.runBenchmark(10000)
+
+    if (results) {
+      // Format human-readable summary
+      const summary = formatBenchmarkResults(results)
+      Logger.info('✅ Benchmark complete:')
+      // eslint-disable-next-line no-console
+      console.log(summary)
+      // Also log raw JSON for those who need it
+      // eslint-disable-next-line no-console
+      console.log('\nRaw JSON:', JSON.stringify(results, null, 2))
+    }
+
+    return results
+  } catch (error) {
+    Logger.error('Benchmark failed:', error)
+    throw error
+  }
+}
 
 /**
  * Handle getting future subjects from timetable
