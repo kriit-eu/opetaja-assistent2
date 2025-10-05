@@ -18,6 +18,11 @@ import Logger from './Logger.js'
  * @param {Function} context.showMissingApiKeyBanner - Function to show missing API key banner
  */
 export function setupKriitMessageListener(context) {
+  // Guard against missing chrome.runtime (e.g., in test environments)
+  if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.onMessage) {
+    return
+  }
+
   chrome.runtime.onMessage.addListener(message => {
     if (message.action === 'kriitEnabledChanged') {
       Logger.debug('Received kriitEnabledChanged message:', message.enabled)
