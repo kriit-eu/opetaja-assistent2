@@ -14,17 +14,18 @@
     "@types/bun": "latest",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^10.1.5",
-    "eslint-plugin-prettier": "^5.5.1"
+    "eslint-plugin-prettier": "^5.5.1",
+    "jsdom": "^27.0.0"
   },
   "scripts": {
     "start": "bun install && find src -name '*.js' -print0 | xargs -0 ./node_modules/.bin/eslint --fix && bun run dev",
     "dev": "bun run build:dev && bun run watch",
-    "build": "bun run build:prod",
+    "build": "bun run lint && bun run build:prod",
     "build:dev": "bun src/assets/scripts/build.js",
     "build:prod": "bun src/assets/scripts/build.js --prod",
     "watch": "bun src/assets/scripts/watch.js",
     "test": "bun test",
-    "lint": "./node_modules/.bin/eslint src/**/*.js --max-warnings 1000",
+    "lint": "./node_modules/.bin/eslint src/**/*.js --max-warnings 0",
     "lint:fix": "./node_modules/.bin/eslint src/**/*.js --fix",
     "format": "./node_modules/.bin/eslint src/**/*.js --fix"
   },
