@@ -1094,7 +1094,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async() => {
+        const fetchStudentDetails = async () => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -1121,7 +1121,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async() => {
+        const fetchPromise = (async () => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -1271,7 +1271,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
-      async() => {
+      async () => {
         // When refresh button is clicked, trigger Tahvel search and wait for table update
         Logger.debug('Värskenda button clicked - triggering Tahvel search for current study year')
         try {
@@ -1326,7 +1326,7 @@ class JournalListSyncFeature extends BaseFeature {
 
     journalSyncBannerService.showDifferencesBanner(
       totalForBanner,
-      async() => {
+      async () => {
         // First, sync new assignments to Tahvel if any exist
         const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
         if (Object.keys(globalNewAssignments).length > 0) {
@@ -1353,7 +1353,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
         await this.fetchJournalData()
       },
-      async() => {
+      async () => {
         // Trigger Tahvel search and wait for table update before refreshing
         Logger.debug('Refresh button clicked - triggering Tahvel search for current study year')
         try {
@@ -1899,12 +1899,24 @@ class JournalListSyncFeature extends BaseFeature {
       result.firstLessonDateIsApproximate = false
 
       // Next lesson date (first future date after today, excluding today)
+      // If first lesson is exact (not approximate), find next lesson on a different day than first lesson
       const nowDate = new Date()
       nowDate.setHours(0, 0, 0, 0)
       const tomorrowDate = new Date(nowDate)
       tomorrowDate.setDate(tomorrowDate.getDate() + 1)
       const futureLessons = journalTimetable.filter(event => new Date(event.date) >= tomorrowDate)
-      result.nextLessonDate = futureLessons[0]?.date || null
+
+      if (futureLessons.length > 0) {
+        // Find the next lesson that's on a different day than the first lesson
+        const firstLessonDateOnly = result.firstLessonDate ? result.firstLessonDate.split('T')[0] : null
+        const nextDifferentDayLesson = futureLessons.find(event => {
+          const eventDateOnly = event.date.split('T')[0]
+          return eventDateOnly !== firstLessonDateOnly
+        })
+        result.nextLessonDate = nextDifferentDayLesson?.date || futureLessons[0]?.date || null
+      } else {
+        result.nextLessonDate = null
+      }
 
       // Last lesson date - only send if timetable matches MAHT_a (auditory/contact lessons) capacity
       const mahtACapacity = journalInfo.lessonHours?.capacityHours?.find(c => c.capacity === 'MAHT_a')
@@ -2140,7 +2152,7 @@ class JournalListSyncFeature extends BaseFeature {
       if (base.endsWith('/hois_back')) endpoint = '/journals'
 
       // Get studyYear from dropdown - no fallbacks
-      const detectStudyYear = async() => {
+      const detectStudyYear = async () => {
         const selectedYearText = this.getSelectedStudyYear()
         if (!selectedYearText) {
           Logger.warning('No study year selected in dropdown')
@@ -4799,7 +4811,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   try {
     return await cacheService.getOrFetch(
       cacheKey,
-      async() => {
+      async () => {
         try {
           return await api.tahvel.get(endpoint)
         } catch (error) {
@@ -4845,7 +4857,7 @@ async function getTeacherPersonalCodeCached(api, teacher) {
   }
 
   // Create the fetch promise
-  const fetchPromise = (async() => {
+  const fetchPromise = (async () => {
     try {
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
