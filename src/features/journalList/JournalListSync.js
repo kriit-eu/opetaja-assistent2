@@ -19,6 +19,7 @@ import { bannerService } from '../../services/BannerService.js'
 import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanner.js'
 
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
+import { notifyKriitGradesSynced, buildGradesForNotification } from './KriitSyncNotifier.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -1094,7 +1095,7 @@ class JournalListSyncFeature extends BaseFeature {
         const cacheKey = `student_${journalStudent.studentId}_details`
 
         // Define the fetch function to get student details if not in cache
-        const fetchStudentDetails = async () => {
+        const fetchStudentDetails = async() => {
           try {
             Logger.debug(`Making API call for student ${journalStudent.studentId}`)
             const details = await this.getStudentDetails(journalStudent.studentId)
@@ -1121,7 +1122,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Create the fetch promise and store it in pending requests
-        const fetchPromise = (async () => {
+        const fetchPromise = (async() => {
           try {
             const studentData = await cacheService.getOrFetch(
               cacheKey,
@@ -1271,7 +1272,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
-      async () => {
+      async() => {
         // When refresh button is clicked, trigger Tahvel search and wait for table update
         Logger.debug('Värskenda button clicked - triggering Tahvel search for current study year')
         try {
@@ -1326,7 +1327,7 @@ class JournalListSyncFeature extends BaseFeature {
 
     journalSyncBannerService.showDifferencesBanner(
       totalForBanner,
-      async () => {
+      async() => {
         // First, sync new assignments to Tahvel if any exist
         const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
         if (Object.keys(globalNewAssignments).length > 0) {
@@ -1353,7 +1354,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
         await this.fetchJournalData()
       },
-      async () => {
+      async() => {
         // Trigger Tahvel search and wait for table update before refreshing
         Logger.debug('Refresh button clicked - triggering Tahvel search for current study year')
         try {
@@ -2152,7 +2153,7 @@ class JournalListSyncFeature extends BaseFeature {
       if (base.endsWith('/hois_back')) endpoint = '/journals'
 
       // Get studyYear from dropdown - no fallbacks
-      const detectStudyYear = async () => {
+      const detectStudyYear = async() => {
         const selectedYearText = this.getSelectedStudyYear()
         if (!selectedYearText) {
           Logger.warning('No study year selected in dropdown')
@@ -3624,6 +3625,14 @@ class JournalListSyncFeature extends BaseFeature {
                 Logger.debug(`PUT /journals/${batch.journalId}/journalEntry/${batch.assignmentId} payload: ${JSON.stringify(updateData)}`)
               await this.api.tahvel.put(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, updateData)
 
+              // Notify Kriit about synced grades (for student-level updates only)
+              if (!isAssignmentLevelOnly && studentsToUpdate.length > 0) {
+                const syncedGrades = buildGradesForNotification(batch.journalId, batch.assignmentId, studentsToUpdate)
+                if (syncedGrades.length > 0) {
+                  await notifyKriitGradesSynced(this.api, syncedGrades)
+                }
+              }
+
               // Mark successful - different tracking for assignment-level vs student updates
               if (isAssignmentLevelOnly) {
                 successfulSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, assignmentLevelUpdated: true, updated: 0 })
@@ -4516,6 +4525,13 @@ class JournalListSyncFeature extends BaseFeature {
         const endTime = Date.now()
         Logger.debug(`PUT request completed in ${endTime - startTime}ms`)
 
+        // Notify Kriit about synced grades
+        const syncedGrades = buildGradesForNotification(journalId, assignmentId, updateData.journalEntryStudents)
+        if (syncedGrades.length > 0) {
+          await notifyKriitGradesSynced(this.api, syncedGrades)
+          Logger.info(`Notified Kriit about ${syncedGrades.length} synced grade(s) for assignment ${assignmentId}`)
+        }
+
         // Log detailed response information
         Logger.debug(`Response type: ${typeof response}`)
         Logger.debug(`Response value: ${response}`)
@@ -4811,7 +4827,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   try {
     return await cacheService.getOrFetch(
       cacheKey,
-      async () => {
+      async() => {
         try {
           return await api.tahvel.get(endpoint)
         } catch (error) {
@@ -4857,7 +4873,7 @@ async function getTeacherPersonalCodeCached(api, teacher) {
   }
 
   // Create the fetch promise
-  const fetchPromise = (async () => {
+  const fetchPromise = (async() => {
     try {
       const teacherSearchResult = await fetchCachedData(api, endpoint, ONE_WEEK_MS)
 
