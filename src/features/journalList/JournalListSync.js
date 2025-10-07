@@ -884,8 +884,13 @@ class JournalListSyncFeature extends BaseFeature {
               // Endpoint: /journals/{journalId}/theme/{themeId}
               try {
                 const themeEndpoint = `/journals/${id}/theme/${themeId}`
-                // Fetch without using the JSON-only cache path so we can accept plain text/HTML responses
-                const themeContent = await this.api.tahvel.get(themeEndpoint, {}, { cache: false })
+                // Cache themes for 2 weeks since they rarely change
+                const cacheKey = `theme_${id}_${themeId}`
+                const themeContent = await cacheService.getOrFetch(
+                  cacheKey,
+                  async() => await this.api.tahvel.get(themeEndpoint),
+                  cacheService.EXPIRATION.TWO_WEEKS
+                )
                 journalTheme = { id: themeId, content: themeContent }
               } catch (err) {
                 Logger.debug(`Could not fetch theme ${themeId} for journal ${id}: ${err.message}`)
@@ -4804,6 +4809,7 @@ class JournalListSyncFeature extends BaseFeature {
 // Cache expiration constants
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const ONE_WEEK_MS = 7 * ONE_DAY_MS
+const TWO_WEEKS_MS = 2 * ONE_WEEK_MS
 
 // Global teacher cache shared between collectJournalData and getTahvelSubjectsWithAssignmentsAndGrades
 // to prevent duplicate API requests when processing multiple journals
@@ -5098,7 +5104,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
           }
 
           if (themeId) {
-            const themeContent = await fetchCachedData(this.api, `/journals/${journalId}/theme/${themeId}`, 24 * 60 * 60 * 1000)
+            const themeContent = await fetchCachedData(this.api, `/journals/${journalId}/theme/${themeId}`, TWO_WEEKS_MS)
             journalTheme = { id: themeId, content: themeContent }
           }
         } catch (err) {
