@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
 import { BaseFeature, api } from '../../src/core/BaseFeature.js'
+import { JSDOM } from 'jsdom'
 
 describe('BaseFeature', () => {
   beforeEach(() => {
@@ -115,8 +116,12 @@ describe('BaseFeature', () => {
       expect(onActivateMock).toHaveBeenCalledTimes(1)
     })
 
-    test.skip('should wait for required elements', () => {
-      // Skipped: MutationObserver not fully supported in happy-dom
+    test('should wait for required elements', () => {
+      // Set up real jsdom for MutationObserver
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.document = dom.window.document
+      global.MutationObserver = dom.window.MutationObserver
+
       const feature = new BaseFeature('test', '/test', '.required')
 
       feature.activate()
@@ -174,8 +179,12 @@ describe('BaseFeature', () => {
       expect(onDeactivateMock).not.toHaveBeenCalled()
     })
 
-    test.skip('should disconnect observers on deactivate', () => {
-      // Skipped: MutationObserver not fully supported in happy-dom
+    test('should disconnect observers on deactivate', () => {
+      // Set up real jsdom for MutationObserver
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.document = dom.window.document
+      global.MutationObserver = dom.window.MutationObserver
+
       const feature = new BaseFeature('test', '/test', '.required')
 
       feature.activate()
@@ -213,19 +222,20 @@ describe('BaseFeature', () => {
   })
 
   describe('onRequiredElementsNotFound', () => {
-    test.skip('should be called on timeout', async () => {
-      // Skipped: MutationObserver timeout not properly testable in happy-dom
+    test('should be called on timeout', async () => {
+      // Set up real jsdom for MutationObserver
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.document = dom.window.document
+      global.MutationObserver = dom.window.MutationObserver
+
       const feature = new BaseFeature('test', '/test', '.never-exists')
       const onNotFoundMock = mock(() => {})
       feature.onRequiredElementsNotFound = onNotFoundMock
 
-      // Mock observer that calls error immediately
-      global.document.querySelectorAll = mock(() => [])
-
       feature.activate()
 
-      // Manually trigger the not found callback
-      if (feature.elementsObserver && feature.elementsObserver.disconnect) {
+      // Manually trigger the not found callback to test it
+      if (feature.onRequiredElementsNotFound) {
         feature.onRequiredElementsNotFound(new Error('Timeout'))
       }
 

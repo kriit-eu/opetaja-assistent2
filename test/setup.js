@@ -10,6 +10,19 @@ global.document = document
 global.HTMLElement = window.HTMLElement
 global.MutationObserver = window.MutationObserver
 
+// Mock console for Logger service
+global.console = {
+  log: () => {},
+  error: () => {},
+  warn: () => {},
+  debug: () => {},
+  info: () => {},
+  group: () => {},
+  groupEnd: () => {},
+  groupCollapsed: () => {},
+  trace: () => {}
+}
+
 global.chrome = {
   storage: {
     sync: {
@@ -81,4 +94,17 @@ export function restoreGlobalDOM() {
   global.document = document
   global.HTMLElement = window.HTMLElement
   global.MutationObserver = window.MutationObserver
+
+  // Restore console mock
+  global.console = {
+    log: () => {},
+    error: () => {},
+    warn: () => {},
+    debug: () => {},
+    info: () => {},
+    group: () => {},
+    groupEnd: () => {},
+    groupCollapsed: () => {},
+    trace: () => {}
+  }
 }

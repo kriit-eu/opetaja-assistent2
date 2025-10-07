@@ -312,6 +312,7 @@ describe('CacheService', () => {
       expect(cacheService.EXPIRATION.MEDIUM).toBe(5 * 60 * 1000)
       expect(cacheService.EXPIRATION.LONG).toBe(30 * 60 * 1000)
       expect(cacheService.EXPIRATION.VERY_LONG).toBe(24 * 60 * 60 * 1000)
+      expect(cacheService.EXPIRATION.TWO_WEEKS).toBe(14 * 24 * 60 * 60 * 1000)
     })
   })
 })
