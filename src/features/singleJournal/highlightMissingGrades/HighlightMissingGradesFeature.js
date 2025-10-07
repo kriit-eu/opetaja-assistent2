@@ -343,8 +343,19 @@ class HighlightMissingGradesFeature extends BaseFeature {
       }
 
       rows.forEach((row, _rowIdx) => {
+        const cells = Array.from(row.children)
+        // Check if student has AP status in their name cell (check first 3 columns to be safe)
+        const hasAPStatus = [cells[0], cells[1], cells[2]].some(cell => {
+          if (!cell) return false
+          const text = getCellText(cell)
+          const hasAP = /\bAP\b/.test(text)
+          if (hasAP) {
+            console.debug('[HighlightMissingGradesFeature] Found AP status in row', _rowIdx, 'cell text:', text)
+          }
+          return hasAP
+        })
+
         finalIseseisevColumns.forEach(({ idx, entry }) => {
-          const cells = Array.from(row.children)
           const cell = cells[idx]
           if (!cell) return
           const studentId = extractStudentId(row, cell)
@@ -382,7 +393,9 @@ class HighlightMissingGradesFeature extends BaseFeature {
           // Unified valid grades set
           const validGrades = new Set(['A', 'MA', '1', '2', '3', '4', '5'])
           // Highlight if grade is missing (not in validGrades) and absence is empty or PUUDUMINE_H/PUUDUMINE_P/H/P
+          // Don't highlight if student has AP status in their name cell
           const shouldHighlight =
+            !hasAPStatus &&
             (!grade || !validGrades.has(grade)) &&
             (absence === '' || absence === 'PUUDUMINE_H' || absence === 'PUUDUMINE_P' || absence === 'H' || absence === 'P')
           if (shouldHighlight) {
