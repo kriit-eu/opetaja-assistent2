@@ -1518,13 +1518,6 @@ class JournalListSyncFeature extends BaseFeature {
         return
       }
 
-      // Log the request data
-      Logger.debug('Sending request to Kriit API:', JSON.stringify(journalData))
-
-      // Store Tahvel data for banner to access current lesson values
-      if (!window.journalListSync) window.journalListSync = {}
-      window.journalListSync.tahvelData = journalData
-
       // Check if we have a Kriit API token
       if (!this.api.kriit.authToken) {
         Logger.error('No Kriit API token set')
@@ -1534,9 +1527,55 @@ class JournalListSyncFeature extends BaseFeature {
         return
       }
 
+      // Fetch inactive students to send to Kriit
+      Logger.debug('🔍 Fetching inactive students for Kriit')
+      let inactiveStudentsArray = []
       try {
+        const inactiveStudentsCache = await this.getInactiveStudentsCache()
+
+        Logger.debug(`📦 Cache structure: ${JSON.stringify({
+          hasCache: !!inactiveStudentsCache,
+          hasByPersonalCode: !!(inactiveStudentsCache && inactiveStudentsCache.byPersonalCode),
+          personalCodeCount: inactiveStudentsCache && inactiveStudentsCache.byPersonalCode
+            ? Object.keys(inactiveStudentsCache.byPersonalCode).length
+            : 0
+        })}`)
+
+        // Convert the cache to an array format suitable for Kriit
+        if (inactiveStudentsCache && inactiveStudentsCache.byPersonalCode) {
+          for (const personalCode in inactiveStudentsCache.byPersonalCode) {
+            const student = inactiveStudentsCache.byPersonalCode[personalCode]
+            inactiveStudentsArray.push({
+              personalCode: student.personalCode,
+              name: student.name,
+              status: student.status
+            })
+          }
+        }
+
+        Logger.debug(`✅ Including ${inactiveStudentsArray.length} inactive students in payload for Kriit`)
+      } catch (error) {
+        Logger.warning(`❌ Failed to fetch inactive students: ${error.message}`)
+        Logger.error(error)
+        inactiveStudentsArray = []
+      }
+
+      // Store Tahvel data for banner to access current lesson values
+      if (!window.journalListSync) window.journalListSync = {}
+      window.journalListSync.tahvelData = journalData
+
+      try {
+        // Prepare payload with both journals and inactive students
+        const payload = {
+          journals: journalData,
+          inactiveStudents: inactiveStudentsArray
+        }
+
+        // Log the request data
+        Logger.debug('Sending request to Kriit API:', JSON.stringify(payload))
+
         // Compute a stable hash of the payload and skip calling Kriit if unchanged since last successful call
-        const payloadHash = await computePayloadHash(journalData)
+        const payloadHash = await computePayloadHash(payload)
         try {
           const ONE_DAY = 24 * 60 * 60 * 1000
           const lastHash = await cacheService.get('journalList_lastPayloadHash', ONE_DAY)
@@ -1549,7 +1588,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // Make the actual API call
-        const response = await this.api.kriit.post('/subjects/getDifferences', journalData)
+        const response = await this.api.kriit.post('/subjects/getDifferences', payload)
         // Ensure runtime container exists
         if (!window.journalListSync) window.journalListSync = {}
 
@@ -2664,9 +2703,12 @@ class JournalListSyncFeature extends BaseFeature {
         }
       )
 
+      Logger.debug(`📋 Inactive students API response: ${JSON.stringify(response).substring(0, 500)}`)
+
       if (!response || !response.content || !Array.isArray(response.content)) {
         Logger.warning('⚠️ Invalid response from inactive students API')
-        return {}
+        Logger.debug(`Response structure: ${JSON.stringify(Object.keys(response || {}))}`)
+        return { byPersonalCode: {}, byStudentId: {} }
       }
 
       // Build maps indexed by both personal code and student ID for quick lookup
@@ -2674,6 +2716,8 @@ class JournalListSyncFeature extends BaseFeature {
         byPersonalCode: {},
         byStudentId: {}
       }
+
+      Logger.debug(`📊 Processing ${response.content.length} students from API response`)
 
       for (const student of response.content) {
         if (student.idcode) {
@@ -2698,6 +2742,8 @@ class JournalListSyncFeature extends BaseFeature {
           if (student.id) {
             inactiveStudentsMap.byStudentId[student.id] = studentData
           }
+        } else {
+          Logger.debug(`⚠️ Skipping student without idcode: ${JSON.stringify(student)}`)
         }
       }
 
@@ -2716,7 +2762,6 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getInactiveStudentsCache() {
     const cacheKey = 'inactive_students_all'
-    const cacheService = this.services.cache
 
     const result = await cacheService.getOrFetch(
       cacheKey,
