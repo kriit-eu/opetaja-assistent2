@@ -2693,7 +2693,7 @@ class JournalListSyncFeature extends BaseFeature {
         {
           lang: 'ET',
           page: 0,
-          showMyStudentGroups: true,
+          showMyStudentGroups: false,
           size: 999999, // Very large page size to ensure we get all inactive students
           sort: 'person.lastname,person.firstname,asc',
           status: ['OPPURSTAATUS_K', 'OPPURSTAATUS_L', 'OPPURSTAATUS_A']
