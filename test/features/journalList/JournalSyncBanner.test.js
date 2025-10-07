@@ -277,4 +277,5 @@ describe('JournalSyncBannerService', () => {
       expect(service.stylesLoaded).toBe(true)
     })
   })
+
 })

@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run linting
+echo "Linting..."
+if ! bun run lint > /dev/null 2>&1; then
+  echo "❌ Linting failed"
+  bun run lint
+  exit 1
+fi
+
+# Run tests
+echo "Testing..."
+if ! bun test > /dev/null 2>&1; then
+  echo "❌ Tests failed"
+  bun test
+  exit 1
+fi
+
+exit 0

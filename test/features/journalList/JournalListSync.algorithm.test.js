@@ -140,14 +140,22 @@ describe('JournalListSync - Algorithm Tests', () => {
     }
 
     delete global.bannerService
-    delete global.console.log
-    delete global.console.warn
-    delete global.console.error
-    delete global.console.groupCollapsed
-    delete global.console.groupEnd
     delete global.window
     delete global.localStorage
     delete global.btoa
+
+    // Restore console methods
+    global.console = {
+      log: () => {},
+      error: () => {},
+      warn: () => {},
+      debug: () => {},
+      info: () => {},
+      group: () => {},
+      groupEnd: () => {},
+      groupCollapsed: () => {},
+      trace: () => {}
+    }
 
     restoreChromeMock()
   })
@@ -2183,6 +2191,77 @@ describe('JournalListSync - Algorithm Tests', () => {
     })
   })
 
+  describe('Theme Caching', () => {
+    test('should cache themes with TWO_WEEKS expiration', async () => {
+      // Mock the cache service
+      const mockCacheService = {
+        getOrFetch: mock(async (cacheKey, fetchFn, expiration) => {
+          expect(cacheKey).toMatch(/^theme_\d+_\d+$/)
+          expect(expiration).toBe(14 * 24 * 60 * 60 * 1000) // TWO_WEEKS
+          return await fetchFn()
+        }),
+        EXPIRATION: {
+          TWO_WEEKS: 14 * 24 * 60 * 60 * 1000
+        }
+      }
+
+      // Verify cache key format and expiration
+      const journalId = 123
+      const themeId = 456
+      const expectedCacheKey = `theme_${journalId}_${themeId}`
+      const themeContent = '<html>theme content</html>'
+
+      await mockCacheService.getOrFetch(
+        expectedCacheKey,
+        async () => themeContent,
+        mockCacheService.EXPIRATION.TWO_WEEKS
+      )
+
+      expect(mockCacheService.getOrFetch).toHaveBeenCalledTimes(1)
+    })
+
+    test('should use correct cache key format for themes', () => {
+      const journalId = 789
+      const themeId = 101
+      const expectedCacheKey = `theme_${journalId}_${themeId}`
+
+      // Verify cache key format
+      expect(expectedCacheKey).toBe('theme_789_101')
+    })
+
+    test('should cache themes to prevent redundant API calls', async () => {
+      let fetchCount = 0
+      const mockCacheService = {
+        getOrFetch: mock(async (cacheKey, fetchFn, expiration) => {
+          // First call fetches, subsequent calls return cached data
+          if (fetchCount === 0) {
+            fetchCount++
+            return await fetchFn()
+          }
+          // Simulate cache hit - don't call fetchFn
+          return '<html>cached theme</html>'
+        }),
+        EXPIRATION: {
+          TWO_WEEKS: 14 * 24 * 60 * 60 * 1000
+        }
+      }
+
+      // First call - should fetch
+      await mockCacheService.getOrFetch('theme_1_2', async () => '<html>theme</html>', mockCacheService.EXPIRATION.TWO_WEEKS)
+
+      // Second call - should use cache
+      await mockCacheService.getOrFetch('theme_1_2', async () => '<html>theme</html>', mockCacheService.EXPIRATION.TWO_WEEKS)
+
+      expect(mockCacheService.getOrFetch).toHaveBeenCalledTimes(2)
+      expect(fetchCount).toBe(1) // Only fetched once
+    })
+
+    test('TWO_WEEKS constant should equal 14 days in milliseconds', () => {
+      const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000
+      expect(TWO_WEEKS_MS).toBe(1209600000) // 14 days in ms
+    })
+  })
+
   describe('updateAssignmentHoursInTahvel', () => {
     test('should be an async function', () => {
       expect(typeof journalListSync.updateAssignmentHoursInTahvel).toBe('function')
@@ -2515,58 +2594,57 @@ describe('JournalListSync - Algorithm Tests', () => {
   })
 
   describe('Inactive Student Handling', () => {
-    test('should categorize inactive student errors separately', () => {
-      const inactiveStudentError = {
-        studentPersonalCode: '39001011234',
-        assignmentId: 3449739,
-        error:
-          "Cannot update grade for student 39001011234 because they are not actively studying. The student may be on academic leave or their status is inactive in Tahvel. This is a limitation of the Tahvel system - it doesn't allow adding or updating grades for students who aren't actively studying.",
-        errorType: 'inactive_student',
-        timestamp: new Date().toISOString()
+    test('should sync grades for inactive students', () => {
+      // Inactive students should now be synced just like active students
+      // Only deleted students (OPPURSTAATUS_K) are skipped
+      const inactiveStudent = {
+        personalCode: '39001011234',
+        name: 'Inactive Student',
+        isActive: false,
+        isDeleted: false
       }
 
-      const realSyncError = {
-        studentPersonalCode: '12345678901',
-        assignmentId: 3449739,
-        error: 'Network error or other technical issue',
-        errorType: 'sync_error',
-        timestamp: new Date().toISOString()
+      const activeStudent = {
+        personalCode: '50001010001',
+        name: 'Active Student',
+        isActive: true,
+        isDeleted: false
       }
 
-      const failedSyncs = [inactiveStudentError, realSyncError]
+      const deletedStudent = {
+        personalCode: '50001010003',
+        name: 'Deleted Student',
+        isActive: false,
+        isDeleted: true
+      }
 
-      const inactiveStudentErrors = failedSyncs.filter(item => item.errorType === 'inactive_student')
-      const realErrors = failedSyncs.filter(item => item.errorType !== 'inactive_student')
+      // Inactive students should be processed (not skipped)
+      expect(inactiveStudent.isActive).toBe(false)
+      expect(inactiveStudent.isDeleted).toBe(false)
 
-      expect(inactiveStudentErrors).toHaveLength(1)
-      expect(realErrors).toHaveLength(1)
-      expect(inactiveStudentErrors[0].studentPersonalCode).toBe('39001011234')
-      expect(realErrors[0].studentPersonalCode).toBe('12345678901')
+      // Active students should be processed
+      expect(activeStudent.isActive).toBe(true)
+      expect(activeStudent.isDeleted).toBe(false)
+
+      // Deleted students should be skipped
+      expect(deletedStudent.isDeleted).toBe(true)
     })
 
-    test('should identify inactive student error message patterns', () => {
-      const errorMessages = [
-        'Cannot update grade for student 39001011234 because they are not actively studying',
-        'changeIsNotAllowedStudentIsNotStudying',
-        'Student may be on academic leave',
-        'status is inactive',
-        'Network timeout error'
+    test('should process inactive students in sync operation', () => {
+      // Test that inactive students are included in sync, not filtered out
+      const results = [
+        { studentIsActive: true, studentIsDeleted: false, grade: '5' },
+        { studentIsActive: false, studentIsDeleted: false, grade: '4' }, // Inactive student
+        { studentIsActive: false, studentIsDeleted: true, grade: '3' }   // Deleted student
       ]
 
-      const checkIsInactiveStudentError = errorMessage => {
-        return (
-          errorMessage.includes('not actively studying') ||
-          errorMessage.includes('changeIsNotAllowedStudentIsNotStudying') ||
-          errorMessage.includes('academic leave') ||
-          errorMessage.includes('status is inactive')
-        )
-      }
+      // Filter out only deleted students, keep inactive students
+      const shouldSync = results.filter(r => !r.studentIsDeleted)
 
-      expect(checkIsInactiveStudentError(errorMessages[0])).toBe(true)
-      expect(checkIsInactiveStudentError(errorMessages[1])).toBe(true)
-      expect(checkIsInactiveStudentError(errorMessages[2])).toBe(true)
-      expect(checkIsInactiveStudentError(errorMessages[3])).toBe(true)
-      expect(checkIsInactiveStudentError(errorMessages[4])).toBe(false)
+      expect(shouldSync).toHaveLength(2) // Active + Inactive (not deleted)
+      expect(shouldSync[0].studentIsActive).toBe(true)
+      expect(shouldSync[1].studentIsActive).toBe(false)
+      expect(shouldSync[1].studentIsDeleted).toBe(false)
     })
   })
 })

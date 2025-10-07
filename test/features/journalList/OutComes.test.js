@@ -42,11 +42,18 @@ describe('OutComes - sendOutcomeEntriesToKriit', () => {
   })
 
   afterEach(() => {
-    delete global.console.log
-    delete global.console.warn
-    delete global.console.error
-    delete global.console.groupCollapsed
-    delete global.console.groupEnd
+    // Restore console methods
+    global.console = {
+      log: () => {},
+      error: () => {},
+      warn: () => {},
+      debug: () => {},
+      info: () => {},
+      group: () => {},
+      groupEnd: () => {},
+      groupCollapsed: () => {},
+      trace: () => {}
+    }
   })
 
   describe('Input Validation', () => {
