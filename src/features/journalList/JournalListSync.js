@@ -2640,6 +2640,104 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
+   * Fetch students with inactive statuses (academic leave, graduated, exmatriculated)
+   * This is useful for finding students who have been removed from journals
+   * @returns {Promise<Object>} Map of personal codes to student data
+   */
+  async fetchInactiveStudents() {
+    try {
+      Logger.debug('📡 Fetching inactive students from Tahvel API')
+
+      // Fetch students with OPPURSTAATUS_A (academic leave), OPPURSTAATUS_L (graduated), OPPURSTAATUS_K (exmatriculated)
+      const response = await this.api.tahvel.get(
+        '/students',
+        {
+          lang: 'ET',
+          page: 0,
+          showMyStudentGroups: true,
+          size: 999999, // Very large page size to ensure we get all inactive students
+          sort: 'person.lastname,person.firstname,asc',
+          status: ['OPPURSTAATUS_K', 'OPPURSTAATUS_L', 'OPPURSTAATUS_A']
+        },
+        {
+          cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
+        }
+      )
+
+      if (!response || !response.content || !Array.isArray(response.content)) {
+        Logger.warning('⚠️ Invalid response from inactive students API')
+        return {}
+      }
+
+      // Build maps indexed by both personal code and student ID for quick lookup
+      const inactiveStudentsMap = {
+        byPersonalCode: {},
+        byStudentId: {}
+      }
+
+      for (const student of response.content) {
+        if (student.idcode) {
+          const isActive = student.status === 'OPPURSTAATUS_O'
+          const isDeleted = student.status === 'OPPURSTAATUS_K'
+          const isGraduated = student.status === 'OPPURSTAATUS_L'
+
+          const studentData = {
+            personalCode: student.idcode,
+            name: student.fullname || `${student.firstname} ${student.lastname}`,
+            isActive: isActive,
+            isDeleted: isDeleted,
+            isGraduated: isGraduated,
+            studentId: student.id,
+            status: student.status
+          }
+
+          // Index by personal code
+          inactiveStudentsMap.byPersonalCode[student.idcode] = studentData
+
+          // Index by student ID
+          if (student.id) {
+            inactiveStudentsMap.byStudentId[student.id] = studentData
+          }
+        }
+      }
+
+      Logger.debug(`✅ Fetched ${Object.keys(inactiveStudentsMap.byPersonalCode).length} inactive students (indexed by personal code and student ID)`)
+      return inactiveStudentsMap
+    } catch (error) {
+      Logger.error(`❌ Error fetching inactive students: ${error.message}`)
+      return { byPersonalCode: {}, byStudentId: {} }
+    }
+  }
+
+  /**
+   * Get or fetch the inactive students cache
+   * Uses CacheService to cache the inactive students data for 24 hours
+   * @returns {Promise<Object>} Object with byPersonalCode and byStudentId maps
+   */
+  async getInactiveStudentsCache() {
+    const cacheKey = 'inactive_students_all'
+    const cacheService = this.services.cache
+
+    const result = await cacheService.getOrFetch(
+      cacheKey,
+      () => this.fetchInactiveStudents(),
+      24 * 60 * 60 * 1000 // 24 hours
+    )
+
+    // Ensure we always return a valid structure
+    if (!result || typeof result !== 'object') {
+      return { byPersonalCode: {}, byStudentId: {} }
+    }
+
+    // Handle old format (before this update) or error cases
+    if (!result.byPersonalCode && !result.byStudentId) {
+      return { byPersonalCode: {}, byStudentId: {} }
+    }
+
+    return result
+  }
+
+  /**
    * Create a mapping of student IDs to personal codes and names
    * @param {Array} journalStudents - Journal students
    * @param {Object} studentDetailsMap - Map of student IDs to their details including personal codes
