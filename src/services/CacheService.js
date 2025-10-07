@@ -10,7 +10,8 @@ const CACHE_EXPIRATION = {
   SHORT: 60 * 1000, // 1 minute
   MEDIUM: 5 * 60 * 1000, // 5 minutes
   LONG: 30 * 60 * 1000, // 30 minutes
-  VERY_LONG: 24 * 60 * 60 * 1000 // 24 hours
+  VERY_LONG: 24 * 60 * 60 * 1000, // 24 hours
+  TWO_WEEKS: 14 * 24 * 60 * 60 * 1000 // 2 weeks
 }
 
 // In-memory cache for the current page session
