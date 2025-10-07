@@ -17,8 +17,7 @@ export default class LessonCountWarningFeature extends BaseFeature {
   constructor() {
     // Match journal list pages
     super('lessonCountWarning', /#\/journals/, [
-      '#main-content md-table-container td:nth-child(2) > a',
-      '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr > td:nth-child(2) > a'
+      '#tahvelTable table.tahvel-table tbody tr td:nth-child(2) a.linked-name'
     ])
     this.name = 'LessonCountWarningFeature'
     this.processedJournals = new Set()
@@ -237,7 +236,7 @@ export default class LessonCountWarningFeature extends BaseFeature {
    * Set up observer for main content changes (journal list updates)
    */
   setupMainContentObserver() {
-    const mainContentElement = document.querySelector('#main-content')
+    const mainContentElement = document.querySelector('#tahvelTable')
     if (!mainContentElement) {
       Logger.warning(`[${this.name}] Main content element not found for observer`)
       return
@@ -256,7 +255,7 @@ export default class LessonCountWarningFeature extends BaseFeature {
             // Check if it's table-related or contains table elements
             return (
               node.matches &&
-              (node.matches('md-table-container, table, tbody, tr') || (node.querySelector && node.querySelector('md-table-container, table, tbody, tr')))
+              (node.matches('table, tbody, tr, .tahvel-table, .tahvel-table-wrapper') || (node.querySelector && node.querySelector('table, tbody, tr, .tahvel-table, .tahvel-table-wrapper')))
             )
           })
         }
@@ -347,20 +346,14 @@ export default class LessonCountWarningFeature extends BaseFeature {
    * Find all journal rows in the table
    */
   findJournalRows() {
-    const selectors = [
-      '#main-content md-table-container table tbody tr',
-      '#main-content > div.layout-padding > div > md-table-container > table > tbody > tr'
-    ]
+    const rows = document.querySelectorAll('#tahvelTable table.tahvel-table tbody tr')
 
-    for (const selector of selectors) {
-      const rows = document.querySelectorAll(selector)
-      if (rows.length > 0) {
-        return Array.from(rows)
-      }
+    if (rows.length === 0) {
+      Logger.warning(`[${this.name}] No journal rows found`)
+      return []
     }
 
-    Logger.warning(`[${this.name}] No journal rows found with any selector`)
-    return []
+    return Array.from(rows)
   }
 
   /**
@@ -473,7 +466,7 @@ export default class LessonCountWarningFeature extends BaseFeature {
   extractJournalInfoFromRow(row) {
     try {
       // Get journal link (2nd column)
-      const linkElement = row.querySelector('td:nth-child(2) > a')
+      const linkElement = row.querySelector('td:nth-child(2) a.linked-name')
       if (!linkElement) {
         return null
       }
@@ -494,8 +487,8 @@ export default class LessonCountWarningFeature extends BaseFeature {
       if (lessonCountCell) {
         const text = lessonCountCell.textContent.trim()
 
-        // Look for the pattern like "151/1" and extract the number after the slash (entered lessons)
-        const slashMatch = text.match(/(\d+)\/(\d+)/)
+        // Look for the pattern like "151/1" or "13 / 0" and extract the number after the slash (entered lessons)
+        const slashMatch = text.match(/(\d+)\s*\/\s*(\d+)/)
         if (slashMatch) {
           lessonCount = parseInt(slashMatch[2]) // Use entered lessons, not planned
         } else {
