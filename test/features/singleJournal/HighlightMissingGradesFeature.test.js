@@ -513,6 +513,72 @@ describe('HighlightMissingGradesFeature', () => {
     })
   })
 
+  describe('AP status detection', () => {
+    test('should detect AP in student name cell', () => {
+      const getCellText = (c) => {
+        if (!c) return ''
+        return (c.textContent || '').trim()
+      }
+
+      const testCases = [
+        { text: 'John Doe AP', expected: true },
+        { text: 'AP Jane Smith', expected: true },
+        { text: 'Test AP Student', expected: true },
+        { text: 'John Doe', expected: false },
+        { text: 'APPLY', expected: false }, // Should not match - needs word boundary
+        { text: 'CHAP', expected: false } // Should not match - needs word boundary
+      ]
+
+      testCases.forEach(({ text, expected }) => {
+        const mockCell = { textContent: text }
+        const hasAP = /\bAP\b/.test(getCellText(mockCell))
+        expect(hasAP).toBe(expected)
+      })
+    })
+
+    test('should check first 3 columns for AP status', () => {
+      const getCellText = (c) => {
+        if (!c) return ''
+        return (c.textContent || '').trim()
+      }
+
+      const cells = [
+        { textContent: 'John Doe AP' },
+        { textContent: '12345' },
+        { textContent: 'TAK24' }
+      ]
+
+      const hasAPStatus = [cells[0], cells[1], cells[2]].some(cell => {
+        if (!cell) return false
+        const text = getCellText(cell)
+        return /\bAP\b/.test(text)
+      })
+
+      expect(hasAPStatus).toBe(true)
+    })
+
+    test('should not detect AP when not present', () => {
+      const getCellText = (c) => {
+        if (!c) return ''
+        return (c.textContent || '').trim()
+      }
+
+      const cells = [
+        { textContent: 'John Doe' },
+        { textContent: '12345' },
+        { textContent: 'TAK24' }
+      ]
+
+      const hasAPStatus = [cells[0], cells[1], cells[2]].some(cell => {
+        if (!cell) return false
+        const text = getCellText(cell)
+        return /\bAP\b/.test(text)
+      })
+
+      expect(hasAPStatus).toBe(false)
+    })
+  })
+
   describe('run with mocked API', () => {
     test('should return early when no table found', async () => {
       const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
@@ -847,6 +913,115 @@ describe('HighlightMissingGradesFeature', () => {
 
       await feature.run()
 
+      expect(feature._isUpdating).toBe(false)
+    })
+
+    test('should not highlight students with AP status', async () => {
+      const dom = new JSDOM(`
+        <!DOCTYPE html>
+        <html><body>
+          <table class="journalTable">
+            <thead><tr><th>Name</th><th>Code</th><th style="background-color: rgb(236, 252, 203)">18.09</th></tr></thead>
+            <tbody>
+              <tr>
+                <td data-student-id="123"><span>John Doe AP</span></td>
+                <td>12345</td>
+                <td data-grade="" data-absence=""></td>
+              </tr>
+              <tr>
+                <td data-student-id="456">Jane Smith</td>
+                <td>67890</td>
+                <td data-grade="" data-absence=""></td>
+              </tr>
+            </tbody>
+          </table>
+        </body></html>
+      `)
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' }, journalListSync: null, getComputedStyle: (el) => ({ backgroundColor: el.style.backgroundColor }) }
+
+      const pastDate = '2024-09-18'
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              return [{
+                id: 1,
+                entryDate: pastDate,
+                entryType: 'SISSEKANNE_I',
+                homeworkDuedate: pastDate,
+                journalStudentResults: {}
+              }]
+            }
+            return {}
+          })
+        }
+      }
+
+      feature._isUpdating = false
+
+      await feature.run()
+
+      const rows = dom.window.document.querySelectorAll('tbody tr')
+      const studentWithAP = rows[0].children[2]
+      const studentWithoutAP = rows[1].children[2]
+
+      // Student with AP should not have highlight class
+      expect(studentWithAP.classList.contains('highlight-missing-grade')).toBe(false)
+      // Student without AP should have highlight class (since grade is missing)
+      expect(studentWithoutAP.classList.contains('highlight-missing-grade')).toBe(true)
+      expect(feature._isUpdating).toBe(false)
+    })
+
+    test('should handle AP in different columns', async () => {
+      const dom = new JSDOM(`
+        <!DOCTYPE html>
+        <html><body>
+          <table class="journalTable">
+            <thead><tr><th>Num</th><th>Name</th><th>Class</th><th style="background-color: rgb(236, 252, 203)">18.09</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td data-student-id="123">John Doe</td>
+                <td><span>TAK24 AP</span></td>
+                <td data-grade="" data-absence=""></td>
+              </tr>
+            </tbody>
+          </table>
+        </body></html>
+      `)
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' }, journalListSync: null, getComputedStyle: (el) => ({ backgroundColor: el.style.backgroundColor }) }
+
+      const pastDate = '2024-09-18'
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              return [{
+                id: 1,
+                entryDate: pastDate,
+                entryType: 'SISSEKANNE_I',
+                homeworkDuedate: pastDate,
+                journalStudentResults: {}
+              }]
+            }
+            return {}
+          })
+        }
+      }
+
+      feature._isUpdating = false
+
+      await feature.run()
+
+      const row = dom.window.document.querySelector('tbody tr')
+      const gradeCell = row.children[3]
+
+      // Student with AP in class column should not be highlighted
+      expect(gradeCell.classList.contains('highlight-missing-grade')).toBe(false)
       expect(feature._isUpdating).toBe(false)
     })
   })
