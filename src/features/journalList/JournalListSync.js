@@ -3133,19 +3133,11 @@ class JournalListSyncFeature extends BaseFeature {
               throw new Error(errorMsg)
             }
 
-            // Skip syncing grades for deleted or inactive students
+            // Skip syncing grades for deleted students
             if (result.studentIsDeleted === true) {
               if (Logger.isDebugMode()) {
                 Logger.debug(
                   `⏭️ Result ${resultIndex + 1}: Skipping grade sync for deleted student: ${result.studentName} (${result.studentPersonalCode})`
-                )
-              }
-              return // Do not sync this student's grade
-            }
-            if (result.studentIsActive === false) {
-              if (Logger.isDebugMode()) {
-                Logger.debug(
-                  `⏭️ Result ${resultIndex + 1}: Skipping grade sync for inactive student: ${result.studentName} (${result.studentPersonalCode})`
                 )
               }
               return // Do not sync this student's grade
@@ -3723,16 +3715,13 @@ class JournalListSyncFeature extends BaseFeature {
         }
 
         // After batch processing complete, set results and refresh UI similar to previous logic
-        const inactiveStudentErrors = failedSyncs.filter(item => item.errorType === 'inactive_student')
-        const realErrors = failedSyncs.filter(item => item.errorType !== 'inactive_student')
-
         const actualUpdates = successfulSyncs.reduce((acc, s) => acc + (s.updated || 0), 0)
         const assignmentLevelUpdates = successfulSyncs.filter(s => s.assignmentLevelUpdated).length
         const skippedUpdates = successfulSyncs.filter(s => s.skipped).length
 
         // Show success or partial messages
         this.isLoading = false
-        if (realErrors.length === 0) {
+        if (failedSyncs.length === 0) {
           let successMessage = ''
 
           if (actualUpdates > 0 || assignmentLevelUpdates > 0) {
@@ -3746,7 +3735,6 @@ class JournalListSyncFeature extends BaseFeature {
             successMessage = `Edukalt sünkroniseeritud ${parts.join(' ja ')} Kriidist Tahvlisse.`
 
             if (skippedUpdates > 0) successMessage += ` ${skippedUpdates} kirjet olid juba õiged.`
-            if (inactiveStudentErrors.length > 0) successMessage += ` ${inactiveStudentErrors.length} üliõpilast vahele jäetud (ei õpi aktiivselt).`
             successMessage += ` Andmed värskendatakse automaatselt mõne sekundi pärast...`
           } else {
             successMessage = `Kõik ${successfulSyncs.length} kirjet olid juba õiged - pole midagi sünkroniseerida.`
@@ -3760,7 +3748,7 @@ class JournalListSyncFeature extends BaseFeature {
               .catch(() => this.fetchJournalData())
           }, 3000)
         } else {
-          this.error = `Sünkroniseerimine osaliselt õnnestus: ${successfulSyncs.length} õnnestus, ${realErrors.length} ebaõnnestus.`
+          this.error = `Sünkroniseerimine osaliselt õnnestus: ${successfulSyncs.length} õnnestus, ${failedSyncs.length} ebaõnnestus.`
           this.updateUI()
           setTimeout(() => {
             this.clearCache()
