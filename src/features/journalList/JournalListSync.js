@@ -1063,12 +1063,14 @@ class JournalListSyncFeature extends BaseFeature {
           if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
             const isActive = studentDetails.status === 'OPPURSTAATUS_O'
             const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
+            const isGraduated = studentDetails.status === 'OPPURSTAATUS_L'
 
             const cachedStudent = {
               personalCode: studentDetails.person.idcode,
               name: journalStudent.fullname || `${journalStudent.firstname} ${journalStudent.lastname}`,
               isActive: isActive,
-              isDeleted: isDeleted
+              isDeleted: isDeleted,
+              isGraduated: isGraduated
             }
 
             // Store the mapping for later lookups
@@ -1109,14 +1111,17 @@ class JournalListSyncFeature extends BaseFeature {
               // OPPURSTAATUS_O means active (studying)
               // OPPURSTAATUS_A means on academic leave (not active)
               // OPPURSTAATUS_K means 'katkestanud' (exmatriculated)
+              // OPPURSTAATUS_L means 'lõpetanud' (graduated)
               const isActive = details.status === 'OPPURSTAATUS_O'
               const isDeleted = details.status === 'OPPURSTAATUS_K'
+              const isGraduated = details.status === 'OPPURSTAATUS_L'
 
               return {
                 personalCode: details.person.idcode,
                 name: journalStudent.fullname || `${journalStudent.firstname} ${journalStudent.lastname}`,
                 isActive: isActive,
-                isDeleted: isDeleted
+                isDeleted: isDeleted,
+                isGraduated: isGraduated
               }
             }
             return null
@@ -1750,6 +1755,7 @@ class JournalListSyncFeature extends BaseFeature {
                         diffResult.studentName = matchingResult.studentName
                         diffResult.studentIsActive = matchingResult.studentIsActive
                         diffResult.studentIsDeleted = matchingResult.studentIsDeleted
+                        diffResult.studentIsGraduated = matchingResult.studentIsGraduated
 
                         // Add the Tahvel grade as currentGrade for UI display
                         diffResult.currentGrade = matchingResult.grade
@@ -2880,10 +2886,12 @@ class JournalListSyncFeature extends BaseFeature {
           }
 
           // Check if we have student details in our cache
+          let studentIsGraduated = false
           if (studentId && studentDetailsMap[studentId]) {
-            // Use the isActive and isDeleted flags from the student details
+            // Use the isActive, isDeleted, and isGraduated flags from the student details
             studentIsActive = studentDetailsMap[studentId].isActive
             studentIsDeleted = studentDetailsMap[studentId].isDeleted || false
+            studentIsGraduated = studentDetailsMap[studentId].isGraduated || false
           }
 
           // Add result for this student (including those with empty grades)
@@ -2892,7 +2900,8 @@ class JournalListSyncFeature extends BaseFeature {
             studentPersonalCode: personalCode,
             studentName,
             studentIsActive: studentIsActive,
-            studentIsDeleted: studentIsDeleted
+            studentIsDeleted: studentIsDeleted,
+            studentIsGraduated: studentIsGraduated
           })
         })
       } else {
@@ -4977,7 +4986,8 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
               studentDetailsMap[student.id] = {
                 personalCode: studentDetails.person.idcode,
                 name: student.fullname || student.studentName,
-                isActive: studentDetails.status === 'OPPURSTAATUS_O' // O means actively studying
+                isActive: studentDetails.status === 'OPPURSTAATUS_O', // O means actively studying
+                isGraduated: studentDetails.status === 'OPPURSTAATUS_L' // L means graduated
               }
             }
           }
@@ -5018,7 +5028,8 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
                   grade,
                   studentPersonalCode: studentDetails.personalCode,
                   studentName: studentDetails.name,
-                  studentIsActive: studentDetails.isActive
+                  studentIsActive: studentDetails.isActive,
+                  studentIsGraduated: studentDetails.isGraduated || false
                 })
               }
             })

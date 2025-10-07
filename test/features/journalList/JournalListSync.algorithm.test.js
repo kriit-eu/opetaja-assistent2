@@ -1016,6 +1016,33 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(result[300].isDeleted).toBe(true)
     })
 
+    test('should handle graduated students', async () => {
+      journalListSync.getStudentDetails = mock(async studentId => {
+        return {
+          id: studentId,
+          person: {
+            idcode: '50001010004',
+            fullname: 'Graduated Student'
+          },
+          status: 'OPPURSTAATUS_L' // Graduated
+        }
+      })
+
+      const journalStudents = [
+        {
+          id: 4,
+          studentId: 400,
+          fullname: 'Graduated Student'
+        }
+      ]
+
+      const result = await journalListSync.processStudentData(123, journalStudents)
+
+      expect(result[400].isActive).toBe(false)
+      expect(result[400].isDeleted).toBe(false)
+      expect(result[400].isGraduated).toBe(true)
+    })
+
     test('should skip students without studentId', async () => {
       const journalStudents = [
         { id: 4, fullname: 'No Student ID' },
@@ -2211,11 +2238,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       const expectedCacheKey = `theme_${journalId}_${themeId}`
       const themeContent = '<html>theme content</html>'
 
-      await mockCacheService.getOrFetch(
-        expectedCacheKey,
-        async () => themeContent,
-        mockCacheService.EXPIRATION.TWO_WEEKS
-      )
+      await mockCacheService.getOrFetch(expectedCacheKey, async () => themeContent, mockCacheService.EXPIRATION.TWO_WEEKS)
 
       expect(mockCacheService.getOrFetch).toHaveBeenCalledTimes(1)
     })
@@ -2601,50 +2624,73 @@ describe('JournalListSync - Algorithm Tests', () => {
         personalCode: '39001011234',
         name: 'Inactive Student',
         isActive: false,
-        isDeleted: false
+        isDeleted: false,
+        isGraduated: false
       }
 
       const activeStudent = {
         personalCode: '50001010001',
         name: 'Active Student',
         isActive: true,
-        isDeleted: false
+        isDeleted: false,
+        isGraduated: false
       }
 
       const deletedStudent = {
         personalCode: '50001010003',
         name: 'Deleted Student',
         isActive: false,
-        isDeleted: true
+        isDeleted: true,
+        isGraduated: false
+      }
+
+      const graduatedStudent = {
+        personalCode: '50001010004',
+        name: 'Graduated Student',
+        isActive: false,
+        isDeleted: false,
+        isGraduated: true
       }
 
       // Inactive students should be processed (not skipped)
       expect(inactiveStudent.isActive).toBe(false)
       expect(inactiveStudent.isDeleted).toBe(false)
+      expect(inactiveStudent.isGraduated).toBe(false)
 
       // Active students should be processed
       expect(activeStudent.isActive).toBe(true)
       expect(activeStudent.isDeleted).toBe(false)
+      expect(activeStudent.isGraduated).toBe(false)
 
       // Deleted students should be skipped
       expect(deletedStudent.isDeleted).toBe(true)
+
+      // Graduated students should be processed (not skipped)
+      expect(graduatedStudent.isActive).toBe(false)
+      expect(graduatedStudent.isDeleted).toBe(false)
+      expect(graduatedStudent.isGraduated).toBe(true)
     })
 
     test('should process inactive students in sync operation', () => {
       // Test that inactive students are included in sync, not filtered out
       const results = [
-        { studentIsActive: true, studentIsDeleted: false, grade: '5' },
-        { studentIsActive: false, studentIsDeleted: false, grade: '4' }, // Inactive student
-        { studentIsActive: false, studentIsDeleted: true, grade: '3' }   // Deleted student
+        { studentIsActive: true, studentIsDeleted: false, studentIsGraduated: false, grade: '5' },
+        { studentIsActive: false, studentIsDeleted: false, studentIsGraduated: false, grade: '4' }, // Inactive student
+        { studentIsActive: false, studentIsDeleted: true, studentIsGraduated: false, grade: '3' }, // Deleted student
+        { studentIsActive: false, studentIsDeleted: false, studentIsGraduated: true, grade: 'A' } // Graduated student
       ]
 
-      // Filter out only deleted students, keep inactive students
+      // Filter out only deleted students, keep inactive and graduated students
       const shouldSync = results.filter(r => !r.studentIsDeleted)
 
-      expect(shouldSync).toHaveLength(2) // Active + Inactive (not deleted)
+      expect(shouldSync).toHaveLength(3) // Active + Inactive + Graduated (not deleted)
       expect(shouldSync[0].studentIsActive).toBe(true)
       expect(shouldSync[1].studentIsActive).toBe(false)
       expect(shouldSync[1].studentIsDeleted).toBe(false)
+      expect(shouldSync[1].studentIsGraduated).toBe(false)
+      expect(shouldSync[2].studentIsActive).toBe(false)
+      expect(shouldSync[2].studentIsDeleted).toBe(false)
+      expect(shouldSync[2].studentIsGraduated).toBe(true)
     })
   })
 })
