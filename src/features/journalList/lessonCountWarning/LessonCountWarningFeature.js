@@ -2,8 +2,9 @@
  * Lesson Count Warning Feature - Shows pink calendar icons for journals with lesson count discrepancies
  *
  * Requirements:
- * - Shows pink pill with calendar icon when the journal has discrepancies between DOM lesson count and timetable
- * - Reads the lesson count from DOM (not API)
+ * - Shows pink pill with calendar icon when the journal has discrepancies between lesson count and timetable
+ * - Reads lesson count from cache (MAHT_a capacity hours - actual lessons, excludes MAHT_i independent work)
+ * - Fetches from API with caching if not in cache (works with or without Kriit integration)
  * - Respects the selected study year from dropdown
  * - Auto-updates when study year changes
  * - Only counts past timetable lessons
@@ -372,6 +373,15 @@ export default class LessonCountWarningFeature extends BaseFeature {
         return
       }
 
+      // Get lesson count (from cache or API)
+      const actualLessonCount = await this.getLessonCountFromCache(journalInfo.id)
+      if (actualLessonCount === null) {
+        // Failed to get data, skip this journal
+        Logger.debug(`[${this.name}] Could not get lesson count for journal ${journalInfo.id}, skipping`)
+        this.processedJournals.add(journalInfo.id)
+        return
+      }
+
       // If no teacher IDs found from table, try to map teacher names to IDs
       let teacherIds = journalInfo.teacherIds
       const teacherNames = journalInfo.teacherNames
@@ -397,14 +407,14 @@ export default class LessonCountWarningFeature extends BaseFeature {
       // Count past timetable lessons
       const pastTimetableLessons = this.countPastLessons(timetableLessons)
 
-      // Compare with DOM lesson count
-      const hasDiscrepancy = pastTimetableLessons !== journalInfo.lessonCount
+      // Compare with actual lesson count from cache
+      const hasDiscrepancy = pastTimetableLessons !== actualLessonCount
 
       // Add warning indicator if there's a discrepancy
       if (hasDiscrepancy) {
         this.addWarningIndicator(journalInfo.linkElement, {
           journalId: journalInfo.id,
-          domCount: journalInfo.lessonCount,
+          domCount: actualLessonCount,
           timetableCount: pastTimetableLessons
         })
       }
@@ -413,6 +423,62 @@ export default class LessonCountWarningFeature extends BaseFeature {
       this.processedJournals.add(journalInfo.id)
     } catch (error) {
       Logger.error(`[${this.name}] Error processing journal row:`, error)
+    }
+  }
+
+  /**
+   * Get lesson count (only MAHT_a capacity hours - actual lessons)
+   * Reads from cache if available, otherwise fetches from API
+   */
+  async getLessonCountFromCache(journalId) {
+    try {
+      // Construct base URL - detect which Tahvel environment we're on
+      const currentHost = window.location.hostname
+      let baseUrl = 'https://tahvel.edu.ee/hois_back'
+
+      if (currentHost.includes('test.tahvel')) {
+        baseUrl = 'https://test.tahvel.eenet.ee/hois_back'
+      } else if (currentHost.includes('uustahvel')) {
+        baseUrl = 'https://uustahvel.eenet.ee/hois_back'
+      }
+
+      // Construct full URL for journal details endpoint
+      const endpoint = `/journals/${journalId}`
+      const fullUrl = `${baseUrl}${endpoint}`
+
+      // Cache key format matches ApiService: GET_<fullUrl>
+      const cacheKey = `GET_${fullUrl}`
+
+      // Try to read from cache first
+      let cachedJournal = await cacheService.get(cacheKey)
+
+      // If not in cache, fetch from API with caching enabled
+      if (!cachedJournal) {
+        Logger.debug(`[${this.name}] Journal ${journalId}: Not in cache, fetching from API`)
+        cachedJournal = await this.api.tahvel.get(endpoint, {}, { cache: true, cacheExpiration: cacheService.EXPIRATION.MEDIUM })
+      }
+
+      if (!cachedJournal || !cachedJournal.lessonHours || !cachedJournal.lessonHours.capacityHours) {
+        return null
+      }
+
+      // Get only MAHT_a (auditorium/class lessons), exclude MAHT_i (independent work)
+      const mahtA = cachedJournal.lessonHours.capacityHours.find(h => h.capacity === 'MAHT_a')
+
+      if (!mahtA) {
+        // If no MAHT_a found, use totalUsedHours as fallback
+        Logger.debug(`[${this.name}] Journal ${journalId}: No MAHT_a found, using totalUsedHours`)
+        return cachedJournal.lessonHours.totalUsedHours || 0
+      }
+
+      const lessonCount = mahtA.usedHours || 0
+
+      Logger.debug(`[${this.name}] Journal ${journalId}: ${lessonCount} lessons (MAHT_a)`)
+
+      return lessonCount
+    } catch (error) {
+      Logger.error(`[${this.name}] Error getting lesson count:`, error)
+      return null
     }
   }
 
@@ -480,26 +546,6 @@ export default class LessonCountWarningFeature extends BaseFeature {
 
       const journalId = parseInt(match[1])
 
-      // Get lesson count from 6th column - extract entered lessons (after slash)
-      const lessonCountCell = row.querySelector('td:nth-child(6)')
-      let lessonCount = 0
-
-      if (lessonCountCell) {
-        const text = lessonCountCell.textContent.trim()
-
-        // Look for the pattern like "151/1" or "13 / 0" and extract the number after the slash (entered lessons)
-        const slashMatch = text.match(/(\d+)\s*\/\s*(\d+)/)
-        if (slashMatch) {
-          lessonCount = parseInt(slashMatch[2]) // Use entered lessons, not planned
-        } else {
-          // Fallback to just the first number if no slash pattern found
-          const countMatch = text.match(/\d+/)
-          if (countMatch) {
-            lessonCount = parseInt(countMatch[0])
-          }
-        }
-      }
-
       // Try to find teacher info in different columns
       const teacherIds = []
       const teacherNames = []
@@ -557,7 +603,6 @@ export default class LessonCountWarningFeature extends BaseFeature {
       return {
         id: journalId,
         linkElement: linkElement,
-        lessonCount: lessonCount,
         teacherIds: teacherIds,
         teacherNames: teacherNames
       }
