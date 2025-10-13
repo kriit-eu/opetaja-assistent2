@@ -2687,67 +2687,96 @@ class JournalListSyncFeature extends BaseFeature {
     try {
       Logger.debug('📡 Fetching inactive students from Tahvel API')
 
-      // Fetch students with OPPURSTAATUS_A (academic leave), OPPURSTAATUS_L (graduated), OPPURSTAATUS_K (exmatriculated)
-      const response = await this.api.tahvel.get(
-        '/students',
-        {
-          lang: 'ET',
-          page: 0,
-          showMyStudentGroups: false,
-          size: 999999, // Very large page size to ensure we get all inactive students
-          sort: 'person.lastname,person.firstname,asc',
-          status: ['OPPURSTAATUS_K', 'OPPURSTAATUS_L', 'OPPURSTAATUS_A']
-        },
-        {
-          cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
-        }
-      )
-
-      Logger.debug(`📋 Inactive students API response: ${JSON.stringify(response).substring(0, 500)}`)
-
-      if (!response || !response.content || !Array.isArray(response.content)) {
-        Logger.warning('⚠️ Invalid response from inactive students API')
-        Logger.debug(`Response structure: ${JSON.stringify(Object.keys(response || {}))}`)
-        return { byPersonalCode: {}, byStudentId: {} }
-      }
-
       // Build maps indexed by both personal code and student ID for quick lookup
       const inactiveStudentsMap = {
         byPersonalCode: {},
         byStudentId: {}
       }
 
-      Logger.debug(`📊 Processing ${response.content.length} students from API response`)
+      // The API limits page size to 2000, so we need to paginate through all results
+      let page = 0
+      let hasMorePages = true
 
-      for (const student of response.content) {
-        if (student.idcode) {
-          const isActive = student.status === 'OPPURSTAATUS_O'
-          const isDeleted = student.status === 'OPPURSTAATUS_K'
-          const isGraduated = student.status === 'OPPURSTAATUS_L'
+      // Fetch all pages until we reach the end
+      while (hasMorePages) {
+        Logger.debug(`📄 Fetching page ${page} of inactive students`)
 
-          const studentData = {
-            personalCode: student.idcode,
-            name: student.fullname || `${student.firstname} ${student.lastname}`,
-            isActive: isActive,
-            isDeleted: isDeleted,
-            isGraduated: isGraduated,
-            studentId: student.id,
-            status: student.status
+        // Fetch students with OPPURSTAATUS_A (academic leave), OPPURSTAATUS_L (graduated), OPPURSTAATUS_K (exmatriculated)
+        const response = await this.api.tahvel.get(
+          '/students',
+          {
+            lang: 'ET',
+            page: page,
+            showMyStudentGroups: false,
+            size: 2000, // Maximum page size allowed by API
+            sort: 'person.lastname,person.firstname,asc',
+            status: ['OPPURSTAATUS_K', 'OPPURSTAATUS_L', 'OPPURSTAATUS_A']
+          },
+          {
+            cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
           }
+        )
 
-          // Index by personal code
-          inactiveStudentsMap.byPersonalCode[student.idcode] = studentData
+        if (!response || !response.content || !Array.isArray(response.content)) {
+          Logger.warning('⚠️ Invalid response from inactive students API')
+          Logger.debug(`Response structure: ${JSON.stringify(Object.keys(response || {}))}`)
+          break
+        }
 
-          // Index by student ID
-          if (student.id) {
-            inactiveStudentsMap.byStudentId[student.id] = studentData
+        // Log total info on first page
+        if (page === 0 && response.totalElements) {
+          Logger.debug(`📊 Total inactive students reported by API: ${response.totalElements}`)
+        }
+
+        const studentsInPage = response.content.length
+        Logger.debug(`📋 Processing ${studentsInPage} students from page ${page}`)
+
+        // If we got no students, we've reached the end
+        if (studentsInPage === 0) {
+          hasMorePages = false
+          break
+        }
+
+        // Process students from this page
+        for (const student of response.content) {
+          if (student.idcode) {
+            const isActive = student.status === 'OPPURSTAATUS_O'
+            const isDeleted = student.status === 'OPPURSTAATUS_K'
+            const isGraduated = student.status === 'OPPURSTAATUS_L'
+
+            const studentData = {
+              personalCode: student.idcode,
+              name: student.fullname || `${student.firstname} ${student.lastname}`,
+              isActive: isActive,
+              isDeleted: isDeleted,
+              isGraduated: isGraduated,
+              studentId: student.id,
+              status: student.status
+            }
+
+            // Index by personal code
+            inactiveStudentsMap.byPersonalCode[student.idcode] = studentData
+
+            // Index by student ID
+            if (student.id) {
+              inactiveStudentsMap.byStudentId[student.id] = studentData
+            }
+          } else {
+            Logger.debug(`⚠️ Skipping student without idcode: ${JSON.stringify(student)}`)
           }
+        }
+
+        // If this page had fewer students than requested, we've reached the end
+        if (studentsInPage < 2000) {
+          hasMorePages = false
         } else {
-          Logger.debug(`⚠️ Skipping student without idcode: ${JSON.stringify(student)}`)
+          page++
         }
       }
 
-      Logger.debug(`✅ Fetched ${Object.keys(inactiveStudentsMap.byPersonalCode).length} inactive students (indexed by personal code and student ID)`)
+      const fetchedCount = Object.keys(inactiveStudentsMap.byPersonalCode).length
+      Logger.debug(`✅ Fetched ${fetchedCount} inactive students from ${page + 1} page(s) (indexed by personal code and student ID)`)
+
       return inactiveStudentsMap
     } catch (error) {
       Logger.error(`❌ Error fetching inactive students: ${error.message}`)
