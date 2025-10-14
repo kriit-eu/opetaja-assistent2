@@ -21,9 +21,20 @@ export async function loadFeatures() {
 
   // Define all available features - load them conditionally
   const allAvailableFeatures = {
+    firstTimeSetup: [],
     header: [],
     journalList: [],
     singleJournal: [] // TODO: Add features when implemented
+  }
+
+  // Load first-time setup feature (always loaded to check if config is needed)
+  try {
+    const FirstTimeSetupFeature = (await import('../features/firstTimeSetup/FirstTimeSetupFeature.js')).default
+    const firstTimeSetupFeature = new FirstTimeSetupFeature()
+    allAvailableFeatures.firstTimeSetup.push(firstTimeSetupFeature)
+    Logger.debug('Feature "FirstTimeSetupFeature" created')
+  } catch (error) {
+    Logger.error('Error loading FirstTimeSetupFeature:', error)
   }
 
   // Only import and instantiate features that should be loaded
@@ -133,6 +144,7 @@ export async function loadFeatures() {
 
   // Create a copy of the features structure for returning
   const featureGroups = {
+    firstTimeSetup: [...allAvailableFeatures.firstTimeSetup],
     header: [...allAvailableFeatures.header],
     journalList: [...allAvailableFeatures.journalList],
     singleJournal: [...allAvailableFeatures.singleJournal]

@@ -51,17 +51,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(async response => {
         const responseText = await response.text()
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${responseText}`)
+        // Try to parse as JSON
+        let parsedData
+        try {
+          parsedData = JSON.parse(responseText)
+        } catch (e) {
+          parsedData = responseText
         }
 
-        // Try to parse as JSON, fall back to text
-        try {
-          const data = JSON.parse(responseText)
-          sendResponse({ status: 'success', data })
-        } catch (error) {
-          sendResponse({ status: 'success', data: responseText })
+        if (!response.ok) {
+          // Handle Kriit's error format: { status, data: { error } }
+          let errorMessage = `HTTP ${response.status}`
+          if (parsedData && typeof parsedData === 'object') {
+            if (parsedData.data && parsedData.data.error) {
+              errorMessage = parsedData.data.error
+            } else if (parsedData.error) {
+              errorMessage = parsedData.error
+            } else if (parsedData.message) {
+              errorMessage = parsedData.message
+            }
+          } else if (typeof parsedData === 'string') {
+            errorMessage = parsedData
+          }
+          throw new Error(errorMessage)
         }
+
+        sendResponse({ status: 'success', data: parsedData })
       })
       .catch(error => {
         Logger.error('Kriit API request failed:', error)
