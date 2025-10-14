@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
-import LessonCountWarningFeature from '../../../src/features/journalList/lessonCountWarning/LessonCountWarningFeature.js'
+import LessonCountWarningFeature from '../../../src/features/journalList/journalWarnings/LessonCountWarningFeature.js'
 import { cacheService } from '../../../src/services/CacheService.js'
 import Logger from '../../../src/services/Logger.js'
 import '../../../test/mocks/chrome.js'

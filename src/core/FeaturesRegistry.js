@@ -54,12 +54,22 @@ export async function loadFeatures() {
 
   // Load lesson count warning feature (always enabled)
   try {
-    const LessonCountWarningFeature = (await import('../features/journalList/lessonCountWarning/LessonCountWarningFeature.js')).default
+    const LessonCountWarningFeature = (await import('../features/journalList/journalWarnings/LessonCountWarningFeature.js')).default
     const lessonCountWarningFeature = new LessonCountWarningFeature()
     allAvailableFeatures.journalList.push(lessonCountWarningFeature)
     Logger.debug('Feature "LessonCountWarningFeature" created')
   } catch (error) {
     Logger.error('Error loading LessonCountWarningFeature:', error)
+  }
+
+  // Load final grade warning feature (always enabled)
+  try {
+    const FinalGradeWarningFeature = (await import('../features/journalList/journalWarnings/FinalGradeWarningFeature.js')).default
+    const finalGradeWarningFeature = new FinalGradeWarningFeature()
+    allAvailableFeatures.journalList.push(finalGradeWarningFeature)
+    Logger.debug('Feature "FinalGradeWarningFeature" created')
+  } catch (error) {
+    Logger.error('Error loading FinalGradeWarningFeature:', error)
   }
 
   // Load lesson discrepancies feature (always enabled)

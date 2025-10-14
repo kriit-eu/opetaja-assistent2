@@ -207,30 +207,40 @@ export default class LessonCountWarningFeature extends BaseFeature {
    * Set up observer for study year changes
    */
   setupStudyYearObserver() {
-    const studyYearElement = document.querySelector('[ng-model="criteria.studyYear"]')
-    if (!studyYearElement) {
-      Logger.warning(`[${this.name}] Study year dropdown not found for observer`)
-      return
-    }
+    const trySetup = () => {
+      const studyYearElement = document.querySelector('[ng-model="criteria.studyYear"]')
+      if (!studyYearElement) {
+        // Retry after a short delay
+        setTimeout(trySetup, 500)
+        return
+      }
 
-    this.studyYearObserver = new MutationObserver(mutations => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList' || mutation.type === 'characterData') {
-          const newStudyYear = this.getCurrentStudyYear()
-          if (newStudyYear !== this.currentStudyYear) {
-            Logger.info(`✨ [${this.name}] Study year changed from ${this.currentStudyYear} to ${newStudyYear}`)
-            this.currentStudyYear = newStudyYear
-            this.onStudyYearChange()
+      // Update current study year now that we found the dropdown
+      this.getCurrentStudyYear()
+
+      this.studyYearObserver = new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'childList' || mutation.type === 'characterData') {
+            const newStudyYear = this.getCurrentStudyYear()
+            if (newStudyYear !== this.currentStudyYear) {
+              Logger.info(`✨ [${this.name}] Study year changed from ${this.currentStudyYear} to ${newStudyYear}`)
+              this.currentStudyYear = newStudyYear
+              this.onStudyYearChange()
+            }
           }
         }
-      }
-    })
+      })
 
-    this.studyYearObserver.observe(studyYearElement, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    })
+      this.studyYearObserver.observe(studyYearElement, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      })
+
+      if (Logger.isDebugMode()) Logger.debug(`[${this.name}] Study year observer set up successfully`)
+    }
+
+    trySetup()
   }
 
   /**
