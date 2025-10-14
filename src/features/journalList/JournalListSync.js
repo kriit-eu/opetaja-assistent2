@@ -2591,8 +2591,8 @@ class JournalListSyncFeature extends BaseFeature {
         Logger.debug(`Found ${journalEntries.length} entries in journal ${journalId}`)
 
         for (const entry of journalEntries) {
-          // Only process entries that are homework, graded entries, or outcomes
-          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_O') {
+          // Only process entries that are homework, graded entries, practical work, or outcomes
+          if (entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_P' || entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_O') {
             // Handle outcome entries differently since they don't have regular entry IDs
             if (entry.entryType === 'SISSEKANNE_O') {
               // For outcome entries, we need to use the journalOutcome endpoint
@@ -2932,13 +2932,15 @@ class JournalListSyncFeature extends BaseFeature {
     const gradedEntries = journalEntries.filter(
       entry =>
         entry.entryType === 'SISSEKANNE_H' || // Graded entry
-        entry.entryType === 'SISSEKANNE_I' // Independent work
+        entry.entryType === 'SISSEKANNE_I' || // Independent work
+        entry.entryType === 'SISSEKANNE_P' // Practical work
     )
 
     // Debug: Log count of different entry types
     const entryCounts = {
       SISSEKANNE_H: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
       SISSEKANNE_I: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
+      SISSEKANNE_P: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_P').length,
       SISSEKANNE_O: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
     }
 
@@ -2953,7 +2955,7 @@ class JournalListSyncFeature extends BaseFeature {
     if (journalEntriesWithGrades && Array.isArray(journalEntriesWithGrades)) {
       journalEntriesWithGrades.forEach(entry => {
         // Handle regular entries with IDs
-        if (entry.id && (entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_I')) {
+        if (entry.id && (entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_P')) {
           entriesWithGradesMap[entry.id] = entry
         }
         // Handle outcome entries with curriculumModuleOutcomes
@@ -3098,6 +3100,8 @@ class JournalListSyncFeature extends BaseFeature {
           assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
           // If Tahvel entry contains lessons, include it for Kriit to consume; coerce to Number or null
           lessons: typeof entry.lessons !== 'undefined' && entry.lessons !== null ? Number(entry.lessons) : null,
+          // Include entry type so Kriit knows whether it's independent work or practical work
+          entryType: entry.entryType || null,
           results
         })
 
@@ -3169,9 +3173,11 @@ class JournalListSyncFeature extends BaseFeature {
       ? 'Hindeline töö'
       : entry.entryType === 'SISSEKANNE_I'
         ? 'Iseseisev töö'
-        : entry.entryType === 'SISSEKANNE_O'
-          ? 'Õppetulemus'
-          : 'Päeviku sissekanne'
+        : entry.entryType === 'SISSEKANNE_P'
+          ? 'Praktiline töö'
+          : entry.entryType === 'SISSEKANNE_O'
+            ? 'Õppetulemus'
+            : 'Päeviku sissekanne'
   }
 
   /**
@@ -5168,8 +5174,8 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
         // Process journal entries to extract assignments with grades
         const assignments = []
         for (const entry of journalEntries) {
-          // We're mainly interested in assignments (independent work entries)
-          if (entry.entryType === 'SISSEKANNE_I' && entry.nameEt && entry.id) {
+          // We're mainly interested in assignments (independent work and practical work entries)
+          if ((entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_P') && entry.nameEt && entry.id) {
             const results = []
 
             // Create a map of students who have results for this assignment
@@ -5227,6 +5233,8 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
                 assignmentInstructions: entry.nameEt,
                 assignmentDueAt: dueDate,
                 assignmentEntryDate: entryDate,
+                // Include entry type so Kriit knows whether it's independent work or practical work
+                entryType: entry.entryType || null,
                 results
               })
             }
