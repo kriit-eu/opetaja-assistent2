@@ -271,33 +271,46 @@ class JournalListSyncFeature extends BaseFeature {
    * Extract entry type differences from Kriit response
    */
   extractEntryTypeDifferences() {
+    Logger.debug('✨ [extractEntryTypeDifferences] Called')
     const entryTypeDiffs = []
     if (!this.differences || !Array.isArray(this.differences)) {
+      Logger.debug('✨ [extractEntryTypeDifferences] No differences array found')
       return entryTypeDiffs
     }
+    Logger.debug(`✨ [extractEntryTypeDifferences] Processing ${this.differences.length} subjects`)
     this.differences.forEach(subjectDiff => {
       if (!Array.isArray(subjectDiff.assignments)) return
       subjectDiff.assignments.forEach(assignment => {
         if (assignment.entryType && typeof assignment.entryType === 'object') {
           const kriitType = assignment.entryType.kriit
           const tahvelType = assignment.entryType.Tahvel
+          Logger.debug(
+            `✨ [extractEntryTypeDifferences] Assignment ${assignment.assignmentExternalId}: kriit="${kriitType}", tahvel="${tahvelType}"`
+          )
           if (kriitType !== tahvelType && !(kriitType == null && tahvelType == null)) {
             let assignmentName = assignment.assignmentName
             if (assignmentName && typeof assignmentName === 'object') {
               assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
             }
-            entryTypeDiffs.push({
+            const diff = {
               assignmentExternalId: assignment.assignmentExternalId,
               assignmentName,
               kriit: kriitType,
               Tahvel: tahvelType,
               subjectName: subjectDiff.subjectName || '',
               subjectExternalId: subjectDiff.subjectExternalId || ''
-            })
+            }
+            entryTypeDiffs.push(diff)
+            Logger.debug(`✨ [extractEntryTypeDifferences] Added diff:`, JSON.stringify(diff))
           }
+        } else if (Logger.isDebugMode()) {
+          Logger.debug(
+            `✨ [extractEntryTypeDifferences] Assignment ${assignment.assignmentExternalId}: entryType is not an object (${typeof assignment.entryType})`
+          )
         }
       })
     })
+    Logger.debug(`✨ [extractEntryTypeDifferences] Total entry type differences: ${entryTypeDiffs.length}`)
     return entryTypeDiffs
   }
 
@@ -1794,11 +1807,24 @@ class JournalListSyncFeature extends BaseFeature {
                   if (kriitAssignment.assignmentEntryType) {
                     const kriitType = kriitAssignment.assignmentEntryType
                     const tahvelType = tahvelAssignment.entryType
+                    if (Logger.isDebugMode()) {
+                      Logger.debug(
+                        `[Entry Type] Assignment ${diffAssignment.assignmentExternalId}: Kriit="${kriitType}", Tahvel="${tahvelType}"`
+                      )
+                    }
                     if (kriitType && kriitType !== tahvelType) {
                       diffAssignment.entryType = { kriit: kriitType, Tahvel: tahvelType }
+                      Logger.debug(`[Entry Type] DIFFERENCE DETECTED: Assignment ${diffAssignment.assignmentExternalId}`)
                     } else {
                       diffAssignment.entryType = tahvelType
+                      if (Logger.isDebugMode()) {
+                        Logger.debug(`[Entry Type] No difference: Assignment ${diffAssignment.assignmentExternalId}`)
+                      }
                     }
+                  } else if (Logger.isDebugMode()) {
+                    Logger.debug(
+                      `[Entry Type] No assignmentEntryType from Kriit for assignment ${diffAssignment.assignmentExternalId}`
+                    )
                   }
 
                   // Process each result
@@ -1875,11 +1901,16 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {number} Total number of differences
    */
   countTotalDifferences() {
+    Logger.debug('✨ [countTotalDifferences] Called')
     let count = 0
 
-    if (!this.differences || !Array.isArray(this.differences)) return 0
+    if (!this.differences || !Array.isArray(this.differences)) {
+      Logger.debug('✨ [countTotalDifferences] No differences array, returning 0')
+      return 0
+    }
 
     // Count grade differences
+    let gradeCount = 0
     this.differences.forEach(subject => {
       if (subject && Array.isArray(subject.assignments)) {
         subject.assignments.forEach(assignment => {
@@ -1889,38 +1920,48 @@ class JournalListSyncFeature extends BaseFeature {
               const kriitGrade = result.grade || '(puudub)'
               // Count as difference if either grade is missing or different
               if (tahvelGrade !== kriitGrade) {
-                count++
+                gradeCount++
               }
             })
           }
         })
       }
     })
+    Logger.debug(`✨ [countTotalDifferences] Grade differences: ${gradeCount}`)
+    count += gradeCount
 
     // Count assignment name differences
     const assignmentNameDiffs = this.extractAssignmentNameDifferences()
+    let nameCount = 0
     assignmentNameDiffs.forEach(subject => {
       if (subject.nameDiffs && subject.nameDiffs.length > 0) {
-        count += subject.nameDiffs.length
+        nameCount += subject.nameDiffs.length
       }
     })
+    Logger.debug(`✨ [countTotalDifferences] Name differences: ${nameCount}`)
+    count += nameCount
 
     // Count due date differences
     const dueDateDiffs = this.extractDueDateDifferences()
+    Logger.debug(`✨ [countTotalDifferences] Due date differences: ${dueDateDiffs.length}`)
     count += dueDateDiffs.length
 
     // Count entry date differences
     const entryDateDiffs = this.extractEntryDateDifferences()
+    Logger.debug(`✨ [countTotalDifferences] Entry date differences: ${entryDateDiffs.length}`)
     count += entryDateDiffs.length
 
     // Count assignment hours differences
     const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
+    Logger.debug(`✨ [countTotalDifferences] Hours differences: ${assignmentHoursDiffs.length}`)
     count += assignmentHoursDiffs.length
 
     // Count entry type differences
     const entryTypeDiffs = this.extractEntryTypeDifferences()
+    Logger.debug(`✨ [countTotalDifferences] Entry type differences: ${entryTypeDiffs.length}`)
     count += entryTypeDiffs.length
 
+    Logger.debug(`✨ [countTotalDifferences] TOTAL differences: ${count}`)
     return count
   }
 
@@ -3461,7 +3502,7 @@ class JournalListSyncFeature extends BaseFeature {
         this.differences.forEach(subject => {
           if (subject.assignments && Array.isArray(subject.assignments)) {
             subject.assignments.forEach(assignment => {
-              // Check for assignment-level changes (name, due date, entry date)
+              // Check for assignment-level changes (name, due date, entry date, entry type)
               const hasNameDiff =
                 assignment.assignmentName &&
                 typeof assignment.assignmentName === 'object' &&
@@ -3480,16 +3521,23 @@ class JournalListSyncFeature extends BaseFeature {
                 assignment.assignmentEntryDate.kriit &&
                 assignment.assignmentEntryDate.kriit !== assignment.assignmentEntryDate.Tahvel
 
-              if (hasNameDiff || hasDueDateDiff || hasEntryDateDiff) {
+              const hasEntryTypeDiff =
+                assignment.entryType &&
+                typeof assignment.entryType === 'object' &&
+                assignment.entryType.kriit &&
+                assignment.entryType.kriit !== assignment.entryType.Tahvel
+
+              if (hasNameDiff || hasDueDateDiff || hasEntryDateDiff || hasEntryTypeDiff) {
                 assignmentLevelDifferences.push({
                   journalId: subject.subjectExternalId,
                   assignmentId: assignment.assignmentExternalId,
                   hasNameDiff,
                   hasDueDateDiff,
-                  hasEntryDateDiff
+                  hasEntryDateDiff,
+                  hasEntryTypeDiff
                 })
                 Logger.debug(
-                  `📋 Found assignment-level difference: ${assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel || assignment.assignmentExternalId} (name: ${hasNameDiff}, due: ${hasDueDateDiff}, entry: ${hasEntryDateDiff})`
+                  `📋 Found assignment-level difference: ${assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel || assignment.assignmentExternalId} (name: ${hasNameDiff}, due: ${hasDueDateDiff}, entry: ${hasEntryDateDiff}, type: ${hasEntryTypeDiff})`
                 )
               }
             })
@@ -3593,7 +3641,7 @@ class JournalListSyncFeature extends BaseFeature {
           }
         }
 
-        // Merge assignment-level changes from this.differences (name, due date, entry date)
+        // Merge assignment-level changes from this.differences (name, due date, entry date, entry type)
         for (const batch of assignmentMap.values()) {
           if (!this.differences || !Array.isArray(this.differences)) continue
           const subject = this.differences.find(s => s.subjectExternalId === batch.journalId)
@@ -3609,6 +3657,9 @@ class JournalListSyncFeature extends BaseFeature {
           }
           if (assignmentDiff.assignmentEntryDate && typeof assignmentDiff.assignmentEntryDate === 'object' && assignmentDiff.assignmentEntryDate.kriit) {
             batch.entryDate = assignmentDiff.assignmentEntryDate.kriit
+          }
+          if (assignmentDiff.entryType && typeof assignmentDiff.entryType === 'object' && assignmentDiff.entryType.kriit) {
+            batch.entryType = assignmentDiff.entryType.kriit
           }
         }
 
@@ -3752,7 +3803,7 @@ class JournalListSyncFeature extends BaseFeature {
             // Check if this is an assignment-level only batch or has student updates
             const isAssignmentLevelOnly = batch.assignmentLevelOnly === true
             const hasStudentUpdates = studentsToUpdate.length > 0
-            const hasAssignmentUpdates = batch.nameEt || batch.homeworkDuedate || batch.entryDate
+            const hasAssignmentUpdates = batch.nameEt || batch.homeworkDuedate || batch.entryDate || batch.entryType
 
             if (!hasStudentUpdates && !isAssignmentLevelOnly) {
               Logger.debug(`No student updates required for assignment ${batch.assignmentId}`)
@@ -3809,6 +3860,9 @@ class JournalListSyncFeature extends BaseFeature {
               updateData.entryDate = ed
               batch.entryDate = ed
             }
+            if (batch.entryType) {
+              updateData.entryType = batch.entryType
+            }
 
             // Add Kriit assignment link to homework field
             if (batch.assignmentId) {
@@ -3832,12 +3886,13 @@ class JournalListSyncFeature extends BaseFeature {
             if (Array.isArray(updateData.journalEntryTeachers)) {
               updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
             }
-            // Set capacity types based on entry type
-            if (entryData.entryType === 'SISSEKANNE_I') {
+            // Set capacity types based on entry type (use the updated type if changed, otherwise use existing)
+            const finalEntryType = updateData.entryType || entryData.entryType
+            if (finalEntryType === 'SISSEKANNE_I') {
               updateData.journalEntryCapacityTypes = ['MAHT_i']
-            } else if (entryData.entryType === 'SISSEKANNE_H') {
+            } else if (finalEntryType === 'SISSEKANNE_H') {
               updateData.journalEntryCapacityTypes = ['MAHT_h']
-            } else if (entryData.entryType === 'SISSEKANNE_P') {
+            } else if (finalEntryType === 'SISSEKANNE_P') {
               updateData.journalEntryCapacityTypes = []
             }
 
@@ -3902,6 +3957,10 @@ class JournalListSyncFeature extends BaseFeature {
                         assignmentObj.assignmentEntryDate = assignmentObj.assignmentEntryDate || {}
                         // batch.entryDate was normalized to a full ISO datetime string earlier
                         assignmentObj.assignmentEntryDate.Tahvel = batch.entryDate
+                      }
+                      if (batch.entryType) {
+                        assignmentObj.entryType = assignmentObj.entryType || {}
+                        assignmentObj.entryType.Tahvel = batch.entryType
                       }
                       // Update results: set currentGrade for synced students
                       if (Array.isArray(assignmentObj.results)) {
@@ -4677,11 +4736,9 @@ class JournalListSyncFeature extends BaseFeature {
         updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
       }
 
-      // Make sure we have the correct capacity types
-      if (
-        !updateData.journalEntryCapacityTypes ||
-        (Array.isArray(updateData.journalEntryCapacityTypes) && updateData.journalEntryCapacityTypes.length === 0)
-      ) {
+      // Make sure we have the correct capacity types (only if not already set)
+      // Note: Empty array is valid for SISSEKANNE_P, so don't treat it as missing
+      if (!updateData.journalEntryCapacityTypes) {
         // Set default capacity types based on entry type
         if (entryData.entryType === 'SISSEKANNE_I') {
           updateData.journalEntryCapacityTypes = ['MAHT_i']
