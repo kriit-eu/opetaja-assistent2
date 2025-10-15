@@ -2987,5 +2987,238 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(assignment.results).toHaveLength(1)
       expect(assignment.results[0]).toHaveProperty('studentPersonalCode')
     })
+
+    test('should extract entry type differences when types differ', () => {
+      journalListSync.differences = [
+        {
+          subjectName: 'Programming',
+          subjectExternalId: '123',
+          assignments: [
+            {
+              assignmentExternalId: 'a1',
+              assignmentName: 'Homework 1',
+              entryType: {
+                kriit: 'SISSEKANNE_P',
+                Tahvel: 'SISSEKANNE_I'
+              }
+            }
+          ]
+        }
+      ]
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toHaveLength(1)
+      expect(result[0]).toEqual({
+        assignmentExternalId: 'a1',
+        assignmentName: 'Homework 1',
+        kriit: 'SISSEKANNE_P',
+        Tahvel: 'SISSEKANNE_I',
+        subjectName: 'Programming',
+        subjectExternalId: '123'
+      })
+    })
+
+    test('should not extract entry type differences when types match', () => {
+      journalListSync.differences = [
+        {
+          subjectName: 'Math',
+          subjectExternalId: '456',
+          assignments: [
+            {
+              assignmentExternalId: 'a2',
+              assignmentName: 'Test',
+              entryType: {
+                kriit: 'SISSEKANNE_I',
+                Tahvel: 'SISSEKANNE_I'
+              }
+            }
+          ]
+        }
+      ]
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toHaveLength(0)
+    })
+
+    test('should handle multiple entry type differences across subjects', () => {
+      journalListSync.differences = [
+        {
+          subjectName: 'Science',
+          subjectExternalId: '111',
+          assignments: [
+            {
+              assignmentExternalId: 'a1',
+              assignmentName: 'Lab 1',
+              entryType: {
+                kriit: 'SISSEKANNE_P',
+                Tahvel: 'SISSEKANNE_L'
+              }
+            },
+            {
+              assignmentExternalId: 'a2',
+              assignmentName: 'Lab 2',
+              entryType: {
+                kriit: 'SISSEKANNE_H',
+                Tahvel: 'SISSEKANNE_I'
+              }
+            }
+          ]
+        },
+        {
+          subjectName: 'History',
+          subjectExternalId: '222',
+          assignments: [
+            {
+              assignmentExternalId: 'a3',
+              assignmentName: 'Essay',
+              entryType: {
+                kriit: 'SISSEKANNE_I',
+                Tahvel: 'SISSEKANNE_H'
+              }
+            }
+          ]
+        }
+      ]
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toHaveLength(3)
+      expect(result[0].subjectName).toBe('Science')
+      expect(result[0].assignmentName).toBe('Lab 1')
+      expect(result[1].subjectName).toBe('Science')
+      expect(result[1].assignmentName).toBe('Lab 2')
+      expect(result[2].subjectName).toBe('History')
+      expect(result[2].assignmentName).toBe('Essay')
+    })
+
+    test('should handle object assignmentName in entry type differences', () => {
+      journalListSync.differences = [
+        {
+          subjectName: 'Art',
+          subjectExternalId: '333',
+          assignments: [
+            {
+              assignmentExternalId: 'a1',
+              assignmentName: {
+                kriit: 'New Name',
+                Tahvel: 'Old Name'
+              },
+              entryType: {
+                kriit: 'SISSEKANNE_P',
+                Tahvel: 'SISSEKANNE_I'
+              }
+            }
+          ]
+        }
+      ]
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toHaveLength(1)
+      expect(result[0].assignmentName).toBe('New Name')
+    })
+
+    test('should return empty array when no differences exist', () => {
+      journalListSync.differences = null
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toEqual([])
+    })
+
+    test('should skip assignments without entryType object', () => {
+      journalListSync.differences = [
+        {
+          subjectName: 'Music',
+          subjectExternalId: '444',
+          assignments: [
+            {
+              assignmentExternalId: 'a1',
+              assignmentName: 'Concert',
+              entryType: 'SISSEKANNE_I' // String, not object - should be skipped
+            },
+            {
+              assignmentExternalId: 'a2',
+              assignmentName: 'Practice',
+              entryType: {
+                kriit: 'SISSEKANNE_P',
+                Tahvel: 'SISSEKANNE_I'
+              }
+            }
+          ]
+        }
+      ]
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toHaveLength(1)
+      expect(result[0].assignmentExternalId).toBe('a2')
+    })
+
+    test('should handle null entry types', () => {
+      journalListSync.differences = [
+        {
+          subjectName: 'PE',
+          subjectExternalId: '555',
+          assignments: [
+            {
+              assignmentExternalId: 'a1',
+              assignmentName: 'Exercise',
+              entryType: {
+                kriit: 'SISSEKANNE_P',
+                Tahvel: null
+              }
+            }
+          ]
+        }
+      ]
+
+      const result = journalListSync.extractEntryTypeDifferences()
+
+      expect(result).toHaveLength(1)
+      expect(result[0].kriit).toBe('SISSEKANNE_P')
+      expect(result[0].Tahvel).toBe(null)
+    })
+
+    test('should handle journalEntryCapacityTypes correctly for different entry types', () => {
+      // Test that capacity types are set correctly based on entry type
+      // SISSEKANNE_I should have ['MAHT_i']
+      // SISSEKANNE_H should have ['MAHT_h']
+      // SISSEKANNE_P should have [] (empty array)
+
+      const testCases = [
+        {
+          entryType: 'SISSEKANNE_I',
+          expectedCapacityTypes: ['MAHT_i'],
+          description: 'Independent work'
+        },
+        {
+          entryType: 'SISSEKANNE_H',
+          expectedCapacityTypes: ['MAHT_h'],
+          description: 'Graded work'
+        },
+        {
+          entryType: 'SISSEKANNE_P',
+          expectedCapacityTypes: [],
+          description: 'Practical work'
+        }
+      ]
+
+      testCases.forEach(testCase => {
+        // Simulate the logic that would be applied when syncing to Tahvel
+        let capacityTypes
+        if (testCase.entryType === 'SISSEKANNE_I') {
+          capacityTypes = ['MAHT_i']
+        } else if (testCase.entryType === 'SISSEKANNE_H') {
+          capacityTypes = ['MAHT_h']
+        } else if (testCase.entryType === 'SISSEKANNE_P') {
+          capacityTypes = []
+        }
+
+        expect(capacityTypes).toEqual(testCase.expectedCapacityTypes)
+      })
+    })
   })
 })

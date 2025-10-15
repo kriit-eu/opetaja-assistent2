@@ -268,6 +268,40 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
+   * Extract entry type differences from Kriit response
+   */
+  extractEntryTypeDifferences() {
+    const entryTypeDiffs = []
+    if (!this.differences || !Array.isArray(this.differences)) {
+      return entryTypeDiffs
+    }
+    this.differences.forEach(subjectDiff => {
+      if (!Array.isArray(subjectDiff.assignments)) return
+      subjectDiff.assignments.forEach(assignment => {
+        if (assignment.entryType && typeof assignment.entryType === 'object') {
+          const kriitType = assignment.entryType.kriit
+          const tahvelType = assignment.entryType.Tahvel
+          if (kriitType !== tahvelType && !(kriitType == null && tahvelType == null)) {
+            let assignmentName = assignment.assignmentName
+            if (assignmentName && typeof assignmentName === 'object') {
+              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
+            }
+            entryTypeDiffs.push({
+              assignmentExternalId: assignment.assignmentExternalId,
+              assignmentName,
+              kriit: kriitType,
+              Tahvel: tahvelType,
+              subjectName: subjectDiff.subjectName || '',
+              subjectExternalId: subjectDiff.subjectExternalId || ''
+            })
+          }
+        }
+      })
+    })
+    return entryTypeDiffs
+  }
+
+  /**
    * Send only outcome entries (SISSEKANNE_O) to Kriit API
    */
   async sendOutcomeEntriesToKriit() {
@@ -1387,8 +1421,9 @@ class JournalListSyncFeature extends BaseFeature {
         const dueDateDiffs = this.extractDueDateDifferences()
         const entryDateDiffs = this.extractEntryDateDifferences()
         const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
+        const entryTypeDiffs = this.extractEntryTypeDifferences()
         const newAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, assignmentHoursDiffs, newAssignments)
+        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, assignmentHoursDiffs, entryTypeDiffs, newAssignments)
       }
     )
   }
@@ -1755,6 +1790,17 @@ class JournalListSyncFeature extends BaseFeature {
                   compareAndCreateDiff('assignmentDueAt')
                   compareAndCreateDiff('assignmentEntryDate')
 
+                  // Handle entry type - Kriit might send it as assignmentEntryType
+                  if (kriitAssignment.assignmentEntryType) {
+                    const kriitType = kriitAssignment.assignmentEntryType
+                    const tahvelType = tahvelAssignment.entryType
+                    if (kriitType && kriitType !== tahvelType) {
+                      diffAssignment.entryType = { kriit: kriitType, Tahvel: tahvelType }
+                    } else {
+                      diffAssignment.entryType = tahvelType
+                    }
+                  }
+
                   // Process each result
                   if (diffAssignment.results && Array.isArray(diffAssignment.results)) {
                     diffAssignment.results.forEach(diffResult => {
@@ -1870,6 +1916,10 @@ class JournalListSyncFeature extends BaseFeature {
     // Count assignment hours differences
     const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
     count += assignmentHoursDiffs.length
+
+    // Count entry type differences
+    const entryTypeDiffs = this.extractEntryTypeDifferences()
+    count += entryTypeDiffs.length
 
     return count
   }
@@ -3782,8 +3832,14 @@ class JournalListSyncFeature extends BaseFeature {
             if (Array.isArray(updateData.journalEntryTeachers)) {
               updateData.journalEntryTeachers = updateData.journalEntryTeachers.map(id => String(id))
             }
-            // Always set capacity types to MAHT_i for assignment updates (as requested)
-            updateData.journalEntryCapacityTypes = ['MAHT_i']
+            // Set capacity types based on entry type
+            if (entryData.entryType === 'SISSEKANNE_I') {
+              updateData.journalEntryCapacityTypes = ['MAHT_i']
+            } else if (entryData.entryType === 'SISSEKANNE_H') {
+              updateData.journalEntryCapacityTypes = ['MAHT_h']
+            } else if (entryData.entryType === 'SISSEKANNE_P') {
+              updateData.journalEntryCapacityTypes = []
+            }
 
             // Filter out students with OPPURSTAATUS_K using mapping similar to syncAssignmentNameDifferences
             if (Array.isArray(updateData.journalEntryStudents)) {
@@ -4631,6 +4687,8 @@ class JournalListSyncFeature extends BaseFeature {
           updateData.journalEntryCapacityTypes = ['MAHT_i']
         } else if (entryData.entryType === 'SISSEKANNE_H') {
           updateData.journalEntryCapacityTypes = ['MAHT_h']
+        } else if (entryData.entryType === 'SISSEKANNE_P') {
+          updateData.journalEntryCapacityTypes = []
         }
       }
 
