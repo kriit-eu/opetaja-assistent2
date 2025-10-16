@@ -813,4 +813,173 @@ describe('LastLessonNotificationFeature', () => {
       // Should complete without errors
     })
   })
+
+  describe('discrepancy detection', () => {
+    test('should not show notification when there are discrepancies', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              // Journal has 2 lessons on 2024-11-01
+              return [
+                { id: 1, entryDate: '2024-11-01', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 2 }
+              ]
+            }
+            if (url.includes('timetableevents')) {
+              // Timetable has 3 lessons on 2024-11-01 (discrepancy!)
+              return {
+                timetableEvents: [
+                  { date: '2024-11-01', timeStart: '09:00', journalId: 12345 },
+                  { date: '2024-11-01', timeStart: '10:00', journalId: 12345 },
+                  { date: '2024-11-01', timeStart: '11:00', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      // Banner should not be shown because there are discrepancies
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeNull()
+    })
+
+    test('should show notification when there are no discrepancies', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              // Journal has 2 lessons on 2024-11-01
+              return [
+                { id: 1, entryDate: '2024-11-01', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 2 }
+              ]
+            }
+            if (url.includes('timetableevents')) {
+              // Timetable also has 2 lessons on 2024-11-01 (no discrepancy!)
+              return {
+                timetableEvents: [
+                  { date: '2024-11-01', timeStart: '09:00', journalId: 12345 },
+                  { date: '2024-11-01', timeStart: '10:00', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      // Banner should be shown because there are no discrepancies
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      expect(banner.textContent).toContain('Viimane tund')
+    })
+
+    test('should detect discrepancy when journal entry is missing', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              // No journal entries
+              return []
+            }
+            if (url.includes('timetableevents')) {
+              // But timetable has lessons (discrepancy!)
+              return {
+                timetableEvents: [
+                  { date: '2024-11-01', timeStart: '09:00', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      // Banner should not be shown because journal has no entries
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeNull()
+    })
+
+    test('should ignore non-lesson entry types when checking discrepancies', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              // Journal has 1 lesson + 1 independent work (only lesson should be counted)
+              return [
+                { id: 1, entryDate: '2024-11-01', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 },
+                { id: 2, entryDate: '2024-11-01', entryType: 'SISSEKANNE_I', startLessonNr: 1, lessons: 1 }
+              ]
+            }
+            if (url.includes('timetableevents')) {
+              // Timetable has 1 lesson (matches the lesson count, not independent work)
+              return {
+                timetableEvents: [
+                  { date: '2024-11-01', timeStart: '09:00', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      // Banner should be shown because lesson counts match (independent work is ignored)
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+    })
+  })
 })
