@@ -141,9 +141,11 @@ export class DiscrepanciesTable {
    * @param {Array} options.discrepancies - List of discrepancies
    * @param {Array} options.capacityProblems - List of capacity problems
    * @param {boolean} options.forceRefresh - Whether to force refresh
+   * @param {Array} options.timetableData - Timetable events
+   * @param {Object} options.journalData - Journal data with info and entries
    * @returns {Promise<boolean>} Success status
    */
-  async createTable({ discrepancies, capacityProblems, forceRefresh = false }) {
+  async createTable({ discrepancies, capacityProblems, forceRefresh = false, timetableData = [], journalData = null }) {
     try {
       // Always refresh independent work deadline messages before table build
       if (window.__lastLessonNotificationRefresh) {
@@ -173,7 +175,7 @@ export class DiscrepanciesTable {
       }
       // Check missing grades message using DOM state after table is rendered
       existingTable?.remove()
-      const success = this.insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, null)
+      const success = this.insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, null, timetableData, journalData)
       if (success) {
         // After table and highlighting, check for highlighted cells
         const highlighted = document.querySelector('.highlight-missing-grade')
@@ -196,10 +198,12 @@ export class DiscrepanciesTable {
    * @param {Array} capacityProblems - List of capacity problems
    * @param {Array} independentWorkMessages - Array of independent work messages
    * @param {string} missingGradesMessage - Missing grades message
+   * @param {Array} timetableData - Timetable events
+   * @param {Object} journalData - Journal data with info and entries
    * @returns {boolean} Success status
    */
   // eslint-disable-next-line no-unused-vars
-  insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage) {
+  insertUnifiedTable(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage, timetableData = [], journalData = null) {
     try {
       // Verify we should still continue before inserting
       if (this.shouldContinue && !this.shouldContinue()) {
@@ -221,7 +225,7 @@ export class DiscrepanciesTable {
       flexContainer.style.margin = '0'
       flexContainer.setAttribute('data-discrepancies-table', 'true')
       // Main table only for now
-      const mainTableSection = this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, null, true)
+      const mainTableSection = this.#createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, null, true, timetableData, journalData)
       flexContainer.innerHTML = mainTableSection
       // If the chosen insertion point is a header/section element (accordion-header),
       // insert the table after that element (as a sibling) so it appears under the section,
@@ -437,10 +441,13 @@ export class DiscrepanciesTable {
    * @param {Array} capacityProblems - List of capacity problems
    * @param {Array} independentWorkMessages - Array of independent work messages
    * @param {string} missingGradesMessage - Missing grades message
+   * @param {boolean} renderNotificationsLater - Whether to render notifications later
+   * @param {Array} timetableData - Timetable events
+   * @param {Object} journalData - Journal data with info and entries
    * @returns {HTMLElement} The table element
    * @private
    */
-  #createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage) {
+  #createUnifiedTableElement(discrepancies, capacityProblems, independentWorkMessages, missingGradesMessage, renderNotificationsLater = false, timetableData = [], journalData = null) {
     const hasProblems =
       discrepancies.length > 0 || capacityProblems.length > 0 || (independentWorkMessages && independentWorkMessages.length > 0) || !!missingGradesMessage
     const backgroundColor = hasProblems ? '#fff3cd' : '#d1edcc'
@@ -454,7 +461,7 @@ export class DiscrepanciesTable {
         <h3 style="margin:0;color:#495057;">Õpetaja Assistent 2</h3>
       </div>
       <div style="background:#ffc107;color:#212529;font-weight:bold;padding:6px 16px;border-radius:16px;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,.07);">
-        Probleemid sissekannetega
+        Tunniplaan
       </div>
     </div>`
 
@@ -465,7 +472,7 @@ export class DiscrepanciesTable {
     }
 
   // Only return the main table section; notifications are handled after highlights
-  const timetableSection = this.#createTimetableSection(discrepancies)
+  const timetableSection = this.#createTimetableSection(discrepancies, timetableData, journalData)
   const capacitySection = this.#createCapacitySection(capacityProblems, null)
     return `<div style='${boxStyle}'>${titleBar + indepWorkBanners + timetableSection + capacitySection}</div>`
   }
@@ -473,34 +480,120 @@ export class DiscrepanciesTable {
   /**
    * Creates the timetable section of the table
    * @param {Array} discrepancies - List of discrepancies
+   * @param {Array} timetableData - Timetable events
+   * @param {Object} journalData - Journal data with info and entries
    * @returns {string} HTML string for timetable section
    * @private
    */
-  #createTimetableSection(discrepancies) {
-    if (!discrepancies.length) {
-      return '<p style="color:#28a745;margin:0 0 20px 0;">Erinevusi tunniplaaniga pole.</p>'
+  #createTimetableSection(discrepancies, timetableData = {}, journalData = null) {
+    // If no timetable data, show nothing or empty message
+    if (!timetableData || Object.keys(timetableData).length === 0) {
+      return '<p style="color:#28a745;margin:0 0 20px 0;">Selle aine tunniplaanis tunde ei ole.</p>'
     }
 
     const sectionHeader = `<div style="margin-bottom:15px;">
-      <h4 style="margin:0 0 10px 0;color:#495057;">Erinevused tunniplaaniga</h4>
+      <h4 style="margin:0 0 10px 0;color:#495057;">Tunniplaani tunnid</h4>
     </div>`
 
-    const sortedDiscrepancies = [...discrepancies].sort((a, b) => {
-      const dateComparison = new Date(a.date) - new Date(b.date)
-      if (dateComparison !== 0) return dateComparison
+    // Create a map of discrepancies by date for quick lookup
+    const discrepancyMap = new Map()
+    for (const disc of discrepancies) {
+      discrepancyMap.set(disc.date, disc)
+    }
 
-      const aLessonNumber = a.lessonNumber ?? a.timetableStart ?? 0
-      const bLessonNumber = b.lessonNumber ?? b.timetableStart ?? 0
-      return aLessonNumber - bLessonNumber
+    // Create rows from timetable stats (timetableData is now an object with dates as keys)
+    const now = new Date()
+    const timetableRows = Object.entries(timetableData)
+      .map(([dateStr, stats]) => ({
+        date: dateStr,
+        startLessonNr: stats.start,
+        lessonCount: stats.count,
+        discrepancy: discrepancyMap.get(dateStr),
+        isFuture: new Date(dateStr) > now
+      }))
+      .filter(row => {
+        // Show all future dates
+        if (row.isFuture) return true
+        // Show past dates only if they have a discrepancy
+        return !!row.discrepancy
+      })
+
+    // Sort by date
+    const sortedRows = timetableRows.sort((a, b) => {
+      return new Date(a.date) - new Date(b.date)
     })
 
-    const rows = sortedDiscrepancies.map(discrepancy => this.#createDiscrepancyRow(discrepancy)).join('')
+    // Determine if we should show the finish flag
+    // Count unique dates (not total events) for comparison
+    const uniqueDatesCount = sortedRows.length
+    const plannedLessons = journalData?.info?.lessonHours?.capacityHours?.find(h => h.capacity === 'MAHT_a')?.hours || 0
+    const showFinishFlag = plannedLessons > 0 && uniqueDatesCount >= plannedLessons
+    const lastRowIndex = sortedRows.length - 1
+
+    const rows = sortedRows.map((row, index) => this.#createTimetableRow(row, showFinishFlag && index === lastRowIndex)).join('')
     const tableHead = `<thead><tr style="background:#f8f9fa"><th class="lesson-discrepancy-table-cell lesson-discrepancy-table-cell-20">Kuupäev</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-25">Algustund</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-25">Tundide arv</th><th class="lesson-discrepancy-table-cell-center lesson-discrepancy-table-cell-30">Tegevus</th></tr></thead>`
 
     return (
       sectionHeader +
       `<table style="width:100%;border-collapse:collapse;background:white;margin-bottom:20px;border:1px solid #dee2e6;">${tableHead}<tbody>${rows}</tbody></table>`
     )
+  }
+
+  /**
+   * Creates a timetable row
+   * @param {Object} rowData - Row data with date, timetableEvent, and discrepancy
+   * @param {boolean} showFinishFlag - Whether to show the finish flag on this row
+   * @returns {string} HTML string for the row
+   * @private
+   */
+  #createTimetableRow(rowData, showFinishFlag = false) {
+    const { date, startLessonNr, lessonCount, discrepancy } = rowData
+
+    // Check if this is a future lesson
+    const now = new Date()
+    const lessonDate = new Date(date)
+    const isFuture = lessonDate > now
+
+    // Style for future rows (gray text)
+    const rowStyle = isFuture ? 'background-color:white;color:#999;' : 'background-color:white'
+
+    // Add finish flag to date if needed
+    const dateDisplay = showFinishFlag
+      ? `🏁 ${this.#formatDisplayDate(date)}`
+      : this.#formatDisplayDate(date)
+
+    // If there's a discrepancy, use the discrepancy row logic
+    if (discrepancy) {
+      const { start, count, action } = this.#getDiscrepancyRowData(discrepancy)
+      return `<tr style="${rowStyle}"><td class="lesson-discrepancy-table-cell">${dateDisplay}</td><td class="lesson-discrepancy-table-cell-center">${start}</td><td class="lesson-discrepancy-table-cell-center">${count}</td><td class="lesson-discrepancy-table-cell-center">${action}</td></tr>`
+    }
+
+    // No discrepancy - show timetable data
+    const start = startLessonNr ? `<span style="font-weight:bold;">${startLessonNr}</span>` : `<span style="font-weight:bold;">-</span>`
+    const count = `<span style="font-weight:bold;">${lessonCount || 1}</span>`
+
+    // For future dates, show grayed-out unclickable "Lisa" button
+    const action = isFuture
+      ? `<button style="background:#ccc;color:#666;border:none;padding:4px 8px;border-radius:3px;font-size:12px;font-weight:bold;cursor:not-allowed;" disabled>Lisa</button>`
+      : '' // Empty action for past dates without discrepancies
+
+    return `<tr style="${rowStyle}"><td class="lesson-discrepancy-table-cell">${dateDisplay}</td><td class="lesson-discrepancy-table-cell-center">${start}</td><td class="lesson-discrepancy-table-cell-center">${count}</td><td class="lesson-discrepancy-table-cell-center">${action}</td></tr>`
+  }
+
+  /**
+   * Gets row data for a discrepancy
+   * @param {Object} discrepancy - Discrepancy data
+   * @returns {Object} Row data with start, count, and action
+   * @private
+   */
+  #getDiscrepancyRowData(discrepancy) {
+    const renderers = {
+      missingJournalEntry: this.#renderMissingEntry,
+      singleEntryFix: this.#renderSingleEntryFix,
+      multiEntryFix: this.#renderMultiEntryFix
+    }
+    const renderer = renderers[discrepancy.type] || this.#renderSingleEntryFix
+    return renderer.call(this, discrepancy)
   }
 
   /**
@@ -541,23 +634,6 @@ export class DiscrepanciesTable {
     }
 
     return section
-  }
-
-  /**
-   * Creates a discrepancy row for the table
-   * @param {Object} discrepancy - Discrepancy data
-   * @returns {string} HTML string for the row
-   * @private
-   */
-  #createDiscrepancyRow(discrepancy) {
-    const renderers = {
-      missingJournalEntry: this.#renderMissingEntry,
-      singleEntryFix: this.#renderSingleEntryFix,
-      multiEntryFix: this.#renderMultiEntryFix
-    }
-    const renderer = renderers[discrepancy.type] || this.#renderSingleEntryFix
-    const { start, count, action } = renderer.call(this, discrepancy)
-    return `<tr style="background-color:white"><td class="lesson-discrepancy-table-cell">${this.#formatDisplayDate(discrepancy.date)}</td><td class="lesson-discrepancy-table-cell-center">${start}</td><td class="lesson-discrepancy-table-cell-center">${count}</td><td class="lesson-discrepancy-table-cell-center">${action}</td></tr>`
   }
 
   /**

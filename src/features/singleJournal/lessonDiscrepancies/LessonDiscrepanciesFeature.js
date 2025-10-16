@@ -204,6 +204,10 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const discrepancies = await this.#findLessonDiscrepancies(journalData, timetableData)
       const capacityProblems = await this.#getCapacityTypeProblems(journalData)
 
+      // Aggregate timetable data into stats with dates, start lesson numbers, and counts
+      const schoolId = journalData.info.school?.id ?? LessonDiscrepanciesFeature.SCHOOL_ID_FALLBACK
+      const timetableStats = await this.#aggregateTimetableEvents(timetableData, schoolId)
+
       // Verify we're still on the correct page before inserting the table
       if (!this.isActive || !this.shouldActivate(window.location.href)) {
         Logger.info(`[${this.name}] Feature deactivated or URL changed, skipping table insertion`)
@@ -215,7 +219,9 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
       const success = await this.table.createTable({
         discrepancies,
         capacityProblems,
-        forceRefresh
+        forceRefresh,
+        timetableData: timetableStats,
+        journalData
       })
 
       if (success) {
