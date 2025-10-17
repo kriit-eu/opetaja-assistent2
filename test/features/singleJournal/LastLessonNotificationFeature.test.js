@@ -342,6 +342,71 @@ describe('LastLessonNotificationFeature', () => {
 
       expect(message).toBe('Viimane tund toimub 20.11.2024')
     })
+
+    test('should not include "umbes" when date comes from timetable (exact)', () => {
+      const allPast = false
+      const date = '20.11.2024'
+      const isDateApproximate = false // Timetable date
+      const showComparisonDate = false
+      const comparisonDateStr = '07.11.2024'
+
+      const verb = allPast ? 'toimus' : 'toimub'
+      const datePrefix = isDateApproximate ? 'umbes ' : ''
+      const message = `Viimane tund ${verb} ${datePrefix}${date}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
+
+      expect(message).toBe('Viimane tund toimub 20.11.2024')
+      expect(message).not.toContain('umbes')
+    })
+
+    test('should include "umbes" when date comes from lesson plan (approximate)', () => {
+      const allPast = false
+      const date = '20.11.2024'
+      const isDateApproximate = true // Lesson plan date
+      const showComparisonDate = false
+      const comparisonDateStr = '07.11.2024'
+
+      // Approximate dates are always future (planned), so always "toimub"
+      const verb = isDateApproximate ? 'toimub' : (allPast ? 'toimus' : 'toimub')
+      const datePrefix = isDateApproximate ? 'umbes ' : ''
+      const message = `Viimane tund ${verb} ${datePrefix}${date}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
+
+      expect(message).toBe('Viimane tund toimub umbes 20.11.2024')
+      expect(message).toContain('umbes')
+      expect(message).toContain('toimub')
+      expect(message).not.toContain('toimus')
+    })
+
+    test('should always say "toimub" for approximate dates even if in past', () => {
+      const allPast = true // All timetable lessons in past
+      const date = '20.11.2024'
+      const isDateApproximate = true // But using approximate date from plan
+      const showComparisonDate = false
+      const comparisonDateStr = '07.11.2024'
+
+      // Approximate dates are always future (planned), so always "toimub"
+      const verb = isDateApproximate ? 'toimub' : (allPast ? 'toimus' : 'toimub')
+      const datePrefix = isDateApproximate ? 'umbes ' : ''
+      const message = `Viimane tund ${verb} ${datePrefix}${date}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
+
+      expect(message).toBe('Viimane tund toimub umbes 20.11.2024')
+      expect(message).toContain('toimub')
+      expect(message).not.toContain('toimus')
+    })
+
+    test('should show only date without time', () => {
+      const allPast = false
+      const date = '20.11.2024'
+      const isDateApproximate = false
+      const showComparisonDate = false
+      const comparisonDateStr = '07.11.2024'
+
+      const verb = allPast ? 'toimus' : 'toimub'
+      const datePrefix = isDateApproximate ? 'umbes ' : ''
+      const message = `Viimane tund ${verb} ${datePrefix}${date}${showComparisonDate ? ` (võrdlus kuupäevaga ${comparisonDateStr})` : ''}`
+
+      expect(message).not.toContain('kuni')
+      expect(message).toBe('Viimane tund toimub 20.11.2024')
+    })
   })
 
   describe('activate with mocked API', () => {
@@ -397,6 +462,8 @@ describe('LastLessonNotificationFeature', () => {
               return {
                 timetableEvents: [{
                   date: '2024-11-15',
+                  timeStart: '09:00',
+                  timeEnd: '14:55',
                   nameEt: 'Test Lesson',
                   journalId: 12345
                 }]
@@ -441,9 +508,9 @@ describe('LastLessonNotificationFeature', () => {
             if (url.includes('timetableevents')) {
               return {
                 timetableEvents: [
-                  { date: '2024-11-01', nameEt: 'Lesson 1', journalId: 12345 },
-                  { date: '2024-11-10', nameEt: 'Lesson 2', journalId: 12345 },
-                  { date: '2024-11-20', nameEt: 'Lesson 3', journalId: 12345 }
+                  { date: '2024-11-01', timeStart: '09:00', timeEnd: '10:40', nameEt: 'Lesson 1', journalId: 12345 },
+                  { date: '2024-11-10', timeStart: '09:00', timeEnd: '10:40', nameEt: 'Lesson 2', journalId: 12345 },
+                  { date: '2024-11-20', timeStart: '09:00', timeEnd: '14:55', nameEt: 'Lesson 3', journalId: 12345 }
                 ]
               }
             }
@@ -566,6 +633,61 @@ describe('LastLessonNotificationFeature', () => {
       const banner = document.getElementById('last-lesson-inline-notification')
       expect(banner).toBeDefined()
       expect(banner.textContent).toContain('Viimane tund')
+    })
+
+    test('should display banner without "umbes" for timetable dates (exact)', () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature._showBanner('2024-11-15', false, false)
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      expect(banner.textContent).not.toContain('umbes')
+      expect(banner.textContent).not.toContain('kuni')
+    })
+
+    test('should display banner with "umbes" for lesson plan dates (approximate)', () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature._showBanner('2024-11-15', false, true)
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      expect(banner.textContent).toContain('umbes')
+      expect(banner.textContent).toContain('toimub')
+      expect(banner.textContent).not.toContain('toimus')
+      expect(banner.textContent).not.toContain('kuni')
+    })
+
+    test('should say "toimub" for approximate dates even when allPast is true', () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      // allPast=true but isDateApproximate=true (from lesson plan)
+      feature._showBanner('2024-11-15', true, true)
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      expect(banner.textContent).toContain('umbes')
+      expect(banner.textContent).toContain('toimub')
+      expect(banner.textContent).not.toContain('toimus')
+    })
+
+    test('should display banner with only date, no time', () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature._showBanner('2024-11-15', false, false)
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      expect(banner.textContent).not.toContain('kuni')
     })
 
     test('should display banner when last lesson is today', () => {
@@ -815,7 +937,7 @@ describe('LastLessonNotificationFeature', () => {
   })
 
   describe('discrepancy detection', () => {
-    test('should not show notification when there are discrepancies', async () => {
+    test('should show notification even when there are discrepancies', async () => {
       const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
       global.document = dom.window.document
       global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
@@ -833,9 +955,9 @@ describe('LastLessonNotificationFeature', () => {
               // Timetable has 3 lessons on 2024-11-01 (discrepancy!)
               return {
                 timetableEvents: [
-                  { date: '2024-11-01', timeStart: '09:00', journalId: 12345 },
-                  { date: '2024-11-01', timeStart: '10:00', journalId: 12345 },
-                  { date: '2024-11-01', timeStart: '11:00', journalId: 12345 }
+                  { date: '2024-11-01', timeStart: '09:00', timeEnd: '14:55', journalId: 12345 },
+                  { date: '2024-11-01', timeStart: '10:00', timeEnd: '14:55', journalId: 12345 },
+                  { date: '2024-11-01', timeStart: '11:00', timeEnd: '14:55', journalId: 12345 }
                 ]
               }
             }
@@ -853,9 +975,10 @@ describe('LastLessonNotificationFeature', () => {
 
       await feature.activate()
 
-      // Banner should not be shown because there are discrepancies
+      // Banner should be shown even with discrepancies
       const banner = document.getElementById('last-lesson-inline-notification')
-      expect(banner).toBeNull()
+      expect(banner).toBeDefined()
+      expect(banner.textContent).toContain('Viimane tund')
     })
 
     test('should show notification when there are no discrepancies', async () => {
@@ -901,7 +1024,7 @@ describe('LastLessonNotificationFeature', () => {
       expect(banner.textContent).toContain('Viimane tund')
     })
 
-    test('should detect discrepancy when journal entry is missing', async () => {
+    test('should not show notification when journal has no entries', async () => {
       const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
       global.document = dom.window.document
       global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
@@ -914,7 +1037,7 @@ describe('LastLessonNotificationFeature', () => {
               return []
             }
             if (url.includes('timetableevents')) {
-              // But timetable has lessons (discrepancy!)
+              // But timetable has lessons
               return {
                 timetableEvents: [
                   { date: '2024-11-01', timeStart: '09:00', journalId: 12345 }
@@ -940,7 +1063,7 @@ describe('LastLessonNotificationFeature', () => {
       expect(banner).toBeNull()
     })
 
-    test('should ignore non-lesson entry types when checking discrepancies', async () => {
+    test('should show notification for any journal with entries', async () => {
       const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
       global.document = dom.window.document
       global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
@@ -980,6 +1103,177 @@ describe('LastLessonNotificationFeature', () => {
       // Banner should be shown because lesson counts match (independent work is ignored)
       const banner = document.getElementById('last-lesson-inline-notification')
       expect(banner).toBeDefined()
+    })
+  })
+
+  describe('timetable vs lesson plan date display', () => {
+    test('should show exact date from timetable when timetable matches planned lessons', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              return [
+                { id: 1, entryDate: '2024-11-01', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 },
+                { id: 2, entryDate: '2024-11-08', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 },
+                { id: 3, entryDate: '2024-11-15', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 }
+              ]
+            }
+            if (url.includes('timetableevents')) {
+              return {
+                timetableEvents: [
+                  { date: '2024-11-01', timeStart: '09:00', timeEnd: '10:40', journalId: 12345 },
+                  { date: '2024-11-08', timeStart: '09:00', timeEnd: '10:40', journalId: 12345 },
+                  { date: '2024-11-15', timeStart: '09:00', timeEnd: '14:55', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }],
+                lessonHours: {
+                  capacityHours: [
+                    { capacity: 'MAHT_a', plannedHours: 3 } // Matches timetable count
+                  ]
+                }
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      expect(banner.textContent).not.toContain('umbes')
+      expect(banner.textContent).not.toContain('kuni')
+    })
+
+    test('should show approximate date from lesson plan when timetable is incomplete', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              return [
+                { id: 1, entryDate: '2024-11-01', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 },
+                { id: 2, entryDate: '2024-11-15', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 }
+              ]
+            }
+            if (url.includes('timetableevents')) {
+              // Timetable only has 2 lessons
+              return {
+                timetableEvents: [
+                  { date: '2024-11-01', timeStart: '09:00', timeEnd: '10:40', journalId: 12345 },
+                  { date: '2024-11-15', timeStart: '09:00', timeEnd: '14:55', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }],
+                lessonHours: {
+                  capacityHours: [
+                    { capacity: 'MAHT_a', plannedHours: 5 } // Timetable is incomplete
+                  ]
+                }
+              }
+            }
+            if (url.includes('lessonplans/byteacher/123/')) {
+              // Mock lesson plan data
+              return {
+                journals: [
+                  {
+                    id: 12345,
+                    hours: {
+                      MAHT_a: [null, null, 2, 2, 2, null] // Last week with hours at index 4
+                    }
+                  }
+                ],
+                weekNrs: [35, 36, 37, 38, 39, 40],
+                studyPeriods: [
+                  {
+                    nameEt: 'I periood',
+                    weekNrs: [35, 36, 37, 38, 39, 40],
+                    weekBeginningDates: ['2024-09-01', '2024-09-08', '2024-09-15', '2024-09-22', '2024-12-20', '2024-10-06']
+                  }
+                ]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      // Should show "umbes" because using lesson plan date
+      expect(banner.textContent).toContain('umbes')
+      expect(banner.textContent).not.toContain('kuni')
+    })
+
+    test('should fallback to timetable date when lesson plan fetch fails', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url.includes('journalEntriesByDate')) {
+              return [
+                { id: 1, entryDate: '2024-11-15', entryType: 'SISSEKANNE_T', startLessonNr: 1, lessons: 1 }
+              ]
+            }
+            if (url.includes('timetableevents')) {
+              return {
+                timetableEvents: [
+                  { date: '2024-11-15', timeStart: '09:00', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 123 }],
+                lessonHours: {
+                  capacityHours: [
+                    { capacity: 'MAHT_a', plannedHours: 5 } // Timetable incomplete
+                  ]
+                }
+              }
+            }
+            if (url.includes('lessonplans/byteacher/123/')) {
+              // Lesson plan fetch returns no data
+              return null
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      const banner = document.getElementById('last-lesson-inline-notification')
+      expect(banner).toBeDefined()
+      // Should not show "umbes" because fell back to timetable
+      expect(banner.textContent).not.toContain('umbes')
+      expect(banner.textContent).not.toContain('kuni')
     })
   })
 })
