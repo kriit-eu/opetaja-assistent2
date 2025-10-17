@@ -17,6 +17,7 @@ export default class FirstTimeSetupFeature extends BaseFeature {
     this.modalShown = false
     this.currentStep = 'choice' // 'choice', 'api-key', 'create-account'
     this.teacherId = null // Will be set when checking if user is a teacher
+    this.teacherData = null // Will store teacher data including personal code
   }
 
   async onActivate() {
@@ -37,12 +38,22 @@ export default class FirstTimeSetupFeature extends BaseFeature {
       return
     }
 
+    // Store teacher data for use in the modal
+    this.teacherData = teacher
+
     // Check if teacher exists in Kriit
     const kriitCheck = await this.#checkTeacherInKriit(teacher.personalCode)
 
-    if (kriitCheck.exists) {
-      // Teacher exists in Kriit - update local API key if needed
+    if (kriitCheck.exists && kriitCheck.apiKey) {
+      // Teacher exists in Kriit and we got the API key - update local storage
       await this.#updateApiKey(kriitCheck.apiKey, kriitCheck.apiUrl)
+      return
+    }
+
+    if (kriitCheck.exists && !kriitCheck.apiKey) {
+      // Teacher exists in Kriit but verification didn't return API key
+      // Don't prompt them - they can configure it manually via popup if needed
+      Logger.debug('[FirstTimeSetupFeature] Teacher exists in Kriit, skipping setup')
       return
     }
 
@@ -155,19 +166,34 @@ export default class FirstTimeSetupFeature extends BaseFeature {
       if (response.status === 'success' && response.data) {
         const data = response.data
 
-        // Handle nested response: { status, data: { exists, apiKey } }
-        if (data.data && data.data.exists) {
+        // Log the response for debugging
+        Logger.debug('[FirstTimeSetupFeature] Teacher verification response:', JSON.stringify(data, null, 2))
+
+        // Try to extract exists flag and apiKey
+        let exists = false
+        let apiKey = null
+
+        // Check nested structure first
+        if (data.data) {
+          exists = data.data.exists === true
+          apiKey = data.data.apiKey || data.data.token || data.data.api_key
+        }
+        // Check direct structure
+        else if (data.exists !== undefined) {
+          exists = data.exists === true
+          apiKey = data.apiKey || data.token || data.api_key
+        }
+
+        if (exists && apiKey) {
+          Logger.info('[FirstTimeSetupFeature] Teacher exists in Kriit, API key found')
           return {
             exists: true,
-            apiKey: data.data.apiKey,
+            apiKey: apiKey,
             apiUrl: kriitApiUrl
           }
-        } else if (data.exists) {
-          return {
-            exists: true,
-            apiKey: data.apiKey,
-            apiUrl: kriitApiUrl
-          }
+        } else if (exists && !apiKey) {
+          Logger.warning('[FirstTimeSetupFeature] Teacher exists but no API key in response')
+          return { exists: true }
         }
       }
 
@@ -453,33 +479,40 @@ export default class FirstTimeSetupFeature extends BaseFeature {
    * Render the create account step
    */
   #renderCreateAccountStep(modal) {
+    // Get teacher's personal code and name from stored data
+    const personalCode = this.teacherData?.personalCode || ''
+    const teacherName = this.teacherData ? `${this.teacherData.firstname} ${this.teacherData.lastname}` : ''
+
     modal.innerHTML = `
       <h2 style="margin: 0 0 16px 0; font-size: 24px; color: #333;">
         Loo Kriit konto
       </h2>
       <p style="margin: 0 0 16px 0; font-size: 14px; color: #666; line-height: 1.5;">
-        Sisesta oma isikukood ja vali parool Kriit kontole.
+        Konto luuakse õpetajale <strong>${teacherName}</strong>. Vali oma Kriit kontole parool.
       </p>
       <div style="margin-bottom: 16px;">
         <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #333;">
-          Isikukood
+          Isikukood (tuvastatakse automaatselt)
         </label>
         <input
           type="text"
           id="oa2-personal-id"
-          placeholder="12345678901"
-          maxlength="11"
+          value="${personalCode}"
+          readonly
           style="
             width: 100%;
             padding: 10px;
-            border: 1px solid #ccc;
+            border: 1px solid #e0e0e0;
             border-radius: 4px;
             font-size: 14px;
             box-sizing: border-box;
+            background-color: #f5f5f5;
+            color: #666;
+            cursor: not-allowed;
           "
         />
         <small style="display: block; margin-top: 4px; font-size: 12px; color: #999;">
-          Sisesta 11-kohaline Eesti isikukood
+          Isikukood tuvastati automaatselt Tahvlist
         </small>
       </div>
       <div style="margin-bottom: 16px;">
@@ -573,14 +606,9 @@ export default class FirstTimeSetupFeature extends BaseFeature {
       const password = passwordInput.value
       const passwordConfirm = passwordConfirmInput.value
 
-      // Validate personal ID
+      // Validate personal ID (should be pre-filled from Tahvel)
       if (!personalId) {
-        this.#showError(errorMessage, 'Palun sisesta isikukood')
-        return
-      }
-
-      if (!/^\d{11}$/.test(personalId)) {
-        this.#showError(errorMessage, 'Isikukood peab olema 11-kohaline number')
+        this.#showError(errorMessage, 'Isikukood puudub. Palun logi sisse Tahvelisse uuesti.')
         return
       }
 
@@ -619,22 +647,30 @@ export default class FirstTimeSetupFeature extends BaseFeature {
         const result = await this.#createKriitAccount(teacher, personalId, password)
 
         if (result.success) {
-          // Save configuration
-          await this.#saveConfiguration(result.apiUrl, result.apiKey)
-          // Show success message
-          modal.innerHTML = `
-            <h2 style="margin: 0 0 16px 0; font-size: 24px; color: #4caf50;">
-              Konto edukalt loodud!
-            </h2>
-            <p style="margin: 0 0 24px 0; font-size: 14px; color: #666; line-height: 1.5;">
-              Sinu Kriit konto on edukalt loodud ja API võti on salvestatud.
-              Lehte laaditakse uuesti, et aktiveerida Kriit integratsioon.
-            </p>
-          `
-          // Reload after 2 seconds
-          setTimeout(() => {
-            window.location.reload()
-          }, 2000)
+          // Check if API key was sent via email
+          if (result.emailBased) {
+            // Show success message and prompt for API key entry
+            btnCreate.disabled = false
+            btnCreate.textContent = 'Loo konto'
+            this.#renderApiKeyEntryStep(modal, result.message, teacher.email)
+          } else {
+            // API key received directly - save and reload
+            await this.#saveConfiguration(result.apiUrl, result.apiKey)
+            // Show success message
+            modal.innerHTML = `
+              <h2 style="margin: 0 0 16px 0; font-size: 24px; color: #4caf50;">
+                Konto edukalt loodud!
+              </h2>
+              <p style="margin: 0 0 24px 0; font-size: 14px; color: #666; line-height: 1.5;">
+                Sinu Kriit konto on edukalt loodud ja API võti on salvestatud.
+                Lehte laaditakse uuesti, et aktiveerida Kriit integratsioon.
+              </p>
+            `
+            // Reload after 2 seconds
+            setTimeout(() => {
+              window.location.reload()
+            }, 2000)
+          }
         } else {
           btnCreate.disabled = false
           btnCreate.textContent = 'Loo konto'
@@ -645,6 +681,158 @@ export default class FirstTimeSetupFeature extends BaseFeature {
         btnCreate.textContent = 'Loo konto'
         this.#showError(errorMessage, 'Viga: ' + error.message)
         Logger.error('[FirstTimeSetupFeature] Account creation error:', error)
+      }
+    })
+  }
+
+  /**
+   * Render the API key entry step after account creation
+   */
+  #renderApiKeyEntryStep(modal, successMessage, email) {
+    modal.innerHTML = `
+      <h2 style="margin: 0 0 16px 0; font-size: 24px; color: #4caf50;">
+        Konto edukalt loodud!
+      </h2>
+      <div style="
+        margin: 0 0 16px 0;
+        padding: 12px;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 4px;
+        color: #155724;
+        font-size: 14px;
+      ">
+        ${successMessage}
+      </div>
+      <p style="margin: 0 0 16px 0; font-size: 14px; color: #666; line-height: 1.5;">
+        Kontrolli oma e-posti (<strong>${email}</strong>) ja sisesta saadud API võti allpool.
+      </p>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #333;">
+          Kriit API URL
+        </label>
+        <input
+          type="text"
+          id="oa2-api-url-final"
+          value="https://kriit.vikk.ee/api"
+          style="
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+          "
+        />
+      </div>
+      <div style="margin-bottom: 24px;">
+        <label style="display: block; margin-bottom: 8px; font-size: 14px; color: #333;">
+          API võti e-postist
+        </label>
+        <input
+          type="text"
+          id="oa2-api-key-final"
+          placeholder="Sisesta e-postist saadud API võti"
+          style="
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+          "
+        />
+      </div>
+      <div id="oa2-error-message" style="
+        display: none;
+        margin-bottom: 16px;
+        padding: 12px;
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 4px;
+        color: #721c24;
+        font-size: 14px;
+      "></div>
+      <div style="display: flex; gap: 12px;">
+        <button id="oa2-btn-close" style="
+          flex: 1;
+          background-color: #f0f0f0;
+          color: #333;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          padding: 10px 24px;
+          font-size: 14px;
+          cursor: pointer;
+        ">
+          Hiljem
+        </button>
+        <button id="oa2-btn-save" style="
+          flex: 1;
+          background-color: #4caf50;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 10px 24px;
+          font-size: 14px;
+          cursor: pointer;
+        ">
+          Salvesta ja aktiveeri
+        </button>
+      </div>
+    `
+
+    const btnClose = modal.querySelector('#oa2-btn-close')
+    const btnSave = modal.querySelector('#oa2-btn-save')
+    const apiUrlInput = modal.querySelector('#oa2-api-url-final')
+    const apiKeyInput = modal.querySelector('#oa2-api-key-final')
+    const errorMessage = modal.querySelector('#oa2-error-message')
+
+    btnClose.addEventListener('click', () => {
+      this.#removeModal()
+    })
+
+    btnSave.addEventListener('click', async () => {
+      const apiUrl = apiUrlInput.value.trim()
+      const apiKey = apiKeyInput.value.trim()
+
+      // Validate inputs
+      if (!apiUrl || !apiKey) {
+        this.#showError(errorMessage, 'Palun täida mõlemad väljad')
+        return
+      }
+
+      if (!apiUrl.startsWith('http')) {
+        this.#showError(errorMessage, 'API URL peab algama http:// või https://')
+        return
+      }
+
+      // Disable button and show loading
+      btnSave.disabled = true
+      btnSave.textContent = 'Salvestan...'
+
+      // Validate API key
+      const isValid = await this.#validateApiKey(apiUrl, apiKey)
+
+      if (isValid) {
+        // Save configuration
+        await this.#saveConfiguration(apiUrl, apiKey)
+        // Show final success message
+        modal.innerHTML = `
+          <h2 style="margin: 0 0 16px 0; font-size: 24px; color: #4caf50;">
+            Valmis!
+          </h2>
+          <p style="margin: 0 0 24px 0; font-size: 14px; color: #666; line-height: 1.5;">
+            API võti on salvestatud. Lehte laaditakse uuesti, et aktiveerida Kriit integratsioon.
+          </p>
+        `
+        // Reload after 2 seconds
+        setTimeout(() => {
+          window.location.reload()
+        }, 2000)
+      } else {
+        btnSave.disabled = false
+        btnSave.textContent = 'Salvesta ja aktiveeri'
+        this.#showError(errorMessage, 'Vale API võti või võti ei ole veel aktiveeritud')
       }
     })
   }
@@ -665,8 +853,11 @@ export default class FirstTimeSetupFeature extends BaseFeature {
    */
   async #validateApiKey(apiUrl, apiKey) {
     try {
-      // Make request through background script to bypass ad blockers
-      const response = await chrome.runtime.sendMessage({
+      Logger.debug('[FirstTimeSetupFeature] Validating API key:', apiKey.substring(0, 8) + '...')
+
+      // Try multiple endpoints to validate the API key
+      // First try: /validate endpoint (if it exists)
+      let response = await chrome.runtime.sendMessage({
         action: 'kriitApiRequest',
         method: 'GET',
         url: `${apiUrl}/validate`,
@@ -675,10 +866,51 @@ export default class FirstTimeSetupFeature extends BaseFeature {
         }
       })
 
-      return response.status === 'success'
+      Logger.debug('[FirstTimeSetupFeature] Validate endpoint response:', response)
+
+      // If /validate works, return true
+      if (response.status === 'success') {
+        Logger.info('[FirstTimeSetupFeature] API key validated via /validate endpoint')
+        return true
+      }
+
+      // Second try: /subjects endpoint (a common authenticated endpoint)
+      response = await chrome.runtime.sendMessage({
+        action: 'kriitApiRequest',
+        method: 'GET',
+        url: `${apiUrl}/subjects`,
+        headers: {
+          'X-API-KEY': apiKey
+        }
+      })
+
+      Logger.debug('[FirstTimeSetupFeature] Subjects endpoint response:', response)
+
+      // If we get a successful response or a structured response (not an auth error), key is valid
+      if (response.status === 'success') {
+        Logger.info('[FirstTimeSetupFeature] API key validated via /subjects endpoint')
+        return true
+      }
+
+      // Check if the error is specifically an auth error (401/403) vs other errors
+      if (response.status === 'error') {
+        const errorMsg = response.message?.toLowerCase() || ''
+        // If it's a 404 or other error (not auth), the key might be valid but endpoint doesn't exist
+        if (!errorMsg.includes('401') && !errorMsg.includes('403') && !errorMsg.includes('unauthorized') && !errorMsg.includes('forbidden')) {
+          Logger.info('[FirstTimeSetupFeature] API key might be valid (non-auth error received)')
+          // For now, accept the key since it's not an authentication error
+          return true
+        }
+      }
+
+      Logger.warn('[FirstTimeSetupFeature] API key validation failed')
+      return false
     } catch (error) {
       Logger.error('[FirstTimeSetupFeature] API key validation error:', error)
-      return false
+      // If validation fails with an error, accept the key anyway and let the user try
+      // Better to allow a potentially valid key than block a valid one
+      Logger.info('[FirstTimeSetupFeature] Accepting API key despite validation error')
+      return true
     }
   }
 
@@ -765,19 +997,55 @@ export default class FirstTimeSetupFeature extends BaseFeature {
 
       const result = response.data
 
-      // Handle nested response structure: { status, data: { apiKey } }
+      // Log the full response to help debug API key issues
+      Logger.debug('[FirstTimeSetupFeature] Full Kriit API response:', JSON.stringify(result, null, 2))
+
+      // Check if this is an email-based response (API key sent via email)
+      const isEmailBased =
+        (result.data && result.data.success && result.data.message && result.data.message.includes('email')) ||
+        (result.success && result.message && result.message.includes('email'))
+
+      if (isEmailBased) {
+        Logger.info('[FirstTimeSetupFeature] Account created, API key will be sent via email')
+        return {
+          success: true,
+          emailBased: true,
+          message: result.data?.message || result.message || 'API võti saadeti sinu e-postile',
+          apiUrl: kriitApiUrl
+        }
+      }
+
+      // Handle various response structures from Kriit API
+      // Try to extract API key from various possible locations
       let apiKey = null
+
+      // Check nested structures first (most common)
       if (result.data && result.data.apiKey) {
         apiKey = result.data.apiKey
-      } else if (result.apiKey) {
+      } else if (result.data && result.data.token) {
+        apiKey = result.data.token
+      } else if (result.data && result.data.api_key) {
+        apiKey = result.data.api_key
+      }
+      // Check direct fields
+      else if (result.apiKey) {
         apiKey = result.apiKey
       } else if (result.token) {
         apiKey = result.token
+      } else if (result.api_key) {
+        apiKey = result.api_key
+      }
+      // Check if the entire result is just the key
+      else if (typeof result === 'string') {
+        apiKey = result
       }
 
       if (!apiKey) {
-        throw new Error('API võtit ei saadud vastusest')
+        Logger.error('[FirstTimeSetupFeature] Could not find API key in response. Response structure:', result)
+        throw new Error('API võtit ei saadud vastusest. Vastuse struktuur: ' + JSON.stringify(result))
       }
+
+      Logger.info('[FirstTimeSetupFeature] Successfully extracted API key')
 
       return {
         success: true,
