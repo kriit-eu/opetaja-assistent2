@@ -151,6 +151,22 @@ export class BannerService {
   }
 
   /**
+   * Wait for the preferred banner container to be ready
+   * @param {number} timeout - Maximum time to wait in ms (default: 5000)
+   * @returns {Promise<void>}
+   */
+  async waitForContainer(timeout = 5000) {
+    const preferredSelector = '.tahvel-form-buttons'
+    try {
+      Logger.debug(`Waiting for preferred banner container: ${preferredSelector}`)
+      await domService.waitForElement(preferredSelector, timeout)
+      Logger.debug(`Preferred banner container is ready: ${preferredSelector}`)
+    } catch (err) {
+      Logger.debug(`Preferred container not found after ${timeout}ms, will use fallback`)
+    }
+  }
+
+  /**
    * Get the banner container element
    * @returns {Element} The banner container element or document.body as fallback
    */

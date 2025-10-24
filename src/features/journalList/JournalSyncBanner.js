@@ -458,9 +458,13 @@ export class JournalSyncBannerService {
    * Show a banner when the Kriit API key is missing
    * @param {Function} onOpenSettings - Callback for opening settings
    */
-  showMissingApiKeyBanner(onOpenSettings = null) {
+  async showMissingApiKeyBanner(onOpenSettings = null) {
     this.loadSyncStyles()
     if (!(window.location && window.location.hash && window.location.hash.indexOf('journals') !== -1)) return
+
+    // Wait for preferred container on slow computers
+    await bannerService.waitForContainer()
+
     const container = bannerService.getBannerContainer()
     if (!container) return
     Logger.debug('Using banner container:', container)
@@ -524,8 +528,12 @@ export class JournalSyncBannerService {
    * @param {Function} onRefresh - Callback for refresh button
    * @param {Function} onClose - Callback for close button
    */
-  showAllInSyncBanner(onRefresh = null, onClose = null) {
+  async showAllInSyncBanner(onRefresh = null, onClose = null) {
     this.loadSyncStyles()
+
+    // Wait for preferred container on slow computers
+    await bannerService.waitForContainer()
+
     const container = bannerService.getBannerContainer()
     Logger.debug('Using banner container:', container)
     bannerService.removeBanner()
@@ -612,8 +620,12 @@ export class JournalSyncBannerService {
    * @param {Function} onRefresh - Callback for refresh button
    * @param {Function} renderDifferences - Function to render the differences content
    */
-  showDifferencesBanner(totalDifferences, onSync = null, onRefresh = null, renderDifferences = null) {
+  async showDifferencesBanner(totalDifferences, onSync = null, onRefresh = null, renderDifferences = null) {
     this.loadSyncStyles()
+
+    // Wait for preferred container on slow computers
+    await bannerService.waitForContainer()
+
     const container = bannerService.getBannerContainer()
     Logger.debug('Using banner container:', container)
     bannerService.removeBanner()
@@ -765,19 +777,23 @@ export class JournalSyncBannerService {
    * @param {Function} options.onSettings - Callback for settings button
    * @param {Function} options.onRefresh - Callback for refresh button
    */
-  showSyncErrorBanner(error, options = {}) {
+  async showSyncErrorBanner(error, options = {}) {
     // If all grades are already synced, show the green banner instead
     // But *only* show the green banner when there are no newAssignments returned by Kriit
     if (error && error.includes('Kõik hinded on juba sünkroonis')) {
       const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
       if (!globalNewAssignments || Object.keys(globalNewAssignments).length === 0) {
-        this.showAllInSyncBanner(options.onRetry, null)
+        await this.showAllInSyncBanner(options.onRetry, null)
         return
       }
       // If there are new assignments, fall through and let the caller show the differences banner
     }
 
     this.loadSyncStyles()
+
+    // Wait for preferred container on slow computers
+    await bannerService.waitForContainer()
+
     const container = bannerService.getBannerContainer()
     Logger.debug('Using banner container:', container)
     bannerService.removeBanner()
