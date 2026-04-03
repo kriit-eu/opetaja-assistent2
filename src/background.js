@@ -58,6 +58,12 @@ chrome.runtime.onUpdateAvailable.addListener(details => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   Logger.debug('Received message in background:', message)
 
+  // Open a tab (used by content script to open extension pages)
+  if (message.action === 'openTab') {
+    chrome.tabs.create({ url: message.url })
+    return
+  }
+
   // Handle Kriit API requests to bypass mixed content restrictions
   if (message.action === 'kriitApiRequest') {
     const { method, url, headers, body } = message
