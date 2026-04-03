@@ -10,6 +10,16 @@ const KRIIT_API_URL_KEY = 'OA_kriitApiBaseUrl'
 const KRIIT_API_KEY_KEY = 'OA_kriitApiToken'
 const HIGHLIGHT_MISSING_GRADES_KEY = 'OA_highlightMissingGrades'
 const DEFAULT_KRIIT_API_URL = 'https://kriit.vikk.ee/api'
+const TAHVEL_DOMAINS = ['tahvel.edu.ee', 'tahvel.eenet.ee', 'uustahvel.eenet.ee', 'test.uustahvel.eenet.ee']
+
+/**
+ * Check if a URL belongs to a Tahvel instance
+ * @param {string} url - The URL to check
+ * @returns {boolean}
+ */
+function isTahvelUrl(url) {
+  return url && TAHVEL_DOMAINS.some(domain => url.includes(domain))
+}
 
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -324,13 +334,7 @@ function toggleKriitEnabled(enabled, settingsContainer) {
 
     // Notify content script about the change
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (
-        tabs[0] &&
-        (tabs[0].url.includes('tahvel.edu.ee') ||
-          tabs[0].url.includes('tahvel.eenet.ee') ||
-          tabs[0].url.includes('uustahvel.eenet.ee') ||
-          tabs[0].url.includes('test.uustahvel.eenet.ee'))
-      ) {
+      if (tabs[0] && isTahvelUrl(tabs[0].url)) {
         chrome.tabs
           .sendMessage(tabs[0].id, {
             action: 'kriitEnabledChanged',
@@ -378,13 +382,7 @@ function saveKriitSettings(apiUrl, apiKey, statusElement) {
 
       // Notify content script about the settings change
       chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-        if (
-          tabs[0] &&
-          (tabs[0].url.includes('tahvel.edu.ee') ||
-            tabs[0].url.includes('tahvel.eenet.ee') ||
-            tabs[0].url.includes('uustahvel.eenet.ee') ||
-            tabs[0].url.includes('test.uustahvel.eenet.ee'))
-        ) {
+        if (tabs[0] && isTahvelUrl(tabs[0].url)) {
           chrome.tabs
             .sendMessage(tabs[0].id, {
               action: 'kriitSettingsUpdated',
@@ -421,7 +419,7 @@ function loadCacheStatistics() {
       return
     }
     chrome.tabs.sendMessage(tabs[0].id, { action: 'getCacheStats' }, function(response) {
-      if (!response || !response.stats) {
+      if (chrome.runtime.lastError || !response || !response.stats) {
         cacheStatsContainer.textContent = 'Vahemälu statistika pole saadaval'
         return
       }
@@ -718,9 +716,7 @@ function findTeachers() {
       return
     }
 
-    const isValidTahvelPage = tabs[0].url.includes('tahvel.edu.ee') || tabs[0].url.includes('tahvel.eenet.ee')
-
-    if (!isValidTahvelPage) {
+    if (!isTahvelUrl(tabs[0].url)) {
       showError('Palun mine Tahvli lehele, et kasutada seda funktsiooni')
       teachersContainer.style.display = 'none'
       return
@@ -833,7 +829,16 @@ function downloadCapturedRequests() {
       return
     }
 
+    if (!isTahvelUrl(tabs[0].url)) {
+      showError('Ava Tahvli leht ja proovi uuesti.')
+      return
+    }
+
     chrome.tabs.sendMessage(tabs[0].id, { action: 'getCapturedRequests' }, function(response) {
+      if (chrome.runtime.lastError) {
+        showError('Ava Tahvli leht ja värskenda lehte, seejärel proovi uuesti.')
+        return
+      }
       if (!response || response.status !== 'success') {
         showError('API päringute allalaadimine ebaõnnestus: ' + (response?.message || 'Tundmatu viga'))
         return
