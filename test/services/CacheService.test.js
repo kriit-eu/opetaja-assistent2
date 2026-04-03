@@ -3,11 +3,13 @@ import { cacheService } from '../../src/services/CacheService.js'
 
 describe('CacheService', () => {
   beforeEach(async () => {
+    cacheService.setSchoolId(null)
     if (global.caches._clear) global.caches._clear()
     await cacheService.clearCache()
   })
 
   afterEach(async () => {
+    cacheService.setSchoolId(null)
     await cacheService.clearCache()
   })
 
@@ -591,6 +593,157 @@ describe('CacheService', () => {
       expect(cacheService.EXPIRATION.LONG).toBe(1800000)
       expect(cacheService.EXPIRATION.VERY_LONG).toBe(86400000)
       expect(cacheService.EXPIRATION.TWO_WEEKS).toBe(1209600000)
+    })
+  })
+
+  // --- School ID namespacing ---
+
+  describe('school ID namespacing', () => {
+    test('setSchoolId and getSchoolId round-trip', () => {
+      cacheService.setSchoolId(9)
+      expect(cacheService.getSchoolId()).toBe(9)
+
+      cacheService.setSchoolId(null)
+      expect(cacheService.getSchoolId()).toBeNull()
+    })
+
+    test('setSchoolId converts string to number', () => {
+      cacheService.setSchoolId('15')
+      expect(cacheService.getSchoolId()).toBe(15)
+    })
+
+    test('setSchoolId rejects NaN and falls back to null', () => {
+      cacheService.setSchoolId(9)
+      cacheService.setSchoolId(NaN)
+      expect(cacheService.getSchoolId()).toBeNull()
+    })
+
+    test('setSchoolId rejects non-numeric string and falls back to null', () => {
+      cacheService.setSchoolId(9)
+      cacheService.setSchoolId('abc')
+      expect(cacheService.getSchoolId()).toBeNull()
+    })
+
+    test('setSchoolId rejects zero and negative values', () => {
+      cacheService.setSchoolId(0)
+      expect(cacheService.getSchoolId()).toBeNull()
+
+      cacheService.setSchoolId(-1)
+      expect(cacheService.getSchoolId()).toBeNull()
+    })
+
+    test('clearCache clears all school namespaces', async () => {
+      cacheService.setSchoolId(9)
+      await cacheService.set('data', 'school-9')
+
+      cacheService.setSchoolId(15)
+      await cacheService.set('data', 'school-15')
+
+      await cacheService.clearCache()
+
+      cacheService.setSchoolId(9)
+      expect(await cacheService.get('data')).toBeNull()
+
+      cacheService.setSchoolId(15)
+      expect(await cacheService.get('data')).toBeNull()
+    })
+
+    test('same key under different school IDs produces independent entries', async () => {
+      cacheService.setSchoolId(9)
+      await cacheService.set('journals', 'school-9-data')
+
+      cacheService.setSchoolId(15)
+      await cacheService.set('journals', 'school-15-data')
+
+      // Each school has its own value
+      cacheService.setSchoolId(9)
+      expect(await cacheService.get('journals')).toBe('school-9-data')
+
+      cacheService.setSchoolId(15)
+      expect(await cacheService.get('journals')).toBe('school-15-data')
+    })
+
+    test('switching back to previous school retrieves cached data', async () => {
+      cacheService.setSchoolId(9)
+      await cacheService.set('data', 'from-school-9')
+
+      cacheService.setSchoolId(15)
+      await cacheService.set('data', 'from-school-15')
+
+      // Switch back to school 9
+      cacheService.setSchoolId(9)
+      expect(await cacheService.get('data')).toBe('from-school-9')
+    })
+
+    test('getOrFetch is independently namespaced per school', async () => {
+      let fetchCount = 0
+
+      cacheService.setSchoolId(9)
+      await cacheService.getOrFetch('key', async () => { fetchCount++; return 'val-9' }, 60000)
+
+      cacheService.setSchoolId(15)
+      await cacheService.getOrFetch('key', async () => { fetchCount++; return 'val-15' }, 60000)
+
+      // Both schools triggered their own fetch
+      expect(fetchCount).toBe(2)
+
+      // Each school returns its own value
+      cacheService.setSchoolId(9)
+      const val9 = await cacheService.getOrFetch('key', async () => 'should-not-fetch', 60000)
+      expect(val9).toBe('val-9')
+
+      cacheService.setSchoolId(15)
+      const val15 = await cacheService.getOrFetch('key', async () => 'should-not-fetch', 60000)
+      expect(val15).toBe('val-15')
+
+      // No additional fetches
+      expect(fetchCount).toBe(2)
+    })
+
+    test('null school ID uses unnamespaced keys (backward compat)', async () => {
+      cacheService.setSchoolId(null)
+      await cacheService.set('k', 'unnamespaced')
+      expect(await cacheService.get('k')).toBe('unnamespaced')
+
+      // Setting school ID makes the unnamespaced key invisible
+      cacheService.setSchoolId(9)
+      expect(await cacheService.get('k')).toBeNull()
+
+      // Unsetting school ID makes it visible again
+      cacheService.setSchoolId(null)
+      expect(await cacheService.get('k')).toBe('unnamespaced')
+    })
+
+    test('clearJournalCache with specific journalId works under namespace', async () => {
+      cacheService.setSchoolId(9)
+      await cacheService.set('GET_/journals/123/journalEntriesByDate', 'j123')
+      await cacheService.set('GET_/journals/456/journalEntriesByDate', 'j456')
+
+      await cacheService.clearJournalCache(123)
+
+      expect(await cacheService.get('GET_/journals/123/journalEntriesByDate')).toBeNull()
+      expect(await cacheService.get('GET_/journals/456/journalEntriesByDate')).toBe('j456')
+    })
+
+    test('clearJournalCache works with namespaced keys', async () => {
+      cacheService.setSchoolId(9)
+      await cacheService.set('GET_/journals/123/journalEntriesByDate', 'entries-9')
+      await cacheService.set('GET_timetableEvents/school/9', 'timetable-9')
+
+      cacheService.setSchoolId(15)
+      await cacheService.set('GET_/journals/456/journalEntriesByDate', 'entries-15')
+
+      // Clear all journal cache (affects all schools)
+      await cacheService.clearJournalCache()
+
+      // Journal entries from both schools cleared
+      cacheService.setSchoolId(9)
+      expect(await cacheService.get('GET_/journals/123/journalEntriesByDate')).toBeNull()
+      // Timetable data preserved
+      expect(await cacheService.get('GET_timetableEvents/school/9')).toBe('timetable-9')
+
+      cacheService.setSchoolId(15)
+      expect(await cacheService.get('GET_/journals/456/journalEntriesByDate')).toBeNull()
     })
   })
 })

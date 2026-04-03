@@ -28,6 +28,17 @@ const memoryCache = {}
 // Track pending in-flight fetch promises to dedupe concurrent identical requests
 const pendingFetches = {}
 
+// Current school ID for cache key namespacing (set from /user response)
+let currentSchoolId = null
+
+/**
+ * Prefix key with school ID namespace when available.
+ * Returns `s{id}_{key}` when school ID is set, `key` unchanged when null.
+ */
+function namespacedKey(key) {
+  return currentSchoolId != null ? `s${currentSchoolId}_${key}` : key
+}
+
 // Size thresholds for logging cache statistics (not limits)
 const CACHE_SIZE_WARNING = 1000000 // 1MB
 const CACHE_SIZE_LARGE = 5000000 // 5MB
@@ -130,7 +141,7 @@ const cacheService = {
    * @param {any} data
    */
   async set(key, data, expiration = 0) {
-    const cacheKey = `${CACHE_PREFIX}${key}`
+    const cacheKey = `${CACHE_PREFIX}${namespacedKey(key)}`
     const timestamp = Date.now()
     try {
       memoryCache[cacheKey] = { data, timestamp }
@@ -150,7 +161,7 @@ const cacheService = {
    * @returns {Promise<any>} cached data or null
    */
   async get(key, maxAge = Infinity) {
-    const cacheKey = `${CACHE_PREFIX}${key}`
+    const cacheKey = `${CACHE_PREFIX}${namespacedKey(key)}`
     // Check memory first
     if (memoryCache[cacheKey]) {
       const item = memoryCache[cacheKey]
@@ -188,7 +199,7 @@ const cacheService = {
    * @returns {Promise<any>} The data
    */
   async getOrFetch(key, fetchFn, expiration = CACHE_EXPIRATION.MEDIUM, useMemoryCache = true) {
-    const cacheKey = `${CACHE_PREFIX}${key}`
+    const cacheKey = `${CACHE_PREFIX}${namespacedKey(key)}`
 
     // Try memory cache first (for current page session)
     if (useMemoryCache && memoryCache[cacheKey]) {
@@ -364,7 +375,7 @@ const cacheService = {
    * @returns {boolean} True if the cache key is journal-related
    */
   isJournalRelatedCache(key, journalId = null) {
-    const cleanKey = key.replace(CACHE_PREFIX, '')
+    const cleanKey = key.replace(CACHE_PREFIX, '').replace(/^s\d+_/, '')
 
     const journalPatterns = ['journalEntriesByDate', 'journalEntry', 'journalStudents', '/journals/']
     const timetablePatterns = ['timetableEvents', 'timetable', '/schools/', '/teachers/']
@@ -428,7 +439,7 @@ const cacheService = {
       const size = serialized.length
       memoryStats.size += size
 
-      const cacheKey = key.replace(CACHE_PREFIX, '')
+      const cacheKey = key.replace(CACHE_PREFIX, '').replace(/^s\d+_/, '')
       memoryStats.items.push({
         key: cacheKey,
         size,
@@ -451,7 +462,7 @@ const cacheService = {
       storageStats.size += size
       storageStats.count++
 
-      const cacheKey = key.replace(CACHE_PREFIX, '')
+      const cacheKey = key.replace(CACHE_PREFIX, '').replace(/^s\d+_/, '')
       const ageInMinutes = item.timestamp ? Math.round((Date.now() - item.timestamp) / (60 * 1000)) : 0
 
       storageStats.items.push({
@@ -469,6 +480,29 @@ const cacheService = {
       storage: storageStats,
       totalBytesInUse: storageStats.size
     }
+  },
+
+  /**
+   * Set the current school ID for cache key namespacing.
+   * @param {number|null} id - School ID or null to disable namespacing
+   */
+  setSchoolId(id) {
+    if (id == null) { currentSchoolId = null; return }
+    const num = Number(id)
+    if (Number.isInteger(num) && num > 0) {
+      currentSchoolId = num
+    } else {
+      Logger.warning(`[Cache] Invalid school ID rejected: ${id}`)
+      currentSchoolId = null
+    }
+  },
+
+  /**
+   * Get the current school ID used for cache key namespacing.
+   * @returns {number|null}
+   */
+  getSchoolId() {
+    return currentSchoolId
   },
 
   EXPIRATION: CACHE_EXPIRATION

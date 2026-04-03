@@ -12,6 +12,8 @@ import { cacheService } from '../services/CacheService.js'
 const tahvelExtension = {
   // Feature collection (will be populated dynamically)
   activeFeatures: [],
+  // Set to true after init() completes — skips redundant checkContextChange on first navigation
+  _bootstrapComplete: false,
 
   // Initialize the extension
   async init() {
@@ -25,6 +27,18 @@ const tahvelExtension = {
 
     // Set up URL change detection
     navigationService.init()
+
+    // Bootstrap school ID for cache namespacing before any features activate
+    try {
+      const { api } = await import('./BaseFeature.js')
+      const userInfo = await api.tahvel.get('/user', {}, { cache: false })
+      if (userInfo?.school?.id != null) {
+        cacheService.setSchoolId(userInfo.school.id)
+        Logger.info(`[Extension] School ID set to ${userInfo.school.id}`)
+      }
+    } catch (e) {
+      Logger.warning('[Extension] Could not set school ID:', e.message)
+    }
 
     try {
       // Load features dynamically
@@ -43,6 +57,9 @@ const tahvelExtension = {
 
     // Initial navigation check
     this.handleNavigation(window.location.href)
+
+    // Mark bootstrap complete so subsequent main page visits run checkContextChange
+    this._bootstrapComplete = true
 
     Logger.success('Initialization complete')
   },
@@ -158,7 +175,7 @@ const tahvelExtension = {
     }
   },
 
-  // Check for role or school change and clear cache if needed
+  // Check for role or school change and update cache namespace
   async checkContextChange() {
     try {
       const { api } = await import('./BaseFeature.js')
@@ -168,26 +185,30 @@ const tahvelExtension = {
       const userInfo = await apiService.get('/user', {}, { cache: false })
       if (!userInfo?.roleCode) return
 
-      const currentSchoolId = userInfo.school?.id
+      const detectedSchoolId = userInfo.school?.id
+
+      // Always update cache namespace to current school (null resets to unnamespaced)
+      cacheService.setSchoolId(detectedSchoolId)
+
       const stored = await new Promise(resolve =>
         chrome.storage.local.get(['OA_currentRole', 'OA_currentSchoolId'], resolve)
       )
 
       const roleChanged = stored.OA_currentRole && stored.OA_currentRole !== userInfo.roleCode
-      const schoolChanged = stored.OA_currentSchoolId != null && currentSchoolId != null &&
-        Number(stored.OA_currentSchoolId) !== Number(currentSchoolId)
+      const schoolChanged = stored.OA_currentSchoolId != null && detectedSchoolId != null &&
+        Number(stored.OA_currentSchoolId) !== Number(detectedSchoolId)
 
-      if (roleChanged || schoolChanged) {
-        const reasons = []
-        if (roleChanged) reasons.push(`role ${stored.OA_currentRole} → ${userInfo.roleCode}`)
-        if (schoolChanged) reasons.push(`school ${stored.OA_currentSchoolId} → ${currentSchoolId}`)
-        Logger.info(`[Extension] ${reasons.join(', ')}, clearing cache`)
+      // Only clear cache on role change (school change is handled by cache namespacing)
+      if (roleChanged) {
+        Logger.info(`[Extension] Role ${stored.OA_currentRole} → ${userInfo.roleCode}, clearing cache`)
         await cacheService.clearCache()
+      } else if (schoolChanged) {
+        Logger.info(`[Extension] School ${stored.OA_currentSchoolId} → ${detectedSchoolId}, cache namespace updated`)
       }
 
       chrome.storage.local.set({
         OA_currentRole: userInfo.roleCode,
-        ...(currentSchoolId != null && { OA_currentSchoolId: currentSchoolId })
+        ...(detectedSchoolId != null && { OA_currentSchoolId: detectedSchoolId })
       })
     } catch (e) {
       Logger.warning('[Extension] Error checking role/school change:', e.message)
@@ -201,8 +222,10 @@ const tahvelExtension = {
     // Evict expired cache entries when visiting main page
     if (this.isMainPage(url)) {
       cacheService.evictExpired().catch(e => Logger.warning('[Cache] evictExpired error:', e.message))
-      // Fire-and-forget: cache clears before next navigation to a feature page
-      this.checkContextChange()
+      // Fire-and-forget: updates school cache namespace before next feature page
+      if (this._bootstrapComplete) {
+        this.checkContextChange()
+      }
     }
 
     // Activate relevant features for current page
