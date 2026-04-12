@@ -145,11 +145,6 @@ async function copyStaticAssets() {
   fs.copyFileSync(popupPath, path.join(CONFIG.distDir, 'popup.html'))
   console.log('  Copied popup.html')
 
-  // Copy update.html
-  const updatePath = path.join(CONFIG.templatesDir, 'update.html')
-  fs.copyFileSync(updatePath, path.join(CONFIG.distDir, 'update.html'))
-  console.log('  Copied update.html')
-
   // Copy icon.svg
   const iconSvgPath = path.join(CONFIG.templatesDir, 'icon.svg')
   fs.copyFileSync(iconSvgPath, path.join(CONFIG.distDir, 'icon.svg'))

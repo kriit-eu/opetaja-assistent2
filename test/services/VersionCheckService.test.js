@@ -6,7 +6,6 @@ describe('VersionCheckService', () => {
   let messageListeners
   let dom
   let versionCheckService
-  let sentMessages
 
   beforeEach(async () => {
     // Setup DOM
@@ -14,20 +13,20 @@ describe('VersionCheckService', () => {
     global.document = dom.window.document
     global.window = dom.window
 
-    // Track message listeners and sent messages
+    // Track message listeners
     messageListeners = []
-    sentMessages = []
 
     // Mock chrome API
     mockChrome = {
       runtime: {
         onMessage: {
           addListener: mock(fn => messageListeners.push(fn))
-        },
-        getURL: mock(path => `chrome-extension://abc123/${path}`),
-        sendMessage: mock(msg => sentMessages.push(msg))
+        }
       },
       storage: {
+        sync: {
+          get: mock((keys, cb) => { if (cb) cb({}); return Promise.resolve({}) })
+        },
         session: {
           get: mock(() => Promise.resolve({})),
           set: mock(() => Promise.resolve())
@@ -64,10 +63,7 @@ describe('VersionCheckService', () => {
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
-      // Should have either opened a tab or shown a modal
-      const modal = document.getElementById('oa2-update-modal')
-      const tabOpened = sentMessages.some(m => m.action === 'openTab')
-      expect(modal !== null || tabOpened).toBe(true)
+      expect(document.getElementById('oa2-update-modal')).not.toBeNull()
     })
 
     test('should ignore unrelated messages', async () => {
@@ -77,7 +73,6 @@ describe('VersionCheckService', () => {
       await new Promise(resolve => setTimeout(resolve, 10))
 
       expect(document.getElementById('oa2-update-modal')).toBeNull()
-      expect(sentMessages.filter(m => m.action === 'openTab').length).toBe(0)
     })
   })
 
@@ -87,6 +82,10 @@ describe('VersionCheckService', () => {
       messageListeners[0]({ action: 'updateAvailable', version: '0.2.0' }, {}, () => {})
 
       await new Promise(resolve => setTimeout(resolve, 10))
+
+      const modal = document.getElementById('oa2-update-modal')
+      const closeBtn = modal.querySelector('button')
+      closeBtn.onclick()
 
       expect(mockChrome.storage.session.set).toHaveBeenCalledWith({
         oa2_update_banner_dismissed: '0.2.0'
@@ -104,7 +103,6 @@ describe('VersionCheckService', () => {
       await new Promise(resolve => setTimeout(resolve, 10))
 
       expect(document.getElementById('oa2-update-modal')).toBeNull()
-      expect(sentMessages.filter(m => m.action === 'openTab').length).toBe(0)
     })
 
     test('should show update for new version even if previous was dismissed', async () => {
@@ -117,9 +115,7 @@ describe('VersionCheckService', () => {
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
-      const modal = document.getElementById('oa2-update-modal')
-      const tabOpened = sentMessages.some(m => m.action === 'openTab')
-      expect(modal !== null || tabOpened).toBe(true)
+      expect(document.getElementById('oa2-update-modal')).not.toBeNull()
     })
 
     test('should show update if dismiss key is not set', async () => {
@@ -130,9 +126,7 @@ describe('VersionCheckService', () => {
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
-      const modal = document.getElementById('oa2-update-modal')
-      const tabOpened = sentMessages.some(m => m.action === 'openTab')
-      expect(modal !== null || tabOpened).toBe(true)
+      expect(document.getElementById('oa2-update-modal')).not.toBeNull()
     })
 
     test('should show update if storage.session throws (graceful fallback)', async () => {
@@ -145,9 +139,7 @@ describe('VersionCheckService', () => {
 
       await new Promise(resolve => setTimeout(resolve, 10))
 
-      const modal = document.getElementById('oa2-update-modal')
-      const tabOpened = sentMessages.some(m => m.action === 'openTab')
-      expect(modal !== null || tabOpened).toBe(true)
+      expect(document.getElementById('oa2-update-modal')).not.toBeNull()
     })
 
     test('should not show update twice', async () => {
@@ -159,10 +151,7 @@ describe('VersionCheckService', () => {
       messageListeners[0]({ action: 'updateAvailable', version: '0.2.0' }, {}, () => {})
       await new Promise(resolve => setTimeout(resolve, 10))
 
-      const modals = document.querySelectorAll('#oa2-update-modal')
-      const tabsOpened = sentMessages.filter(m => m.action === 'openTab')
-      // At most one of either type
-      expect(modals.length + tabsOpened.length).toBeLessThanOrEqual(1)
+      expect(document.querySelectorAll('#oa2-update-modal').length).toBe(1)
     })
   })
 })

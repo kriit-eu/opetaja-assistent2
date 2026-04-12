@@ -12,24 +12,6 @@ import Logger from './Logger.js'
 
 const DISMISS_KEY = 'oa2_update_banner_dismissed'
 
-// 'modal' = overlay on Tahvel page, 'tab' = open dedicated page in new tab
-const UPDATE_DISPLAY_MODE = 'tab'
-
-const PATCH_NOTES = [
-  { tag: 'UUS', type: 'new', text: 'Koolide vahel vahetamine ei kaota enam vahemälu andmeid' },
-  { tag: 'UUS', type: 'new', text: 'API silumisandmete allalaadimine veaotsinguks' },
-  { tag: 'UUS', type: 'new', text: 'Iseseisva töö puuduvate hinnete esiletõstmise sisse/välja lülitamine' },
-  { tag: 'PARANDUS', type: 'fix', text: 'Lõpptulemus ei kirjutata enam üle, kui SISSEKANNE_T/I hindeid pole' },
-  { tag: 'PARANDUS', type: 'fix', text: 'Hinnatud iseseisva töö lahtri kohal hõljumine ei käivita enam esiletõstmist uuesti' },
-  { tag: 'PAREM', type: 'improved', text: 'Tunniplaani lahknevuste tuvastamine töötab kõigis koolides' }
-]
-
-const TAG_STYLES = {
-  new: 'background:#e8f5e9;color:#2e7d32',
-  fix: 'background:#fff3e0;color:#e65100',
-  improved: 'background:#e3f2fd;color:#1565c0'
-}
-
 class VersionCheckService {
   constructor() {
     this.shown = false
@@ -63,28 +45,7 @@ class VersionCheckService {
       Logger.debug('[VersionCheckService] Could not check dismiss state:', error.message)
     }
 
-    if (UPDATE_DISPLAY_MODE === 'tab') {
-      this.#openTab(version)
-    } else {
-      this.#showModal(version)
-    }
-  }
-
-  /**
-   * Open the update notification page in a new tab
-   * @param {string|null} version - Available version string
-   */
-  #openTab(version) {
-    if (this.shown) return
-    this.shown = true
-
-    const url = version
-      ? chrome.runtime.getURL(`update.html?v=${version}`)
-      : chrome.runtime.getURL('update.html')
-
-    chrome.runtime.sendMessage({ action: 'openTab', url })
-    chrome.storage.session.set({ [DISMISS_KEY]: version }).catch(() => {})
-    Logger.info('[VersionCheckService] Update tab opened')
+    this.#showModal(version)
   }
 
   /**
@@ -148,35 +109,8 @@ class VersionCheckService {
 
     const hint = document.createElement('p')
     hint.style.cssText = 'font-size:14px;color:#888;line-height:1.5;margin:0'
-    hint.textContent = 'Chrome uuendab laiendust automaatselt. Sulgege ja avage brauser uuesti, et uuendus rakenduks.'
+    hint.textContent = 'Uus versioon on saadaval ja rakendub automaatselt.'
     header.appendChild(hint)
-
-    // Patch notes
-    const changes = document.createElement('div')
-    changes.style.cssText = 'margin-bottom:28px'
-
-    const changesTitle = document.createElement('h2')
-    changesTitle.style.cssText = 'font-size:16px;color:#333;margin:0 0 12px'
-    changesTitle.textContent = 'Mis on uut?'
-    changes.appendChild(changesTitle)
-
-    const list = document.createElement('ul')
-    list.style.cssText = 'list-style:none;padding:0;margin:0'
-
-    PATCH_NOTES.forEach((note, i) => {
-      const li = document.createElement('li')
-      li.style.cssText = `font-size:14px;color:#555;line-height:1.6;padding:6px 0;${i < PATCH_NOTES.length - 1 ? 'border-bottom:1px solid #f0f0f0' : ''}`
-
-      const tag = document.createElement('span')
-      tag.style.cssText = `display:inline-block;font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;margin-right:6px;${TAG_STYLES[note.type]}`
-      tag.textContent = note.tag
-
-      li.appendChild(tag)
-      li.appendChild(document.createTextNode(note.text))
-      list.appendChild(li)
-    })
-
-    changes.appendChild(list)
 
     // Footer
     const footer = document.createElement('div')
@@ -193,7 +127,6 @@ class VersionCheckService {
 
     // Assemble
     card.appendChild(header)
-    card.appendChild(changes)
     card.appendChild(footer)
     overlay.appendChild(card)
 
