@@ -3435,6 +3435,25 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
+   * Normalize a Tahvel due date value to the datetime shape used by journal entry PUTs.
+   * @param {string|null|undefined} dueDate Due date from Kriit or Tahvel entry data
+   * @returns {string|null|undefined} Normalized due date
+   */
+  normalizeTahvelDueDate(dueDate) {
+    let due = dueDate
+    if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
+      return `${due}T23:59:59.000Z`
+    }
+    if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(due)) {
+      return `${due}.000Z`
+    }
+    if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+$/.test(due)) {
+      return `${due}Z`
+    }
+    return due
+  }
+
+  /**
    * Extract HTTP status from ApiService errors.
    * @param {Error} error Error thrown by ApiService
    * @returns {number|null} HTTP status or null
@@ -3995,15 +4014,7 @@ class JournalListSyncFeature extends BaseFeature {
             if (batch.nameEt) updateData.nameEt = batch.nameEt
             if (batch.homeworkDuedate) {
               // homeworkDuedate may come as 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:mm:ss' - Tahvel expects a full datetime
-              let due = batch.homeworkDuedate
-              if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
-                // Use end of day for due date
-                due = `${due}T23:59:59.000Z`
-              }
-              // If it's a short ISO without timezone, try to append Z
-              if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(due)) {
-                due = `${due}.000Z`
-              }
+              const due = this.normalizeTahvelDueDate(batch.homeworkDuedate)
               updateData.homeworkDuedate = due
               // also normalize batch for in-memory update
               batch.homeworkDuedate = due
@@ -4047,6 +4058,9 @@ class JournalListSyncFeature extends BaseFeature {
             const finalEntryType = updateData.entryType || entryData.entryType
             if (finalEntryType === 'SISSEKANNE_I') {
               updateData.journalEntryCapacityTypes = ['MAHT_i']
+              if (!updateData.homeworkDuedate && updateData.entryDate) {
+                updateData.homeworkDuedate = this.normalizeTahvelDueDate(updateData.entryDate)
+              }
             } else if (finalEntryType === 'SISSEKANNE_H') {
               updateData.journalEntryCapacityTypes = ['MAHT_h']
             } else if (finalEntryType === 'SISSEKANNE_P') {

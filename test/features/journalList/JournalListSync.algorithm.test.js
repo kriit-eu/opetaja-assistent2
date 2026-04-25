@@ -2376,6 +2376,13 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(payload.journalEntryStudents).toEqual([])
     })
 
+    test('should normalize Tahvel due dates', () => {
+      expect(journalListSync.normalizeTahvelDueDate('2026-04-25')).toBe('2026-04-25T23:59:59.000Z')
+      expect(journalListSync.normalizeTahvelDueDate('2026-04-25T12:00:00')).toBe('2026-04-25T12:00:00.000Z')
+      expect(journalListSync.normalizeTahvelDueDate('2026-04-25T12:00:00.123')).toBe('2026-04-25T12:00:00.123Z')
+      expect(journalListSync.normalizeTahvelDueDate('2026-04-25T12:00:00Z')).toBe('2026-04-25T12:00:00Z')
+    })
+
     test('should surface assignment-hours sync failures without exposing student identifiers', async () => {
       const tahvelError = new Error('API Error: 412 (journal.messages.changeIsNotAllowedStudentIsNotStudying)')
       tahvelError.status = 412
@@ -2475,6 +2482,8 @@ describe('JournalListSync - Algorithm Tests', () => {
         id: 2636372,
         entryType: 'SISSEKANNE_H',
         nameEt: 'Lõpphinne',
+        entryDate: '2023-06-20T00:00:00Z',
+        homeworkDuedate: null,
         lessons: null,
         journalEntryTeachers: [18737],
         journalEntryCapacityTypes: ['MAHT_h'],
@@ -2509,6 +2518,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(result.failedSyncs).toHaveLength(1)
       expect(get.mock.calls[0][2]).toEqual({ cache: false })
       expect(payload.entryType).toBe('SISSEKANNE_I')
+      expect(payload.homeworkDuedate).toBe('2023-06-20T00:00:00Z')
       expect(payload.journalEntryCapacityTypes).toEqual(['MAHT_i'])
       expect(payload.journalEntryStudents).toEqual([])
       expect(journalListSync.error).toContain('HTTP 412')
