@@ -129,6 +129,14 @@ describe('JournalListSync - Algorithm Tests', () => {
         })
       }
     }
+
+    journalListSync.api = apiMock
+    journalListSync.differences = null
+    journalListSync.error = null
+    journalListSync.isLoading = false
+    journalListSync.isActive = false
+    journalListSync.journalStudentIdToStudentId = {}
+    journalListSync._localStudentCache = {}
   })
 
   afterEach(() => {
@@ -2349,11 +2357,163 @@ describe('JournalListSync - Algorithm Tests', () => {
     test('should be an async function', () => {
       expect(typeof journalListSync.updateAssignmentHoursInTahvel).toBe('function')
     })
+
+    test('should build assignment-level payloads without unchanged student rows', () => {
+      const payload = journalListSync.buildAssignmentLevelUpdatePayload(
+        {
+          version: 4,
+          id: 3732602,
+          nameEt: 'Mini-rakendus BDD/TDD põhimõtetel',
+          lessons: 28,
+          journalEntryTeachers: [18737],
+          journalEntryStudents: [{ journalStudent: 1, studentPersonalCode: '50001010001' }]
+        },
+        { lessons: 10 }
+      )
+
+      expect(payload.lessons).toBe(10)
+      expect(payload.journalEntryTeachers).toEqual(['18737'])
+      expect(payload.journalEntryStudents).toEqual([])
+    })
+
+    test('should surface assignment-hours sync failures without exposing student identifiers', async () => {
+      const tahvelError = new Error('API Error: 412 (journal.messages.changeIsNotAllowedStudentIsNotStudying)')
+      tahvelError.status = 412
+
+      const put = mock(async () => {
+        throw tahvelError
+      })
+
+      journalListSync.api = {
+        kriit: { baseUrl: 'https://kriit.vikk.ee/api' },
+        tahvel: {
+          get: mock(async () => ({
+            version: 4,
+            id: 3732602,
+            entryType: 'SISSEKANNE_I',
+            nameEt: 'Mini-rakendus BDD/TDD põhimõtetel',
+            lessons: 28,
+            journalEntryTeachers: [18737],
+            journalEntryCapacityTypes: ['MAHT_i'],
+            journalEntryStudents: [{ journalStudent: 1, studentPersonalCode: '50001010001' }]
+          })),
+          put
+        }
+      }
+      journalListSync.differences = [
+        {
+          subjectName: 'Testjuhitud arendus',
+          subjectExternalId: 402641,
+          assignments: [
+            {
+              assignmentExternalId: 3732602,
+              assignmentName: 'Mini-rakendus BDD/TDD põhimõtetel',
+              assignmentHours: 10
+            }
+          ]
+        }
+      ]
+
+      const result = await journalListSync.updateAssignmentHoursInTahvel()
+      const payload = put.mock.calls[0][1]
+
+      expect(result.failedSyncs).toHaveLength(1)
+      expect(payload.lessons).toBe(10)
+      expect(payload.journalEntryStudents).toEqual([])
+      expect(journalListSync.error).toContain('HTTP 412')
+      expect(journalListSync.error).toContain('Mini-rakendus BDD/TDD põhimõtetel')
+      expect(journalListSync.error).not.toContain('50001010001')
+    })
+
+    test('should return assignment-hours failures without rendering when requested', async () => {
+      const tahvelError = new Error('API Error: 412')
+      tahvelError.status = 412
+
+      journalListSync.api = {
+        tahvel: {
+          get: mock(async () => ({
+            version: 4,
+            id: 3732602,
+            lessons: 28,
+            journalEntryTeachers: [18737],
+            journalEntryStudents: [{ journalStudent: 1 }]
+          })),
+          put: mock(async () => {
+            throw tahvelError
+          })
+        }
+      }
+      journalListSync.differences = [
+        {
+          subjectName: 'Testjuhitud arendus',
+          subjectExternalId: 402641,
+          assignments: [{ assignmentExternalId: 3732602, assignmentName: 'Mini-rakendus', assignmentHours: 10 }]
+        }
+      ]
+
+      const result = await journalListSync.updateAssignmentHoursInTahvel({ showError: false })
+
+      expect(result.failedSyncs).toHaveLength(1)
+      expect(journalListSync.error).toBe(null)
+    })
   })
 
   describe('syncWithKriit', () => {
     test('should be an async function', () => {
       expect(typeof journalListSync.syncWithKriit).toBe('function')
+    })
+
+    test('should surface entry-type sync failures without resubmitting unchanged students', async () => {
+      const tahvelError = new Error('API Error: 412 (journal.messages.changeIsNotAllowedStudentIsNotStudying)')
+      tahvelError.status = 412
+
+      const put = mock(async () => {
+        throw tahvelError
+      })
+      const get = mock(async () => ({
+        version: 5,
+        id: 2636372,
+        entryType: 'SISSEKANNE_H',
+        nameEt: 'Lõpphinne',
+        lessons: null,
+        journalEntryTeachers: [18737],
+        journalEntryCapacityTypes: ['MAHT_h'],
+        journalEntryStudents: [{ journalStudent: 1, studentPersonalCode: '50001010001' }]
+      }))
+
+      journalListSync.api = {
+        kriit: { baseUrl: 'https://kriit.vikk.ee/api' },
+        tahvel: {
+          get,
+          put
+        }
+      }
+      journalListSync.differences = [
+        {
+          subjectName: 'Testimise tüübid ja automatiseerimine',
+          subjectExternalId: 268452,
+          assignments: [
+            {
+              assignmentExternalId: 2636372,
+              assignmentName: 'Lõpphinne',
+              entryType: { kriit: 'SISSEKANNE_I', Tahvel: 'SISSEKANNE_H' },
+              results: []
+            }
+          ]
+        }
+      ]
+
+      const result = await journalListSync.syncWithKriit()
+      const payload = put.mock.calls[0][1]
+
+      expect(result.failedSyncs).toHaveLength(1)
+      expect(get.mock.calls[0][2]).toEqual({ cache: false })
+      expect(payload.entryType).toBe('SISSEKANNE_I')
+      expect(payload.journalEntryCapacityTypes).toEqual(['MAHT_i'])
+      expect(payload.journalEntryStudents).toEqual([])
+      expect(journalListSync.error).toContain('HTTP 412')
+      expect(journalListSync.error).toContain('Lõpphinne')
+      expect(journalListSync.error).not.toContain('50001010001')
     })
   })
 

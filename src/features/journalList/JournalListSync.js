@@ -1435,11 +1435,23 @@ class JournalListSyncFeature extends BaseFeature {
           }
         }
 
-        // Update assignment hours in Tahvel if there are differences
-        await this.updateAssignmentHoursInTahvel()
+        // Update assignment hours in Tahvel if there are differences.
+        // Keep collecting failures so unrelated sync items still get attempted.
+        const hoursResult = await this.updateAssignmentHoursInTahvel({ showError: false })
 
         // Run the batched sync which now includes assignment-level changes
-        await this.syncWithKriit()
+        const syncResult = await this.syncWithKriit()
+        const failedSyncs = [...(hoursResult?.failedSyncs || []), ...(syncResult?.failedSyncs || [])]
+        const successfulCount = (hoursResult?.successfulSyncs?.length || 0) + (syncResult?.successfulSyncs?.length || 0)
+        if (failedSyncs.length > 0) {
+          this.isLoading = false
+          this.error = this.buildSyncFailureMessage(failedSyncs, successfulCount)
+          this.updateUI()
+          return
+        }
+        if (this.error && !this.error.includes('Kõik hinded on juba sünkroonis')) return
+        this.error = null
+
         // Ensure we clear caches so fetchJournalData gets fresh Tahvel data
         try {
           await this.clearCache()
@@ -3312,14 +3324,20 @@ class JournalListSyncFeature extends BaseFeature {
    */
   /**
    * Update assignments in Tahvel when there are lesson hour changes from Kriit
+   * @param {Object} options Options
+   * @param {boolean} options.showError Whether to immediately render failures
+   * @returns {Promise<Object>} Successful and failed sync items
    */
-  async updateAssignmentHoursInTahvel() {
+  async updateAssignmentHoursInTahvel({ showError = true } = {}) {
+    const successfulSyncs = []
+    const failedSyncs = []
+
     try {
       const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
 
       if (!assignmentHoursDiffs || assignmentHoursDiffs.length === 0) {
         Logger.debug('No assignment hours differences to update')
-        return
+        return { successfulSyncs, failedSyncs }
       }
 
       Logger.debug(`🕐 Updating ${assignmentHoursDiffs.length} assignments with lesson hour changes`)
@@ -3337,16 +3355,15 @@ class JournalListSyncFeature extends BaseFeature {
             continue
           }
 
-          // Update only the lessons field with the new hours from Kriit
-          const updatedPayload = {
-            ...currentAssignment,
-            lessons: diff.kriitHours
-          }
+          // Update only assignment metadata. Re-sending unchanged students can make Tahvel
+          // reject the request when old/inactive student rows are present in the entry.
+          const updatedPayload = this.buildAssignmentLevelUpdatePayload(currentAssignment, { lessons: diff.kriitHours })
 
           // PUT request to update the assignment
           await this.api.tahvel.put(`/journals/${journalId}/journalEntry/${assignmentId}`, updatedPayload, { cache: false })
 
           Logger.debug(`✅ Updated assignment "${diff.assignmentName}" lessons to ${diff.kriitHours} hours`)
+          successfulSyncs.push({ journalId, assignmentId, assignmentName: diff.assignmentName, type: 'hours' })
 
           // Update UI status indicator for success
           try {
@@ -3357,6 +3374,14 @@ class JournalListSyncFeature extends BaseFeature {
           }
         } catch (error) {
           Logger.error(`❌ Failed to update assignment ${diff.assignmentExternalId} hours:`, error)
+          failedSyncs.push({
+            journalId: diff.subjectExternalId,
+            assignmentId: diff.assignmentExternalId,
+            assignmentName: diff.assignmentName,
+            type: 'hours',
+            status: this.getApiErrorStatus(error),
+            error: error.message
+          })
 
           // Update UI status indicator for failure
           try {
@@ -3367,9 +3392,88 @@ class JournalListSyncFeature extends BaseFeature {
           }
         }
       }
+
+      if (failedSyncs.length > 0 && showError) {
+        this.isLoading = false
+        this.error = this.buildSyncFailureMessage(failedSyncs, successfulSyncs.length)
+        this.updateUI()
+      }
+
+      return { successfulSyncs, failedSyncs }
     } catch (error) {
       Logger.error('Error updating assignment hours in Tahvel:', error)
+      failedSyncs.push({ type: 'hours', status: this.getApiErrorStatus(error), error: error.message })
+      if (showError) {
+        this.isLoading = false
+        this.error = this.buildSyncFailureMessage(failedSyncs, successfulSyncs.length)
+        this.updateUI()
+      }
+      return { successfulSyncs, failedSyncs }
     }
+  }
+
+  /**
+   * Build a Tahvel journal entry update payload for assignment-level changes only.
+   * Student rows are intentionally sent as an empty update list because they are not
+   * changing here; re-submitting old inactive/deleted rows can trigger Tahvel 412s.
+   * @param {Object} entryData Current journal entry data from Tahvel
+   * @param {Object} updates Assignment-level fields to overwrite
+   * @returns {Object} Payload for PUT /journals/:journalId/journalEntry/:assignmentId
+   */
+  buildAssignmentLevelUpdatePayload(entryData, updates = {}) {
+    const payload = {
+      ...entryData,
+      ...updates,
+      journalEntryStudents: []
+    }
+
+    if (Array.isArray(payload.journalEntryTeachers)) {
+      payload.journalEntryTeachers = payload.journalEntryTeachers.map(id => String(id))
+    }
+
+    return payload
+  }
+
+  /**
+   * Extract HTTP status from ApiService errors.
+   * @param {Error} error Error thrown by ApiService
+   * @returns {number|null} HTTP status or null
+   */
+  getApiErrorStatus(error) {
+    return error?.status || Number(error?.message?.match(/API Error:\s*(\d+)/)?.[1]) || null
+  }
+
+  /**
+   * Build a user-facing sync failure message without student identifiers.
+   * @param {Array<Object>} failedSyncs Failed sync items
+   * @param {number} successfulCount Number of successful sync items
+   * @returns {string} Error message
+   */
+  buildSyncFailureMessage(failedSyncs, successfulCount = 0) {
+    const count = Array.isArray(failedSyncs) ? failedSyncs.length : 0
+    const labels = (failedSyncs || [])
+      .map(failure => {
+        const assignmentName = failure.assignmentName || (failure.assignmentId ? `ülesanne ${failure.assignmentId}` : 'tundmatu ülesanne')
+        const typeNames = {
+          hours: 'tundide arv',
+          entrytype: 'sissekande tüüp',
+          name: 'nimetus',
+          duedate: 'tähtaeg',
+          entrydate: 'sissekande kuupäev',
+          grade: 'hinne'
+        }
+        const typeName = typeNames[failure.type] || 'muudatus'
+        const status = failure.status ? `, HTTP ${failure.status}` : ''
+        return `${assignmentName} (${typeName}${status})`
+      })
+      .join('; ')
+
+    let message = `Sünkroniseerimine ebaõnnestus ${count} muudatuse puhul${labels ? `: ${labels}` : ''}.`
+    if (successfulCount > 0) message = `Sünkroniseerimine osaliselt õnnestus: ${successfulCount} õnnestus, ${count} ebaõnnestus${labels ? `. ${labels}.` : '.'}`
+    if ((failedSyncs || []).some(failure => failure.status === 412 || String(failure.error || '').includes('412'))) {
+      message += ' Tahvel lükkas vähemalt ühe päeviku sissekande uuenduse tagasi (412 Precondition Failed). Värskenda andmeid ja proovi uuesti.'
+    }
+    return message
   }
 
   async syncWithKriit() {
@@ -3727,7 +3831,7 @@ class JournalListSyncFeature extends BaseFeature {
             const entryCacheKey = `${batch.journalId}::${batch.assignmentId}`
             let entryData = assignmentEntryCache.get(entryCacheKey)
             if (!entryData) {
-              entryData = await this.api.tahvel.get(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, { allStudents: true })
+              entryData = await this.api.tahvel.get(`/journals/${batch.journalId}/journalEntry/${batch.assignmentId}`, { allStudents: true }, { cache: false })
               assignmentEntryCache.set(entryCacheKey, entryData)
             }
 
@@ -3874,13 +3978,14 @@ class JournalListSyncFeature extends BaseFeature {
             }
 
             // Prepare update payload based on existing entryData
-            const updateData = { ...entryData }
+            const updateData = isAssignmentLevelOnly ? this.buildAssignmentLevelUpdatePayload(entryData) : { ...entryData }
 
-            // For assignment-level only batches, preserve all existing students
-            // For batches with student updates, use only the students being updated
+            // For assignment-level-only batches, avoid sending student rows.
+            // For batches with student updates, send only the students being updated.
             if (isAssignmentLevelOnly) {
-              // Keep all existing students for assignment-level only changes
-              Logger.debug(`📋 Assignment-level only update: preserving ${entryData.journalEntryStudents?.length || 0} existing students`)
+              // Send no student rows for metadata-only changes. Re-sending unchanged
+              // student rows can trigger Tahvel 412s for old/inactive entries.
+              Logger.debug(`📋 Assignment-level only update: not resubmitting ${entryData.journalEntryStudents?.length || 0} existing students`)
             } else {
               // Replace journalEntryStudents with only students being updated
               updateData.journalEntryStudents = studentsToUpdate.map(s => ({ ...s }))
@@ -4003,6 +4108,9 @@ class JournalListSyncFeature extends BaseFeature {
                 if (batch.entryDate) {
                   journalSyncBannerService.updateItemSyncStatus(batch.journalId, batch.assignmentId, 'entrydate', true)
                 }
+                if (batch.entryType) {
+                  journalSyncBannerService.updateItemSyncStatus(batch.journalId, batch.assignmentId, 'entrytype', true)
+                }
 
                 // Update grade changes
                 for (const s of studentsToUpdate) {
@@ -4076,7 +4184,14 @@ class JournalListSyncFeature extends BaseFeature {
               }
             } catch (err) {
               Logger.error(`Failed to PUT assignment ${batch.assignmentId} in journal ${batch.journalId}: ${err.message}`)
-              failedSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, error: err.message })
+              failedSyncs.push({
+                journalId: batch.journalId,
+                assignmentId: batch.assignmentId,
+                assignmentName: entryData?.nameEt,
+                type: batch.entryType ? 'entrytype' : 'assignment',
+                status: this.getApiErrorStatus(err),
+                error: err.message
+              })
 
               // Update UI status indicators to show failure
               try {
@@ -4091,6 +4206,9 @@ class JournalListSyncFeature extends BaseFeature {
                 }
                 if (batch.entryDate) {
                   journalSyncBannerService.updateItemSyncStatus(batch.journalId, batch.assignmentId, 'entrydate', false)
+                }
+                if (batch.entryType) {
+                  journalSyncBannerService.updateItemSyncStatus(batch.journalId, batch.assignmentId, 'entrytype', false)
                 }
 
                 // Mark grade changes as failed
@@ -4113,7 +4231,14 @@ class JournalListSyncFeature extends BaseFeature {
             }
           } catch (err) {
             Logger.error(`Error processing assignment batch ${batch.journalId}/${batch.assignmentId}: ${err.message}`)
-            failedSyncs.push({ journalId: batch.journalId, assignmentId: batch.assignmentId, error: err.message })
+            failedSyncs.push({
+              journalId: batch.journalId,
+              assignmentId: batch.assignmentId,
+              assignmentName: batch.nameEt,
+              type: batch.entryType ? 'entrytype' : 'assignment',
+              status: this.getApiErrorStatus(err),
+              error: err.message
+            })
           }
 
           // Small delay between batches to reduce server load
@@ -4129,11 +4254,13 @@ class JournalListSyncFeature extends BaseFeature {
         let nameCount = 0
         let duedateCount = 0
         let entrydateCount = 0
+        let entrytypeCount = 0
         for (const batch of batches) {
           if (successfulSyncs.some(s => s.journalId === batch.journalId && s.assignmentId === batch.assignmentId)) {
             if (batch.nameEt) nameCount++
             if (batch.homeworkDuedate) duedateCount++
             if (batch.entryDate) entrydateCount++
+            if (batch.entryType) entrytypeCount++
           }
         }
 
@@ -4160,6 +4287,9 @@ class JournalListSyncFeature extends BaseFeature {
             if (entrydateCount > 0) {
               parts.push(`${entrydateCount} sissekande kuupäeva`)
             }
+            if (entrytypeCount > 0) {
+              parts.push(`${entrytypeCount} sissekande tüüpi`)
+            }
             if (hoursCount > 0) {
               parts.push(`${hoursCount} ülesande tundide arvu`)
             }
@@ -4184,25 +4314,24 @@ class JournalListSyncFeature extends BaseFeature {
               .catch(() => this.fetchJournalData())
           }, 3000)
         } else {
-          this.error = `Sünkroniseerimine osaliselt õnnestus: ${successfulSyncs.length} õnnestus, ${failedSyncs.length} ebaõnnestus.`
+          this.error = this.buildSyncFailureMessage(failedSyncs, successfulSyncs.length)
           this.updateUI()
-          setTimeout(() => {
-            this.clearCache()
-              .then(() => this.fetchJournalData())
-              .catch(() => this.fetchJournalData())
-          }, 3000)
+          return { successfulSyncs, failedSyncs }
         }
+        return { successfulSyncs, failedSyncs }
       } catch (error) {
         Logger.error('Unexpected error during batch sync process:', error)
         this.isLoading = false
         this.error = 'Sünkroniseerimine ebaõnnestus ootamatu vea tõttu.'
         this.updateUI()
+        return { successfulSyncs, failedSyncs: [{ status: this.getApiErrorStatus(error), error: error.message }] }
       }
     } catch (error) {
       Logger.error('Error syncing with Kriit:', error)
       this.isLoading = false
       this.error = error.message || 'Failed to sync with Kriit'
       this.updateUI()
+      return { successfulSyncs: [], failedSyncs: [{ status: this.getApiErrorStatus(error), error: error.message }] }
     }
   }
 

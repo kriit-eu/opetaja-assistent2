@@ -421,6 +421,22 @@ describe('JournalSyncBannerService', () => {
     })
   })
 
+  describe('showSyncErrorBanner', () => {
+    test('should render error message as text instead of HTML', () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.window = dom.window
+      global.document = dom.window.document
+      service.stylesLoaded = true
+
+      service.showSyncErrorBanner('Sünkroniseerimine ebaõnnestus: <img src=x onerror="window.__xss = true">')
+
+      const message = document.querySelector('.ta-sync-error p')
+      expect(message.textContent).toContain('<img src=x')
+      expect(message.querySelector('img')).toBe(null)
+      expect(window.__xss).toBeUndefined()
+    })
+  })
+
   describe('updateItemSyncStatus', () => {
     let dom
     let container
