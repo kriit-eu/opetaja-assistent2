@@ -1440,7 +1440,7 @@ class JournalListSyncFeature extends BaseFeature {
         const hoursResult = await this.updateAssignmentHoursInTahvel({ showError: false })
 
         // Run the batched sync which now includes assignment-level changes
-        const syncResult = await this.syncWithKriit()
+        const syncResult = await this.syncWithKriit({ showCompletion: hoursResult.failedSyncs.length === 0 })
         const failedSyncs = [...(hoursResult?.failedSyncs || []), ...(syncResult?.failedSyncs || [])]
         const successfulCount = (hoursResult?.successfulSyncs?.length || 0) + (syncResult?.successfulSyncs?.length || 0)
         if (failedSyncs.length > 0) {
@@ -3414,8 +3414,8 @@ class JournalListSyncFeature extends BaseFeature {
 
   /**
    * Build a Tahvel journal entry update payload for assignment-level changes only.
-   * Student rows are intentionally sent as an empty update list because they are not
-   * changing here; re-submitting old inactive/deleted rows can trigger Tahvel 412s.
+   * Tahvel requires journalEntryStudents to be present on PUT; omitting it returns
+   * 500, while [] preserves existing rows and avoids resubmitting stale student rows.
    * @param {Object} entryData Current journal entry data from Tahvel
    * @param {Object} updates Assignment-level fields to overwrite
    * @returns {Object} Payload for PUT /journals/:journalId/journalEntry/:assignmentId
@@ -3495,7 +3495,7 @@ class JournalListSyncFeature extends BaseFeature {
     return message
   }
 
-  async syncWithKriit() {
+  async syncWithKriit({ showCompletion = true } = {}) {
     // Debug: Log all journal students and their personal codes before syncing
     if (Array.isArray(this.differences)) {
       this.differences.forEach(subject => {
@@ -4002,8 +4002,8 @@ class JournalListSyncFeature extends BaseFeature {
             // For assignment-level-only batches, avoid sending student rows.
             // For batches with student updates, send only the students being updated.
             if (isAssignmentLevelOnly) {
-              // Send no student rows for metadata-only changes. Re-sending unchanged
-              // student rows can trigger Tahvel 412s for old/inactive entries.
+              // Tahvel's metadata-only contract is journalEntryStudents: []. Omitting
+              // the field returns 500, while resending old/inactive rows can return 412.
               Logger.debug(`📋 Assignment-level only update: not resubmitting ${entryData.journalEntryStudents?.length || 0} existing students`)
             } else {
               // Replace journalEntryStudents with only students being updated
@@ -4319,14 +4319,16 @@ class JournalListSyncFeature extends BaseFeature {
           } else {
             successMessage = `Kõik ${successfulSyncs.length} kirjet olid juba õiged - pole midagi sünkroniseerida.`
           }
-          this.showSuccessBanner(successMessage)
+          if (showCompletion) {
+            this.showSuccessBanner(successMessage)
 
-          // Refresh data after clearing cache
-          setTimeout(() => {
-            this.clearCache()
-              .then(() => this.fetchJournalData())
-              .catch(() => this.fetchJournalData())
-          }, 3000)
+            // Refresh data after clearing cache
+            setTimeout(() => {
+              this.clearCache()
+                .then(() => this.fetchJournalData())
+                .catch(() => this.fetchJournalData())
+            }, 3000)
+          }
         } else {
           this.error = this.buildSyncFailureMessage(failedSyncs, successfulSyncs.length)
           this.updateUI()

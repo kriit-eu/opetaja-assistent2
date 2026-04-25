@@ -123,6 +123,15 @@ describe('DifferenceRenderer', () => {
       expect(result.classList.contains('badge-new')).toBe(true)
       expect(result.textContent).toBe('Test')
     })
+
+    test('should render badge content as text instead of HTML', () => {
+      const row = document.createElement('div')
+      const result = differenceRenderer.createBadge(row, '<img src=x onerror="window.__xss = true">', 'badge-assignment')
+
+      expect(result.textContent).toContain('<img src=x')
+      expect(result.querySelector('img')).toBe(null)
+      expect(window.__xss).toBeUndefined()
+    })
   })
 
   describe('collectAndGroupDifferences', () => {
@@ -377,6 +386,37 @@ describe('DifferenceRenderer', () => {
       global.location.hash = '#/other'
       differenceRenderer.render(container, [], [], [], [], [], {})
       expect(container.children.length).toBe(0)
+    })
+
+    test('should render difference row content as text instead of HTML', () => {
+      dom.reconfigure({ url: 'https://tahvel.edu.ee/#/journals' })
+      const htmlValue = '<img src=x onerror="window.__xss = true">'
+      const nextHtmlValue = '<img src=y onerror="window.__xss = true">'
+      const gradeDiffs = [
+        {
+          subjectName: htmlValue,
+          assignments: [
+            {
+              assignmentExternalId: 'a1',
+              assignmentName: htmlValue,
+              results: [
+                {
+                  studentName: htmlValue,
+                  studentPersonalCode: '12345678901',
+                  currentGrade: htmlValue,
+                  grade: nextHtmlValue
+                }
+              ]
+            }
+          ]
+        }
+      ]
+
+      differenceRenderer.render(container, [], gradeDiffs, [], [], [], [], {})
+
+      expect(container.textContent).toContain('<img src=x')
+      expect(container.querySelector('img')).toBe(null)
+      expect(window.__xss).toBeUndefined()
     })
   })
 })

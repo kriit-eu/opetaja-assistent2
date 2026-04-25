@@ -2358,7 +2358,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(typeof journalListSync.updateAssignmentHoursInTahvel).toBe('function')
     })
 
-    test('should build assignment-level payloads without unchanged student rows', () => {
+    test('should build Tahvel metadata-only payloads with an empty student row list', () => {
       const payload = journalListSync.buildAssignmentLevelUpdatePayload(
         {
           version: 4,
@@ -2524,6 +2524,70 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(journalListSync.error).toContain('HTTP 412')
       expect(journalListSync.error).toContain('Lõpphinne')
       expect(journalListSync.error).not.toContain('50001010001')
+    })
+
+    test('should suppress success refresh when completion rendering is disabled', async () => {
+      const originalSetTimeout = global.setTimeout
+      const originalShowSuccessBanner = journalListSync.showSuccessBanner
+      const originalClearCache = journalListSync.clearCache
+      const originalFetchJournalData = journalListSync.fetchJournalData
+      const setTimeoutMock = mock(() => {})
+      const showSuccessBanner = mock(() => {})
+      const clearCache = mock(async () => {})
+      const fetchJournalData = mock(async () => {})
+
+      global.setTimeout = setTimeoutMock
+      journalListSync.showSuccessBanner = showSuccessBanner
+      journalListSync.clearCache = clearCache
+      journalListSync.fetchJournalData = fetchJournalData
+
+      try {
+        journalListSync.api = {
+          kriit: { baseUrl: 'https://kriit.vikk.ee/api' },
+          tahvel: {
+            get: mock(async () => ({
+              version: 5,
+              id: 2636372,
+              entryType: 'SISSEKANNE_H',
+              nameEt: 'Lõpphinne',
+              entryDate: '2023-06-20T00:00:00Z',
+              homeworkDuedate: null,
+              journalEntryTeachers: [18737],
+              journalEntryCapacityTypes: ['MAHT_h'],
+              journalEntryStudents: [{ journalStudent: 1 }]
+            })),
+            put: mock(async () => ({}))
+          }
+        }
+        journalListSync.differences = [
+          {
+            subjectName: 'Testimise tüübid ja automatiseerimine',
+            subjectExternalId: 268452,
+            assignments: [
+              {
+                assignmentExternalId: 2636372,
+                assignmentName: 'Lõpphinne',
+                entryType: { kriit: 'SISSEKANNE_I', Tahvel: 'SISSEKANNE_H' },
+                results: []
+              }
+            ]
+          }
+        ]
+
+        const result = await journalListSync.syncWithKriit({ showCompletion: false })
+
+        expect(result.failedSyncs).toHaveLength(0)
+        expect(result.successfulSyncs).toHaveLength(1)
+        expect(showSuccessBanner).not.toHaveBeenCalled()
+        expect(setTimeoutMock).not.toHaveBeenCalled()
+        expect(clearCache).not.toHaveBeenCalled()
+        expect(fetchJournalData).not.toHaveBeenCalled()
+      } finally {
+        global.setTimeout = originalSetTimeout
+        journalListSync.showSuccessBanner = originalShowSuccessBanner
+        journalListSync.clearCache = originalClearCache
+        journalListSync.fetchJournalData = originalFetchJournalData
+      }
     })
   })
 

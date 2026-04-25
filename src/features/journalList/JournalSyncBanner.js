@@ -37,23 +37,23 @@ class DifferenceRenderer {
 
         const values = domService.createAndInsertElement('div', { classList: ['values'] }, '', row)
         if (diff.studentName) {
-          domService.createAndInsertElement('span', { classList: ['student-name'] }, `${diff.studentName}:`, values)
+          this.createTextElement('span', { classList: ['student-name'] }, `${diff.studentName}:`, values)
         }
 
         // For new assignments, show entryDate then dueDate (omit when missing)
         if (diff.type === 'new') {
           const datesContainer = domService.createAndInsertElement('div', { classList: ['new-assignment-dates'] }, '', values)
           if (diff.entryDate) {
-            domService.createAndInsertElement('span', { classList: ['date-entry'] }, `Sissekanne: ${diff.entryDate}`, datesContainer)
+            this.createTextElement('span', { classList: ['date-entry'] }, `Sissekanne: ${diff.entryDate}`, datesContainer)
           }
           if (diff.dueDate) {
             // show due date only if present
-            domService.createAndInsertElement('span', { classList: ['date-due'] }, `Tähtaeg: ${diff.dueDate}`, datesContainer)
+            this.createTextElement('span', { classList: ['date-due'] }, `Tähtaeg: ${diff.dueDate}`, datesContainer)
           }
         } else {
           const valueBadge = domService.createAndInsertElement('span', { classList: ['value-badge'] }, '', values)
-          domService.createAndInsertElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
-          domService.createAndInsertElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
+          this.createTextElement('span', { classList: ['value-old'] }, diff.oldValue, valueBadge)
+          this.createTextElement('span', { classList: ['value-new'] }, diff.newValue, valueBadge)
         }
       })
     }
@@ -374,7 +374,7 @@ class DifferenceRenderer {
 
   createSubjectContainer(container, subjectGroupKey) {
     const subjectContainer = domService.createAndInsertElement('div', {}, '', container)
-    domService.createAndInsertElement('h3', {}, subjectGroupKey, subjectContainer)
+    this.createTextElement('h3', {}, subjectGroupKey, subjectContainer)
     return subjectContainer
   }
 
@@ -402,7 +402,7 @@ class DifferenceRenderer {
   }
 
   createBadge(row, text, className) {
-    return domService.createAndInsertElement(
+    return this.createTextElement(
       'span',
       {
         classList: ['badge', className]
@@ -410,6 +410,12 @@ class DifferenceRenderer {
       text,
       row
     )
+  }
+
+  createTextElement(tagName, attributes, text, parent) {
+    const element = domService.createAndInsertElement(tagName, attributes, '', parent)
+    element.textContent = text ?? ''
+    return element
   }
 }
 
