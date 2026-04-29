@@ -1663,15 +1663,6 @@ class FinalGradesByOvFeature extends BaseFeature {
             if (!row && needleIdcode) {
               row = rows.find(r => (r.textContent || '').includes(needleIdcode)) || null
             }
-            // Fallback: index-based mapping if table order appears to match
-            if (!row) {
-              try {
-                const idx = output.indexOf(student)
-                if (rows && rows[idx]) row = rows[idx]
-              } catch (e) {
-                row = null
-              }
-            }
             if (!row) continue
             const isAP = rowHasAcademicLeave(row)
             if (isAP) continue
@@ -2096,7 +2087,7 @@ class FinalGradesByOvFeature extends BaseFeature {
         if (r && r.journalStudentId != null) resultMap[String(r.journalStudentId).trim()] = r
       })
 
-      rows.forEach((row, rowIdx) => {
+      rows.forEach(row => {
         try {
           if (rowHasAcademicLeave(row)) return
           const cells = Array.from(row.children).filter(n => n.nodeType === 1)
@@ -2122,7 +2113,6 @@ class FinalGradesByOvFeature extends BaseFeature {
               }) || null
           }
 
-          if (!student) student = results.output[rowIdx] || null
           if (!student || student.finalGrade === null) return
 
           finalGradeCols.forEach(colIdx => {
