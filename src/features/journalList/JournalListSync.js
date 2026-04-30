@@ -1455,7 +1455,16 @@ class JournalListSyncFeature extends BaseFeature {
         const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
         const entryTypeDiffs = this.extractEntryTypeDifferences()
         const newAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-        differenceRenderer.render(container, assignmentNameDiffs, gradeDiffs, dueDateDiffs, entryDateDiffs, assignmentHoursDiffs, entryTypeDiffs, newAssignments)
+        differenceRenderer.render(
+          container,
+          assignmentNameDiffs,
+          gradeDiffs,
+          dueDateDiffs,
+          entryDateDiffs,
+          assignmentHoursDiffs,
+          entryTypeDiffs,
+          newAssignments
+        )
       }
     )
   }
@@ -3250,9 +3259,7 @@ class JournalListSyncFeature extends BaseFeature {
   countSuccessfulSyncChanges(successfulSyncs, batches) {
     const successfulKeys = new Set(successfulSyncs.map(sync => `${sync.journalId}::${sync.assignmentId}`))
     const gradeCount = successfulSyncs.reduce((count, sync) => count + (sync.updated || 0), 0)
-    const assignmentLevelCount = batches.reduce((count, batch) => {
-      return successfulKeys.has(`${batch.journalId}::${batch.assignmentId}`) ? count + this.getAssignmentLevelBatchChanges(batch).length : count
-    }, 0)
+    const assignmentLevelCount = batches.reduce((count, batch) => successfulKeys.has(`${batch.journalId}::${batch.assignmentId}`) ? count + this.getAssignmentLevelBatchChanges(batch).length : count, 0)
 
     return gradeCount + assignmentLevelCount
   }
@@ -3285,7 +3292,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {string|null|undefined} Normalized due date
    */
   normalizeTahvelDueDate(dueDate) {
-    let due = dueDate
+    const due = dueDate
     if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
       return `${due}T23:59:59.000Z`
     }
@@ -4020,7 +4027,9 @@ class JournalListSyncFeature extends BaseFeature {
         const skippedUpdates = successfulSyncs.filter(s => s.skipped).length
 
         // Count specific types of changes from batches
-        const assignmentLevelCounts = new Map(this.getAssignmentLevelSyncFields().map(field => [field.statusType, { count: 0, label: field.successLabel }]))
+        const assignmentLevelCounts = new Map(
+          this.getAssignmentLevelSyncFields().map(field => [field.statusType, { count: 0, label: field.successLabel }])
+        )
         for (const batch of batches) {
           if (successfulSyncs.some(s => s.journalId === batch.journalId && s.assignmentId === batch.assignmentId)) {
             for (const { field } of this.getAssignmentLevelBatchChanges(batch)) {
