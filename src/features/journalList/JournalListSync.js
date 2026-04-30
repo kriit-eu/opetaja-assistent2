@@ -23,7 +23,7 @@ import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanne
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 import { notifyKriitGradesSynced, buildGradesForNotification } from './KriitSyncNotifier.js'
 import { getSchoolId } from '../../lib/schoolId.js'
-import { resolveCurrentStudyYearId, resolveStudyYearIdFromText } from '../../lib/studyYear.js'
+import { resolveLessonPlanDate, resolveStudyYearIdFromText } from '../../lib/studyYear.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -2134,55 +2134,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getFirstLessonFromPlan(journalId, teacherId) {
     try {
-      const studyYearId = await resolveCurrentStudyYearId(this.api)
-      if (!studyYearId) return null
-
-      const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
-
-      const planData = await this.api.tahvel.get(
-        endpoint,
-        {},
-        {
-          cache: true,
-          cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
-        }
-      )
-
-      if (!planData?.journals || !planData?.studyPeriods) {
-        return null
-      }
-
-      // Find the journal in the plan
-      const journalPlan = planData.journals.find(j => j.id === journalId)
-      if (!journalPlan?.hours?.MAHT_a) {
-        return null
-      }
-
-      // Find the first week with MAHT_a hours (non-null value)
-      const mahtAWeeks = journalPlan.hours.MAHT_a
-      const firstWeekIndex = mahtAWeeks.findIndex(hours => hours !== null)
-
-      if (firstWeekIndex === -1) {
-        return null
-      }
-
-      // Get the week number for that index
-      const weekNr = planData.weekNrs[firstWeekIndex]
-
-      if (!weekNr) {
-        return null
-      }
-
-      // Find the study period that contains this week
-      for (const period of planData.studyPeriods) {
-        const weekPosition = period.weekNrs.indexOf(weekNr)
-        if (weekPosition !== -1 && period.weekBeginningDates?.[weekPosition]) {
-          // Return the Monday of that week
-          return period.weekBeginningDates[weekPosition]
-        }
-      }
-
-      return null
+      return await resolveLessonPlanDate(this.api, journalId, teacherId, 'first')
     } catch (error) {
       Logger.debug(`Could not get first lesson from plan for journal ${journalId}:`, error.message)
       return null
@@ -2197,75 +2149,7 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getLastLessonFromPlan(journalId, teacherId) {
     try {
-      const studyYearId = await resolveCurrentStudyYearId(this.api)
-      if (!studyYearId) return null
-
-      const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
-
-      Logger.debug(`[getLastLessonFromPlan] Fetching lesson plan for journal ${journalId}, teacher ${teacherId}, studyYear ${studyYearId}`)
-
-      const planData = await this.api.tahvel.get(
-        endpoint,
-        {},
-        {
-          cache: true,
-          cacheExpiration: 24 * 60 * 60 * 1000 // 24 hours
-        }
-      )
-
-      if (!planData?.journals || !planData?.studyPeriods) {
-        Logger.debug(`[getLastLessonFromPlan] No plan data found for journal ${journalId}`)
-        return null
-      }
-
-      // Find the journal in the plan
-      const journalPlan = planData.journals.find(j => j.id === journalId)
-      if (!journalPlan?.hours?.MAHT_a) {
-        Logger.debug(`[getLastLessonFromPlan] No MAHT_a hours found for journal ${journalId}`)
-        return null
-      }
-
-      // Find the last week with MAHT_a hours (non-null value)
-      const mahtAWeeks = journalPlan.hours.MAHT_a
-      let lastWeekIndex = -1
-
-      for (let i = mahtAWeeks.length - 1; i >= 0; i--) {
-        if (mahtAWeeks[i] !== null) {
-          lastWeekIndex = i
-          break
-        }
-      }
-
-      if (lastWeekIndex === -1) {
-        Logger.debug(`[getLastLessonFromPlan] No non-null MAHT_a hours found for journal ${journalId}`)
-        return null
-      }
-
-      Logger.debug(`[getLastLessonFromPlan] Found last week index: ${lastWeekIndex}, hours: ${mahtAWeeks[lastWeekIndex]}`)
-
-      // Get the week number for that index
-      const weekNr = planData.weekNrs[lastWeekIndex]
-
-      if (!weekNr) {
-        Logger.debug(`[getLastLessonFromPlan] No week number found at index ${lastWeekIndex}`)
-        return null
-      }
-
-      Logger.debug(`[getLastLessonFromPlan] Week number: ${weekNr}`)
-
-      // Find the study period that contains this week
-      for (const period of planData.studyPeriods) {
-        const weekPosition = period.weekNrs.indexOf(weekNr)
-        if (weekPosition !== -1 && period.weekBeginningDates?.[weekPosition]) {
-          // Return the Monday of that week
-          const lastLessonDate = period.weekBeginningDates[weekPosition]
-          Logger.debug(`[getLastLessonFromPlan] Found last lesson date: ${lastLessonDate} in period ${period.nameEt}`)
-          return lastLessonDate
-        }
-      }
-
-      Logger.debug(`[getLastLessonFromPlan] Week ${weekNr} not found in any study period`)
-      return null
+      return await resolveLessonPlanDate(this.api, journalId, teacherId, 'last')
     } catch (error) {
       Logger.debug(`Could not get last lesson from plan for journal ${journalId}:`, error.message)
       return null

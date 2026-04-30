@@ -1,6 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test'
 import {
   getCurrentStudyYearText,
+  resolveLessonPlanDate,
   resolveCurrentStudyYearId,
   resolveStudyYearIdFromText
 } from '../../src/lib/studyYear.js'
@@ -51,6 +52,34 @@ describe('studyYear helpers', () => {
       }
 
       await expect(resolveCurrentStudyYearId(api, new Date('2026-04-30T12:00:00Z'))).resolves.toBe(727)
+    })
+  })
+
+  describe('resolveLessonPlanDate', () => {
+    it('returns first and last lesson dates from MAHT_a weeks', async () => {
+      const api = {
+        tahvel: {
+          get: mock(async url => {
+            if (url.includes('autocomplete/studyYears')) {
+              return [{ id: 727, nameEt: '2025/2026' }]
+            }
+
+            return {
+              journals: [{ id: 12345, hours: { MAHT_a: [null, 2, null, 4] } }],
+              weekNrs: [10, 11, 12, 13],
+              studyPeriods: [
+                {
+                  weekNrs: [10, 11, 12, 13],
+                  weekBeginningDates: ['2026-04-06', '2026-04-13', '2026-04-20', '2026-04-27']
+                }
+              ]
+            }
+          })
+        }
+      }
+
+      await expect(resolveLessonPlanDate(api, 12345, 4303, 'first')).resolves.toBe('2026-04-13')
+      await expect(resolveLessonPlanDate(api, 12345, 4303, 'last')).resolves.toBe('2026-04-27')
     })
   })
 })
