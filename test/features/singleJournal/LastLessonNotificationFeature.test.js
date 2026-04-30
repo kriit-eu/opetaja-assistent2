@@ -1,11 +1,18 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { JSDOM } from 'jsdom'
 import LastLessonNotificationFeature from '../../../src/features/singleJournal/lastLessonNotification/LastLessonNotificationFeature.js'
 
 describe('LastLessonNotificationFeature', () => {
   let feature
+  let originalSetTimeout
 
   beforeEach(() => {
+    originalSetTimeout = global.setTimeout
+    global.setTimeout = fn => {
+      fn()
+      return 0
+    }
+
     global.console = {
       debug: () => {},
       log: () => {},
@@ -20,6 +27,7 @@ describe('LastLessonNotificationFeature', () => {
     global.document = {
       getElementById: () => null,
       querySelector: () => null,
+      querySelectorAll: () => [],
       createElement: () => ({
         id: '',
         textContent: '',
@@ -35,6 +43,10 @@ describe('LastLessonNotificationFeature', () => {
       }
     }
     feature = new LastLessonNotificationFeature()
+  })
+
+  afterEach(() => {
+    global.setTimeout = originalSetTimeout
   })
 
   describe('constructor', () => {
