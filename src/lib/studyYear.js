@@ -1,20 +1,16 @@
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const STUDY_YEARS_ENDPOINT = '/autocomplete/studyYears'
 
 export function getCurrentStudyYearText(date = new Date()) {
   const studyYearStart = date.getMonth() < 8 ? date.getFullYear() - 1 : date.getFullYear()
   return `${studyYearStart}/${studyYearStart + 1}`
 }
 
-function getStudyYearsEndpoint(api) {
-  const base = api?.tahvel?.baseUrl ? String(api.tahvel.baseUrl) : ''
-  return base.endsWith('/hois_back') ? '/autocomplete/studyYears' : '/hois_back/autocomplete/studyYears'
-}
-
 export async function resolveStudyYearIdFromText(api, yearText) {
   if (!yearText) return null
 
   const studyYearsResponse = await api.tahvel.get(
-    getStudyYearsEndpoint(api),
+    STUDY_YEARS_ENDPOINT,
     {},
     {
       cache: true,
@@ -25,7 +21,7 @@ export async function resolveStudyYearIdFromText(api, yearText) {
   if (!Array.isArray(studyYearsResponse)) return null
 
   const matchingYear = studyYearsResponse.find(studyYear => studyYear.nameEt === yearText)
-  return matchingYear?.id || null
+  return matchingYear?.id ?? null
 }
 
 export async function resolveCurrentStudyYearId(api, date = new Date()) {
@@ -37,18 +33,21 @@ function getWeekIndex(mahtAWeeks, position) {
     return mahtAWeeks.findIndex(hours => hours !== null)
   }
 
-  for (let i = mahtAWeeks.length - 1; i >= 0; i--) {
-    if (mahtAWeeks[i] !== null) {
-      return i
+  if (position === 'last') {
+    for (let i = mahtAWeeks.length - 1; i >= 0; i--) {
+      if (mahtAWeeks[i] !== null) {
+        return i
+      }
     }
+    return -1
   }
 
-  return -1
+  throw new Error(`getWeekIndex: unknown position "${position}", expected 'first' or 'last'`)
 }
 
 export async function resolveLessonPlanDate(api, journalId, teacherId, position) {
   const studyYearId = await resolveCurrentStudyYearId(api)
-  if (!studyYearId) return null
+  if (studyYearId === null) return null
 
   const planData = await api.tahvel.get(
     `/lessonplans/byteacher/${teacherId}/${studyYearId}`,

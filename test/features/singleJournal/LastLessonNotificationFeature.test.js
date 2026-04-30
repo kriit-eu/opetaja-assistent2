@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { JSDOM } from 'jsdom'
 import LastLessonNotificationFeature from '../../../src/features/singleJournal/lastLessonNotification/LastLessonNotificationFeature.js'
+import { getCurrentStudyYearText } from '../../../src/lib/studyYear.js'
 
 describe('LastLessonNotificationFeature', () => {
   let feature
@@ -475,7 +476,7 @@ describe('LastLessonNotificationFeature', () => {
         tahvel: {
           get: mock(async (url) => {
             if (url.includes('/autocomplete/studyYears')) {
-              return [{ id: 727, nameEt: '2025/2026' }]
+              return [{ id: 727, nameEt: getCurrentStudyYearText() }]
             }
             if (url.includes('journalEntriesByDate')) {
               return [{ id: 1, entryDate: '2026-04-13', entryType: 'SISSEKANNE_T' }]

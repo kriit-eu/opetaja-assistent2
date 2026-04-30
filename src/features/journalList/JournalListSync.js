@@ -480,7 +480,7 @@ class JournalListSyncFeature extends BaseFeature {
 
     try {
       const yearId = await resolveStudyYearIdFromText(this.api, yearText)
-      if (yearId) {
+      if (yearId !== null) {
         Logger.debug(`Resolved study year "${yearText}" to ID: ${yearId}`)
         return yearId
       }

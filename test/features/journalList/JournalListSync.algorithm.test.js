@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { getTahvelSubjectsWithAssignmentsAndGrades, journalListSync } from '../../../src/features/journalList/JournalListSync'
 import { JSDOM } from 'jsdom'
 import { restoreChromeMock } from '../../setup.js'
+import { getCurrentStudyYearText } from '../../../src/lib/studyYear.js'
 
 describe('JournalListSync - Algorithm Tests', () => {
   let apiMock
@@ -2226,7 +2227,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       journalListSync.api = {
         tahvel: {
           get: mock(async (url) => {
-            if (url.includes('autocomplete/studyYears')) return [{ id: 727, nameEt: '2025/2026' }]
+            if (url.includes('autocomplete/studyYears')) return [{ id: 727, nameEt: getCurrentStudyYearText() }]
             return {
               journals: [{ id: 100, hours: { MAHT_a: [null, null, 2, 4, null] } }],
               weekNrs: [1, 2, 3, 4, 5],
@@ -2248,7 +2249,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       journalListSync.api = {
         tahvel: {
           get: mock(async (url) => url.includes('autocomplete/studyYears')
-            ? [{ id: 727, nameEt: '2025/2026' }]
+            ? [{ id: 727, nameEt: getCurrentStudyYearText() }]
             : { journals: [{ id: 999 }], weekNrs: [], studyPeriods: [] })
         }
       }
@@ -2259,7 +2260,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       journalListSync.api = {
         tahvel: {
           get: mock(async (url) => url.includes('autocomplete/studyYears')
-            ? [{ id: 727, nameEt: '2025/2026' }]
+            ? [{ id: 727, nameEt: getCurrentStudyYearText() }]
             : { journals: [{ id: 100, hours: {} }], weekNrs: [], studyPeriods: [] })
         }
       }
@@ -2270,7 +2271,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       journalListSync.api = {
         tahvel: {
           get: mock(async (url) => {
-            if (url.includes('autocomplete/studyYears')) return [{ id: 727, nameEt: '2025/2026' }]
+            if (url.includes('autocomplete/studyYears')) return [{ id: 727, nameEt: getCurrentStudyYearText() }]
             return {
               journals: [{ id: 100, hours: { MAHT_a: [null, null, null] } }],
               weekNrs: [1, 2, 3],
@@ -2295,7 +2296,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       journalListSync.api = {
         tahvel: {
           get: mock(async (url) => {
-            if (url.includes('autocomplete/studyYears')) return [{ id: 727, nameEt: '2025/2026' }]
+            if (url.includes('autocomplete/studyYears')) return [{ id: 727, nameEt: getCurrentStudyYearText() }]
             return {
               journals: [{ id: 100, hours: { MAHT_a: [2, 4, null, 4, null] } }],
               weekNrs: [1, 2, 3, 4, 5],
@@ -2317,7 +2318,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       journalListSync.api = {
         tahvel: {
           get: mock(async (url) => url.includes('autocomplete/studyYears')
-            ? [{ id: 727, nameEt: '2025/2026' }]
+            ? [{ id: 727, nameEt: getCurrentStudyYearText() }]
             : { journals: [{ id: 999 }], weekNrs: [], studyPeriods: [] })
         }
       }

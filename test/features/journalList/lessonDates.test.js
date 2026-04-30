@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { restoreChromeMock, restoreGlobalDOM } from '../../setup.js'
+import { getCurrentStudyYearText } from '../../../src/lib/studyYear.js'
 
 function makeMockApi({ timetableEvents = [], planData = null } = {}) {
   return {
     tahvel: {
       get: async endpoint => {
         if (endpoint.includes('autocomplete/studyYears')) {
-          return [{ id: 727, nameEt: '2025/2026' }]
+          return [{ id: 727, nameEt: getCurrentStudyYearText() }]
         }
         if (endpoint.includes('timetableByTeacher')) {
           return { timetableEvents }

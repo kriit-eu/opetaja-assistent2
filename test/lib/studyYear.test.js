@@ -18,20 +18,12 @@ describe('studyYear helpers', () => {
   })
 
   describe('resolveStudyYearIdFromText', () => {
-    it('resolves study year id using hois_back base url', async () => {
+    it('resolves study year id and calls the studyYears endpoint with cache', async () => {
       const get = mock(async () => [{ id: 727, nameEt: '2025/2026' }])
-      const api = { tahvel: { baseUrl: 'https://tahvel.edu.ee/hois_back', get } }
+      const api = { tahvel: { get } }
 
       await expect(resolveStudyYearIdFromText(api, '2025/2026')).resolves.toBe(727)
       expect(get).toHaveBeenCalledWith('/autocomplete/studyYears', {}, expect.objectContaining({ cache: true }))
-    })
-
-    it('resolves study year id using full hois_back path when base url has no suffix', async () => {
-      const get = mock(async () => [{ id: 727, nameEt: '2025/2026' }])
-      const api = { tahvel: { baseUrl: 'https://tahvel.edu.ee', get } }
-
-      await expect(resolveStudyYearIdFromText(api, '2025/2026')).resolves.toBe(727)
-      expect(get).toHaveBeenCalledWith('/hois_back/autocomplete/studyYears', {}, expect.objectContaining({ cache: true }))
     })
 
     it('returns null when year is not found', async () => {
@@ -61,7 +53,7 @@ describe('studyYear helpers', () => {
         tahvel: {
           get: mock(async url => {
             if (url.includes('autocomplete/studyYears')) {
-              return [{ id: 727, nameEt: '2025/2026' }]
+              return [{ id: 727, nameEt: getCurrentStudyYearText() }]
             }
 
             return {
@@ -80,6 +72,35 @@ describe('studyYear helpers', () => {
 
       await expect(resolveLessonPlanDate(api, 12345, 4303, 'first')).resolves.toBe('2026-04-13')
       await expect(resolveLessonPlanDate(api, 12345, 4303, 'last')).resolves.toBe('2026-04-27')
+    })
+
+    it('returns null without fetching the plan when current study year cannot be resolved', async () => {
+      const get = mock(async () => [{ id: 667, nameEt: '1900/1901' }])
+      const api = { tahvel: { get } }
+
+      await expect(resolveLessonPlanDate(api, 12345, 4303, 'first')).resolves.toBeNull()
+      expect(get).toHaveBeenCalledTimes(1)
+    })
+
+    it('throws when position is not first or last', async () => {
+      const api = {
+        tahvel: {
+          get: mock(async url => {
+            if (url.includes('autocomplete/studyYears')) {
+              return [{ id: 727, nameEt: getCurrentStudyYearText() }]
+            }
+            return {
+              journals: [{ id: 12345, hours: { MAHT_a: [1] } }],
+              weekNrs: [10],
+              studyPeriods: [{ weekNrs: [10], weekBeginningDates: ['2026-04-13'] }]
+            }
+          })
+        }
+      }
+
+      await expect(resolveLessonPlanDate(api, 12345, 4303, 'middle')).rejects.toThrow(
+        'getWeekIndex: unknown position "middle"'
+      )
     })
   })
 })
