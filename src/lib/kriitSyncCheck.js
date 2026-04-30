@@ -2,6 +2,7 @@ import Logger from '../services/Logger.js'
 import { cacheService } from '../services/CacheService.js'
 import { fetchTeacherJournals } from './fetchTeacherJournals.js'
 import { getSchoolId } from './schoolId.js'
+import { resolveCurrentStudyYearId } from './studyYear.js'
 
 // Cache expiration constants
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -755,9 +756,8 @@ async function getLessonDates(api, journalId, journalInfo) {
  */
 async function getLessonFromPlan(api, journalId, teacherId, { position }) {
   try {
-    const now = new Date()
-    const studyYearStart = now.getMonth() < 8 ? now.getFullYear() - 1 : now.getFullYear()
-    const studyYearId = studyYearStart - 1299
+    const studyYearId = await resolveCurrentStudyYearId(api)
+    if (!studyYearId) return null
 
     const planData = await api.tahvel.get(
       `/lessonplans/byteacher/${teacherId}/${studyYearId}`,

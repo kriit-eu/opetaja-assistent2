@@ -5,6 +5,7 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { getSchoolId } from '../../../lib/schoolId.js'
+import { resolveCurrentStudyYearId } from '../../../lib/studyYear.js'
 
 function getApiErrorStatus(error) {
   return error?.status || Number(error?.message?.match(/API Error:\s*(\d+)/)?.[1])
@@ -381,17 +382,8 @@ export default class LastLessonNotificationFeature extends BaseFeature {
    */
   async #getLastLessonFromPlan(journalId, teacherId) {
     try {
-      // Get study year ID
-      const now = new Date()
-      const currentYear = now.getFullYear()
-      const currentMonth = now.getMonth()
-
-      // Determine study year (starts in September)
-      const studyYearStart = currentMonth < 8 ? currentYear - 1 : currentYear
-
-      // Study year ID appears to be based on pattern from the data: 726 for 2025-26
-      // The pattern seems to be: year - 1299 (e.g., 2025 - 1299 = 726)
-      const studyYearId = studyYearStart - 1299
+      const studyYearId = await resolveCurrentStudyYearId(this.api)
+      if (!studyYearId) return null
 
       const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
 

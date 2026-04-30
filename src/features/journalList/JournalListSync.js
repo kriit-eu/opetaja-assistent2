@@ -23,6 +23,7 @@ import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanne
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 import { notifyKriitGradesSynced, buildGradesForNotification } from './KriitSyncNotifier.js'
 import { getSchoolId } from '../../lib/schoolId.js'
+import { resolveCurrentStudyYearId, resolveStudyYearIdFromText } from '../../lib/studyYear.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -478,25 +479,10 @@ class JournalListSyncFeature extends BaseFeature {
     if (!yearText) return null
 
     try {
-      const base = this.api && this.api.tahvel && this.api.tahvel.baseUrl ? String(this.api.tahvel.baseUrl) : ''
-      let studyYearsEndpoint = '/hois_back/autocomplete/studyYears'
-      if (base.endsWith('/hois_back')) studyYearsEndpoint = '/autocomplete/studyYears'
-
-      const studyYearsResponse = await this.api.tahvel.get(
-        studyYearsEndpoint,
-        {},
-        {
-          cache: true,
-          cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
-        }
-      )
-
-      if (Array.isArray(studyYearsResponse)) {
-        const matchingYear = studyYearsResponse.find(sy => sy.nameEt === yearText)
-        if (matchingYear && matchingYear.id) {
-          Logger.debug(`Resolved study year "${yearText}" to ID: ${matchingYear.id}`)
-          return matchingYear.id
-        }
+      const yearId = await resolveStudyYearIdFromText(this.api, yearText)
+      if (yearId) {
+        Logger.debug(`Resolved study year "${yearText}" to ID: ${yearId}`)
+        return yearId
       }
     } catch (err) {
       Logger.warning('Failed to resolve study year ID from text:', err.message)
@@ -2148,17 +2134,8 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getFirstLessonFromPlan(journalId, teacherId) {
     try {
-      // Get study year ID
-      const now = new Date()
-      const currentYear = now.getFullYear()
-      const currentMonth = now.getMonth()
-
-      // Determine study year (starts in September)
-      const studyYearStart = currentMonth < 8 ? currentYear - 1 : currentYear
-
-      // Study year ID appears to be based on pattern from the data: 726 for 2025-26
-      // The pattern seems to be: year - 1299 (e.g., 2025 - 1299 = 726)
-      const studyYearId = studyYearStart - 1299
+      const studyYearId = await resolveCurrentStudyYearId(this.api)
+      if (!studyYearId) return null
 
       const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
 
@@ -2220,17 +2197,8 @@ class JournalListSyncFeature extends BaseFeature {
    */
   async getLastLessonFromPlan(journalId, teacherId) {
     try {
-      // Get study year ID
-      const now = new Date()
-      const currentYear = now.getFullYear()
-      const currentMonth = now.getMonth()
-
-      // Determine study year (starts in September)
-      const studyYearStart = currentMonth < 8 ? currentYear - 1 : currentYear
-
-      // Study year ID appears to be based on pattern from the data: 726 for 2025-26
-      // The pattern seems to be: year - 1299 (e.g., 2025 - 1299 = 726)
-      const studyYearId = studyYearStart - 1299
+      const studyYearId = await resolveCurrentStudyYearId(this.api)
+      if (!studyYearId) return null
 
       const endpoint = `/lessonplans/byteacher/${teacherId}/${studyYearId}`
 
