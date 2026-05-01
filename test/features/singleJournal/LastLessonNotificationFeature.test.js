@@ -220,6 +220,272 @@ describe('LastLessonNotificationFeature', () => {
       expect(feature.api.tahvel.get).toHaveBeenCalled()
     })
 
+    test('should use current teacher timetable when journal has multiple teachers', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      let timetableEndpoint = ''
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url === '/user') {
+              return { teacher: 4303 }
+            }
+            if (url.includes('journalEntriesByDate')) {
+              return [{ id: 1, entryDate: '2026-04-23', entryType: 'SISSEKANNE_T' }]
+            }
+            if (url.includes('timetableevents')) {
+              timetableEndpoint = url
+              return {
+                timetableEvents: [
+                  { date: '2026-04-13T00:00:00Z', nameEt: 'Other Teacher Lesson', journalId: 12345 },
+                  { date: '2026-04-23T00:00:00Z', nameEt: 'Current Teacher Lesson', journalId: 12345 }
+                ]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                studyYearStartDate: '2025-09-01T00:00:00Z',
+                studyYearEndDate: '2026-08-30T00:00:00Z',
+                journalTeachers: [
+                  { id: 4176, nameEt: 'First Teacher' },
+                  { id: 4303, nameEt: 'Current Teacher' }
+                ]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      expect(timetableEndpoint).toContain('teachers=4303')
+      expect(document.getElementById('last-lesson-inline-notification').textContent).toContain('23.04.2026')
+    })
+
+    test('should ignore malformed current teacher ID and fall back to first journal teacher', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      let timetableEndpoint = ''
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url === '/user') {
+              return { teacher: '4303&thru=2020-01-01' }
+            }
+            if (url.includes('journalEntriesByDate')) {
+              return [{ id: 1, entryDate: '2026-04-13', entryType: 'SISSEKANNE_T' }]
+            }
+            if (url.includes('timetableevents')) {
+              timetableEndpoint = url
+              return {
+                timetableEvents: [{ date: '2026-04-13T00:00:00Z', nameEt: 'Fallback Teacher Lesson', journalId: 12345 }]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: 4176, nameEt: 'First Teacher' }]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      expect(timetableEndpoint).toContain('teachers=4176')
+      expect(timetableEndpoint).not.toContain('4303&thru=2020-01-01')
+    })
+
+    test('should ignore malformed first journal teacher ID when falling back', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      let timetableEndpoint = ''
+      feature.api = {
+        tahvel: {
+          get: mock(async url => {
+            if (url === '/user') {
+              return { teacher: 'not-a-teacher-id' }
+            }
+            if (url.includes('journalEntriesByDate')) {
+              return [{ id: 1, entryDate: '2026-04-13', entryType: 'SISSEKANNE_T' }]
+            }
+            if (url.includes('timetableevents')) {
+              timetableEndpoint = url
+              return {
+                timetableEvents: [{ date: '2026-04-13T00:00:00Z', nameEt: 'Fallback Teacher Lesson', journalId: 12345 }]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [{ id: '4176&thru=2020-01-01', nameEt: 'Malformed Teacher' }]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      expect(timetableEndpoint).toBe('')
+    })
+
+    test('should not fall back to first teacher in multi-teacher journal when current teacher cannot be resolved', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      let timetableEndpoint = ''
+      feature.api = {
+        tahvel: {
+          get: mock(async url => {
+            if (url === '/user') {
+              throw new Error('User lookup failed')
+            }
+            if (url.includes('journalEntriesByDate')) {
+              return [{ id: 1, entryDate: '2026-04-13', entryType: 'SISSEKANNE_T' }]
+            }
+            if (url.includes('timetableevents')) {
+              timetableEndpoint = url
+              return {
+                timetableEvents: [{ date: '2026-04-13T00:00:00Z', nameEt: 'First Teacher Lesson', journalId: 12345 }]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [
+                  { id: 4176, nameEt: 'First Teacher' },
+                  { id: 4303, nameEt: 'Current Teacher' }
+                ]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      expect(timetableEndpoint).toBe('')
+    })
+
+    test('should use current teacher lesson plan when timetable is incomplete', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      let lessonPlanEndpoint = ''
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url === '/user') {
+              return { teacher: 4303 }
+            }
+            if (url.includes('studyYears')) {
+              return [{ id: 2025, nameEt: '2025/2026' }]
+            }
+            if (url.includes('journalEntriesByDate')) {
+              return [{ id: 1, entryDate: '2026-04-13', entryType: 'SISSEKANNE_T' }]
+            }
+            if (url.includes('timetableevents')) {
+              return {
+                timetableEvents: [{ date: '2026-04-13T00:00:00Z', nameEt: 'Current Teacher Lesson', journalId: 12345 }]
+              }
+            }
+            if (url.includes('/lessonplans/byteacher/')) {
+              lessonPlanEndpoint = url
+              return {
+                journals: [{ id: 12345, hours: { MAHT_a: [null, 1] } }],
+                weekNrs: [10, 11],
+                studyPeriods: [{ nameEt: 'Spring', weekNrs: [10, 11], weekBeginningDates: ['2026-04-13', '2026-04-20'] }]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                lessonHours: { capacityHours: [{ capacity: 'MAHT_a', plannedHours: 3 }] },
+                journalTeachers: [
+                  { id: 4176, nameEt: 'First Teacher' },
+                  { id: 4303, nameEt: 'Current Teacher' }
+                ]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      expect(lessonPlanEndpoint).toContain('/lessonplans/byteacher/4303/')
+    })
+
+    test('should use current teacher lesson plan when timetable is empty', async () => {
+      const dom = new JSDOM('<!DOCTYPE html><html><body><div class="hois-collapse-header"><div class="flex-gt-md-50"><span>Math</span></div></div></body></html>')
+      global.document = dom.window.document
+      global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/12345/edit' } }
+
+      let lessonPlanEndpoint = ''
+      feature.api = {
+        tahvel: {
+          get: mock(async (url) => {
+            if (url === '/user') {
+              return { teacher: 4303 }
+            }
+            if (url.includes('studyYears')) {
+              return [{ id: 2025, nameEt: '2025/2026' }]
+            }
+            if (url.includes('journalEntriesByDate')) {
+              return [{ id: 1, entryDate: '2026-04-13', entryType: 'SISSEKANNE_T' }]
+            }
+            if (url.includes('timetableevents')) {
+              return { timetableEvents: [] }
+            }
+            if (url.includes('/lessonplans/byteacher/')) {
+              lessonPlanEndpoint = url
+              return {
+                journals: [{ id: 12345, hours: { MAHT_a: [1] } }],
+                weekNrs: [10],
+                studyPeriods: [{ nameEt: 'Spring', weekNrs: [10], weekBeginningDates: ['2026-04-13'] }]
+              }
+            }
+            if (url.includes('journals/12345')) {
+              return {
+                id: 12345,
+                school: { id: 9 },
+                journalTeachers: [
+                  { id: 4176, nameEt: 'First Teacher' },
+                  { id: 4303, nameEt: 'Current Teacher' }
+                ]
+              }
+            }
+            return {}
+          })
+        }
+      }
+
+      await feature.activate()
+
+      expect(lessonPlanEndpoint).toContain('/lessonplans/byteacher/4303/')
+    })
+
     test('should handle timetable with multiple lessons', async () => {
       const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>')
       global.document = dom.window.document
