@@ -3711,7 +3711,7 @@ class JournalListSyncFeature extends BaseFeature {
               let finalStudentEntry = null
               if (studentEntry) {
                 // Update existing student's grade
-                finalStudentEntry = { ...studentEntry }
+                finalStudentEntry = { ...studentEntry, isMicro: studentEntry.isMicro ?? false }
                 if (targetGrade === null) {
                   // Clearing the grade in Tahvel: set grade to null
                   finalStudentEntry.grade = null
@@ -3739,6 +3739,7 @@ class JournalListSyncFeature extends BaseFeature {
                 finalStudentEntry = {
                   id: null,
                   journalStudent: Number(info.journalStudentId),
+                  isMicro: false,
                   absence: null,
                   // If targetGrade is null, request an empty grade (null) so Tahvel clears it.
                   grade:
@@ -4635,6 +4636,7 @@ class JournalListSyncFeature extends BaseFeature {
       const updatedStudentEntry = {
         id: studentEntry.id, // This might be null for new students
         journalStudent: Number(studentEntry.journalStudent), // Convert to number to match Angular's format
+        isMicro: studentEntry.isMicro ?? false,
         absence: null,
         grade: {
           code: `KUTSEHINDAMINE_${grade}`,
@@ -4695,7 +4697,8 @@ class JournalListSyncFeature extends BaseFeature {
           // Make sure to keep the original ID
           id: originalStudentEntry.id,
           // Don't remove student history when updating existing student
-          removeStudentHistory: true
+          removeStudentHistory: true,
+          isMicro: originalStudentEntry.isMicro ?? false
         }
       } else {
         // If the student is not in the entry, use the new entry
