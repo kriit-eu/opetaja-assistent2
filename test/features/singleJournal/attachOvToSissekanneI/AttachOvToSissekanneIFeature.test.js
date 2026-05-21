@@ -102,6 +102,66 @@ describe('AttachOvToSissekanneIFeature', () => {
     test('preserves non-ÕV trailing parens while appending ÕV suffix', () => {
       expect(feature.buildNewNameEt('Praktiline töö (vabatahtlik)', ['2'])).toBe('Praktiline töö (vabatahtlik) (ÕV2)')
     })
+
+    test('moves a mid-string ÕV suffix back to the end when typing extra text', () => {
+      expect(feature.buildNewNameEt('abc (ÕV3) more text', ['3'])).toBe('abc more text (ÕV3)')
+    })
+  })
+
+  describe('normalizeOvsToEnd', () => {
+    test('returns the value untouched when no ÕV groups are present', () => {
+      expect(feature.normalizeOvsToEnd('hello world')).toEqual({
+        baseText: 'hello world', ovNums: [], newValue: 'hello world'
+      })
+    })
+
+    test('leaves a trailing ÕV group in place (idempotent)', () => {
+      const result = feature.normalizeOvsToEnd('abc (ÕV3)')
+      expect(result.newValue).toBe('abc (ÕV3)')
+      expect(result.ovNums).toEqual(['3'])
+    })
+
+    test('moves a mid-string ÕV group to the end', () => {
+      const result = feature.normalizeOvsToEnd('abc (ÕV3) def')
+      expect(result.newValue).toBe('abc def (ÕV3)')
+      expect(result.ovNums).toEqual(['3'])
+    })
+
+    test('merges multiple ÕV groups into one sorted suffix', () => {
+      const result = feature.normalizeOvsToEnd('(ÕV3) middle (ÕV1, ÕV5) end')
+      expect(result.newValue).toBe('middle end (ÕV1, ÕV3, ÕV5)')
+      expect(result.ovNums).toEqual(['1', '3', '5'])
+    })
+
+    test('treats a non-ÕV trailing parenthesis as plain text', () => {
+      const result = feature.normalizeOvsToEnd('Praktiline (vabatahtlik)')
+      expect(result.newValue).toBe('Praktiline (vabatahtlik)')
+      expect(result.ovNums).toEqual([])
+    })
+
+    test('handles glued ÕV group with surrounding text', () => {
+      // No replacement character is injected, so user-typed glued text stays glued.
+      const result = feature.normalizeOvsToEnd('abc(ÕV3)def')
+      expect(result.newValue).toBe('abcdef (ÕV3)')
+      expect(result.ovNums).toEqual(['3'])
+    })
+
+    test('does not accumulate phantom spaces when normalising repeatedly', () => {
+      // Reproduces the bug where each keystroke after the suffix produced an
+      // extra space between user characters ("y i k j ..." instead of "yikj...").
+      const step1 = feature.normalizeOvsToEnd('Iseseisev töö (ÕV1)y').newValue
+      expect(step1).toBe('Iseseisev tööy (ÕV1)')
+      const step2 = feature.normalizeOvsToEnd(step1 + 'i').newValue
+      expect(step2).toBe('Iseseisev tööyi (ÕV1)')
+      const step3 = feature.normalizeOvsToEnd(step2 + 'k').newValue
+      expect(step3).toBe('Iseseisev tööyik (ÕV1)')
+    })
+
+    test('preserves a single user-typed space between words around a mid-string ÕV group', () => {
+      const result = feature.normalizeOvsToEnd('abc (ÕV3) def')
+      expect(result.newValue).toBe('abc def (ÕV3)')
+      expect(result.ovNums).toEqual(['3'])
+    })
   })
 
   describe('loadAvailableOvs', () => {
@@ -232,6 +292,80 @@ describe('AttachOvToSissekanneIFeature', () => {
       expect(document.querySelectorAll('.oa2-attach-ov-section').length).toBe(1)
     })
 
+    test('restores the ÕV suffix when Tahvel overwrites the name (e.g. picking Sissekande liik)', async () => {
+      // Repro: teacher ticks ÕV1 → name becomes "(ÕV1)". Then they pick the
+      // entry-type dropdown ("Iseseisev töö"), which Tahvel uses to overwrite
+      // the name input — wiping the suffix. With the checkbox still ticked,
+      // the picker must put the suffix back instead of letting it disappear.
+      const nameInput = mountModal({ entryName: '' })
+      feature.api = {
+        tahvel: {
+          get: mock(async () => [
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '1) eelis', outcomeOrderNr: 0 }
+          ])
+        }
+      }
+      await feature._checkAndInject()
+
+      const cb = document.querySelector('.oa2-attach-ov-section input[type="checkbox"]')
+      cb.checked = true
+      cb.dispatchEvent(new window.Event('change', { bubbles: true }))
+      expect(nameInput.value).toBe('(ÕV1)')
+
+      // Simulate Tahvel programmatically overwriting the name on dropdown pick.
+      nameInput.value = 'Iseseisev töö'
+      nameInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+      expect(nameInput.value).toBe('Iseseisev töö (ÕV1)')
+      expect(cb.checked).toBe(true)
+    })
+
+    test('does not auto-restore when no ÕVs are ticked (no false positives on plain edits)', async () => {
+      const nameInput = mountModal({ entryName: 'old text' })
+      feature.api = {
+        tahvel: {
+          get: mock(async () => [
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '1) x', outcomeOrderNr: 0 }
+          ])
+        }
+      }
+      await feature._checkAndInject()
+
+      nameInput.value = 'Iseseisev töö'
+      nameInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+      expect(nameInput.value).toBe('Iseseisev töö')
+      const cb = document.querySelector('.oa2-attach-ov-section input[type="checkbox"]')
+      expect(cb.checked).toBe(false)
+    })
+
+    test('pre-ticks checkboxes once the name is populated asynchronously by Tahvel', async () => {
+      // When the teacher opens an existing entry for editing, Tahvel mounts the
+      // modal first with an empty input and then hydrates the name value via
+      // Angular. Our injection ran against the empty value, so the second call
+      // (driven by a subsequent body mutation) must re-sync the checkboxes.
+      const nameInput = mountModal({ entryName: '' })
+      feature.api = {
+        tahvel: {
+          get: mock(async () => [
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '1) eelis', outcomeOrderNr: 0 }
+          ])
+        }
+      }
+      await feature._checkAndInject()
+      const cb = document.querySelector('.oa2-attach-ov-section input[type="checkbox"]')
+      expect(cb.checked).toBe(false)
+
+      // Simulate Tahvel populating the value asynchronously.
+      nameInput.value = 'Iseseisev töö (ÕV1)'
+
+      // Body MutationObserver fires next → _checkAndInject re-syncs from the
+      // current input value because the section is already present.
+      await feature._checkAndInject()
+
+      expect(cb.checked).toBe(true)
+    })
+
     test('shows empty-state when journal has no SISSEKANNE_O', async () => {
       mountModal({ entryName: 'Iseseisev töö' })
       feature.api = {
@@ -246,6 +380,86 @@ describe('AttachOvToSissekanneIFeature', () => {
       expect(section).not.toBeNull()
       expect(section.textContent).toContain('Selles päevikus pole ühtegi õpiväljundit')
       expect(section.querySelector('input[type="checkbox"]')).toBeNull()
+    })
+
+    test('auto-moves a mid-string ÕV suffix to the end when the user types after it', async () => {
+      const nameInput = mountModal({ entryName: 'abc' })
+      feature.api = {
+        tahvel: {
+          get: mock(async () => [
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '3) loob andmebaasi', outcomeOrderNr: 2 }
+          ])
+        }
+      }
+      await feature._checkAndInject()
+      // Tick the checkbox to attach ÕV3
+      const cb = document.querySelector('.oa2-attach-ov-section input[type="checkbox"]')
+      cb.checked = true
+      cb.dispatchEvent(new window.Event('change', { bubbles: true }))
+      expect(nameInput.value).toBe('abc (ÕV3)')
+      // Simulate the user typing extra text after the suffix (no space typed).
+      // The suffix moves back to the end and the new text glues to the existing
+      // text — no phantom space injected, no per-keystroke space accumulation.
+      nameInput.value = 'abc (ÕV3)def'
+      nameInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+      expect(nameInput.value).toBe('abcdef (ÕV3)')
+      // Checkbox remains ticked
+      expect(cb.checked).toBe(true)
+    })
+
+    test('blocks ticking another ÕV when the resulting name would exceed 100 chars', async () => {
+      // 95 chars + " (ÕV2)" = 102 chars when ÕV2 is also added → exceeds limit.
+      const longBase = 'a'.repeat(95)
+      const nameInput = mountModal({ entryName: `${longBase} (ÕV1)` })
+      feature.api = {
+        tahvel: {
+          get: mock(async () => [
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '1) eelis', outcomeOrderNr: 0 },
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '2) teine', outcomeOrderNr: 1 }
+          ])
+        }
+      }
+      await feature._checkAndInject()
+      const section = document.querySelector('.oa2-attach-ov-section')
+      const cbForOv2 = section.querySelector('input[data-ov-num="2"]')
+      cbForOv2.checked = true
+      cbForOv2.dispatchEvent(new window.Event('change', { bubbles: true }))
+
+      // The checkbox should be reverted, the name unchanged, and an error visible.
+      expect(cbForOv2.checked).toBe(false)
+      expect(nameInput.value).toBe(`${longBase} (ÕV1)`)
+      const err = section.querySelector('.oa2-attach-ov-error')
+      expect(err).not.toBeNull()
+      expect(err.classList.contains('visible')).toBe(true)
+      expect(err.textContent).toContain('100 märki')
+    })
+
+    test('clears the error once a different change fits within the limit', async () => {
+      // Set up an over-limit attempt first, then untick to bring it back.
+      const longBase = 'a'.repeat(95)
+      const nameInput = mountModal({ entryName: `${longBase} (ÕV1)` })
+      feature.api = {
+        tahvel: {
+          get: mock(async () => [
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '1) eelis', outcomeOrderNr: 0 },
+            { id: null, entryType: 'SISSEKANNE_O', nameEt: '2) teine', outcomeOrderNr: 1 }
+          ])
+        }
+      }
+      await feature._checkAndInject()
+      const section = document.querySelector('.oa2-attach-ov-section')
+
+      const cbForOv2 = section.querySelector('input[data-ov-num="2"]')
+      cbForOv2.checked = true
+      cbForOv2.dispatchEvent(new window.Event('change', { bubbles: true }))
+      expect(section.querySelector('.oa2-attach-ov-error').classList.contains('visible')).toBe(true)
+
+      // Untick ÕV1 — name shrinks, so any subsequent attempt to add ÕV2 fits.
+      const cbForOv1 = section.querySelector('input[data-ov-num="1"]')
+      cbForOv1.checked = false
+      cbForOv1.dispatchEvent(new window.Event('change', { bubbles: true }))
+      expect(section.querySelector('.oa2-attach-ov-error').classList.contains('visible')).toBe(false)
+      expect(nameInput.value).toBe(longBase)
     })
   })
 
