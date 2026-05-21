@@ -214,10 +214,11 @@ describe('AttachOvToSissekanneIFeature', () => {
 
       const section = document.querySelector('.oa2-attach-ov-section')
       expect(section).not.toBeNull()
-      const nameTahvel = nameInput.closest('tahvel-input')
-      expect(nameTahvel.nextElementSibling).toBe(section)
-      expect(section.textContent).toContain('Õpiväljundid')
-      expect(section.textContent).toContain('Õpiväljund')
+      const formFields = nameInput.closest('.form-flexible-fields')
+      // Placed at the end so the original 3-cell grid (select, name input,
+      // "Teavita õppijat" checkbox) keeps its top-right corner intact.
+      expect(formFields.lastElementChild).toBe(section)
+      expect(section.textContent).toContain('Seotud õpiväljundid')
       expect(section.textContent).toContain('3) loob andmebaasi')
       expect(section.textContent).toContain('ÕV3')
     })

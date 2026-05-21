@@ -40,6 +40,12 @@ const STYLES = `
     font-size: 14px;
     font-weight: 600;
   }
+  .${SECTION_CLASS} .oa2-attach-ov-hint {
+    color: #6c757d;
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 2px;
+  }
   .${SECTION_CLASS} .oa2-attach-ov-empty {
     color: #6c757d;
     font-style: italic;
@@ -262,8 +268,12 @@ export default class AttachOvToSissekanneIFeature extends BaseFeature {
     const title = document.createElement('div')
     title.className = 'oa2-attach-ov-title'
     const titleStrong = document.createElement('strong')
-    titleStrong.textContent = 'Õpiväljundid'
+    titleStrong.textContent = 'Seotud õpiväljundid'
     title.appendChild(titleStrong)
+    const hint = document.createElement('div')
+    hint.className = 'oa2-attach-ov-hint'
+    hint.textContent = 'Märgi õpiväljundid, mida see sissekanne hindab — assistent võimaldab hiljem panna õpiväljundite hinded automaatselt.'
+    title.appendChild(hint)
     section.appendChild(title)
 
     if (availableOvs.length === 0) {
@@ -297,12 +307,11 @@ export default class AttachOvToSissekanneIFeature extends BaseFeature {
       }
     }
 
-    const nameTahvelInput = nameInput.closest('tahvel-input') || nameInput.parentElement
-    if (nameTahvelInput && nameTahvelInput.parentElement === formFieldsRoot) {
-      nameTahvelInput.insertAdjacentElement('afterend', section)
-    } else {
-      formFieldsRoot.appendChild(section)
-    }
+    // Append at the end of form-flexible-fields so the original grid layout —
+    // entry-type select, name input, and the "Teavita õppijat" checkbox in the
+    // top-right corner — stays intact. Inserting between the name input and
+    // the checkbox would push the checkbox onto its own row.
+    formFieldsRoot.appendChild(section)
 
     this._activeNameInput = nameInput
     this._lastSyncedValue = nameInput.value || ''
