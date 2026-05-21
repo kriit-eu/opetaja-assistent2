@@ -27,10 +27,22 @@ function safeName(s) {
   return s.replace(/^\//, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200) || 'root'
 }
 
+// Strip the `_t` cache-buster query param the extension adds on
+// forceRefresh paths. It's purely a no-cache trick for production; in tests
+// it ruins URL→fixture matching because no fixture filename contains _t.
+// Fast path: most requests have no _t, so skip the URL clone in that case.
+function stripCacheBuster(url) {
+  if (!url.searchParams.has('_t')) return url
+  const u = new URL(url)
+  u.searchParams.delete('_t')
+  return u
+}
+
 function apiUrlToFixtureName(url) {
-  const endpoint = url.pathname + url.search // e.g. /hois_back/journals?...
-  const stripped = endpoint.replace(/^\/hois_back\//, '')
-  return `${safeName(stripped)}.json`
+  const stripped = stripCacheBuster(url)
+  const endpoint = stripped.pathname + stripped.search // e.g. /hois_back/journals?...
+  const path = endpoint.replace(/^\/hois_back\//, '')
+  return `${safeName(path)}.json`
 }
 
 // Try to find a fixture by:
@@ -39,7 +51,8 @@ function apiUrlToFixtureName(url) {
 //   3. fixture whose filename starts with the same path prefix and contains
 //      all the same query keys (order-independent)
 function findFixtureFlexibly(url) {
-  const stripped = (url.pathname + url.search).replace(/^\/hois_back\//, '')
+  const cleaned = stripCacheBuster(url)
+  const stripped = (cleaned.pathname + cleaned.search).replace(/^\/hois_back\//, '')
   const [pathPart, queryPart] = stripped.split('?')
   const pathSafe = safeName(pathPart)
 

@@ -4,6 +4,7 @@
 import { BaseFeature } from '../../../core/BaseFeature.js'
 import Logger from '../../../services/Logger.js'
 import { getNativeJournalHeaderCells } from '../../../lib/journalTableHeaders.js'
+import { onJournalCacheCleared } from '../../../lib/onJournalCacheCleared.js'
 
 class HighlightMissingGradesFeature extends BaseFeature {
   constructor() {
@@ -55,6 +56,14 @@ class HighlightMissingGradesFeature extends BaseFeature {
         return
       }
       this.#activateFeature()
+    })
+
+    // Re-run highlights when our journal's cache is cleared. run() toggles
+    // classes on existing cells, so the update is flicker-free.
+    this._unsubCacheCleared = onJournalCacheCleared(() => {
+      this.run().catch(error =>
+        Logger.error('[HighlightMissingGradesFeature] cache-cleared refresh failed', error)
+      )
     })
   }
 
@@ -176,6 +185,8 @@ class HighlightMissingGradesFeature extends BaseFeature {
       chrome.runtime.onMessage.removeListener(this._messageListener)
       this._messageListener = null
     }
+    this._unsubCacheCleared?.()
+    this._unsubCacheCleared = null
     this._isUpdating = false
   }
 

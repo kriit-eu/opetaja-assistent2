@@ -46,6 +46,10 @@ Laiendus kasutab Sentry teenust, et koguda anonümiseeritud veateateid (nt. nimi
 
 Kui kasutaja lülitab silumisrežiimi sisse (laienduse hüpikaken), salvestab laiendus mõneks ajaks võrgupäringute metaandmeid (URL, staatus). **Päringute sisus olevad õpilaste isikuandmed asendatakse silumisbufferis automaatselt tähistega `[REDACTED-PII]`** — silumisfailides ei saa olla õpilaste nimesid ega isikukoode.
 
+## Tahveli päringute jälgimine vahemälu värskendamiseks
+
+Laiendus kasutab Chrome'i `webRequest` õigust, et taustateenuses jälgida Tahveli päringuid (`tahvel.edu.ee` ja `test.tahvel.eenet.ee`). Jälgitakse **ainult päringu metaandmeid** — meetod (POST/PUT/PATCH/DELETE), URL ja vastuse staatuskood — et tuvastada, millal kasutaja on Tahvelis muudatuse salvestanud, ning siis selle päevikuvälja vahemälu kohe värskendada. **Päringute ega vastuste sisu (õpilaste andmed, hinded jms) ei loeta.** Andmeid ei saadeta laiendusest välja.
+
 ## Kasutaja õigused (GDPR)
 
 Vastavalt isikuandmete kaitse üldmäärusele on kasutajal õigus:

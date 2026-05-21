@@ -4,6 +4,7 @@ import { domService } from '../../../services/DomService.js'
 import { extractOutcomeNumbersFromEntryName } from '../../../lib/extractOutcomeNumbersFromEntryName.js'
 import { getNativeJournalHeaderRows } from '../../../lib/journalTableHeaders.js'
 import { injectFinalGradeCSS, markMismatch, clearMismatch } from './FinalGradeHighlighter.js'
+import { onJournalCacheCleared } from '../../../lib/onJournalCacheCleared.js'
 
 class FinalGradesByOvFeature extends BaseFeature {
   // Helper to fetch and transform detailed outcome data for SISSEKANNE_O
@@ -294,6 +295,21 @@ class FinalGradesByOvFeature extends BaseFeature {
   async onActivate() {
     Logger.debug('✨ FinalGradesByOvFeature: onActivate called')
     Logger.debug('✨ FinalGradesByOvFeature: Current URL:', window.location.href)
+
+    // Refresh the button state when our journal's cache is cleared by the
+    // background SW. The MutationObserver below would eventually catch the
+    // DOM update too, but it short-circuits on this._lastJournalId so we'd
+    // reuse the stale snapshot — refreshing here forces a fresh fetch.
+    this._unsubCacheCleared = onJournalCacheCleared(async journalId => {
+      const myId = this.extractJournalId()
+      if (journalId != null && myId != null && journalId !== myId) return
+      Logger.debug('✨ FinalGradesByOvFeature: cache-cleared — recalculating final grades')
+      try {
+        await this._recalculateOnCacheCleared(myId)
+      } catch (error) {
+        Logger.error('FinalGradesByOvFeature: cache-cleared recalc failed', error)
+      }
+    })
 
     // Mutation observer to re-attach the real async handler if button is replaced
     const attachAsyncHandler = () => {
@@ -805,7 +821,7 @@ class FinalGradesByOvFeature extends BaseFeature {
 
   extractJournalId() {
     const match = window.location.href.match(/\/journal\/(\d+)/)
-    return match ? match[1] : null
+    return match ? parseInt(match[1], 10) : null
   }
 
   async calculateFinalGrades(entries, students) {
@@ -2958,6 +2974,69 @@ class FinalGradesByOvFeature extends BaseFeature {
     if (Logger.isDebugMode()) Logger.debug('✨ FinalGradesByOvFeature: detected final grade columns:', finalGradeCols)
     if (Logger.isDebugMode()) Logger.debug('✨ FinalGradesByOvFeature: detected ÕV columns:', ovCols)
     return { finalGradeCols: Array.from(new Set(finalGradeCols)), ovCols: Array.from(new Set(ovCols)) }
+  }
+
+  // Refresh state after the background SW clears this journal's cache.
+  // showResults updates rendered grade cells but doesn't set the button
+  // label/disabled state — _updateButtonStateAfterShowResults handles that
+  // (same logic the MutationObserver path uses).
+  async _recalculateOnCacheCleared(journalId) {
+    if (!journalId) return
+    const [entries, students] = await Promise.all([
+      this.api.tahvel.get(`/journals/${journalId}/journalEntriesByDate`, { allStudents: true }, { cache: false }),
+      this.api.tahvel.get(`/journals/${journalId}/journalStudents`, { allStudents: true }, { cache: false })
+    ])
+    this._lastEntries = entries
+    this._lastStudents = students
+    this._lastJournalId = journalId
+    const hasL = this.detectLGrades(entries)
+    const results = hasL ? this.extractFinalGrades(entries, students) : await this.calculateFinalGrades(entries, students)
+    const button = document.querySelector('.oa-final-grades-btn')
+    if (!button) {
+      Logger.debug('✨ FinalGradesByOvFeature: cache-cleared recalc — button not in DOM, skipping showResults')
+      return
+    }
+    const filtered = await this.showResults(results, button, { autoSync: false })
+    this._updateButtonStateAfterShowResults(button, filtered, hasL, entries)
+  }
+
+  // Set button label/disabled/title/style from showResults output. Filtered
+  // non-empty → enable (label depends on L vs ÕV + existing ÕV grades);
+  // empty → disable with "all grades correct" message. Wrapped in try/catch
+  // because callers (cache-cleared, observer) don't await its repaint.
+  _updateButtonStateAfterShowResults(button, filtered, hasL, entries) {
+    if (!button) return
+    try {
+      if (Array.isArray(filtered) && filtered.length > 0) {
+        window._oaFinalGradesDisabled = false
+        button._oaFinalGradesDisabled = false
+        button.disabled = false
+        button.style.opacity = ''
+        button.title = ''
+        if (hasL) {
+          button.textContent = 'Lisa lõpptulemuse hinded'
+        } else {
+          const hasExistingOv = this.hasAnyOvGrades(entries)
+          button.textContent = hasExistingOv ? 'Uuenda õpiväljundite hinded' : 'Lisa õpiväljundite hinded'
+        }
+        button.style.background = 'rgb(21, 101, 192)'
+      } else {
+        window._oaFinalGradesDisabled = true
+        button._oaFinalGradesDisabled = true
+        button.disabled = true
+        button.style.opacity = '0.6'
+        button.title = 'Kõik õpiväljundite hinded on juba olemas — pole vaja saata'
+        button.textContent = 'Kõik hinded on õiged'
+      }
+    } catch (error) {
+      Logger.debug('FinalGradesByOvFeature: post-showResults button state update failed', error)
+    }
+  }
+
+  onDeactivate() {
+    this._unsubCacheCleared?.()
+    this._unsubCacheCleared = null
+    super.onDeactivate()
   }
 }
 export default FinalGradesByOvFeature

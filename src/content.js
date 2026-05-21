@@ -19,9 +19,28 @@ Logger.info(`Content script loaded - version ${VERSION}`)
 // Initialize immediately or when DOM is ready
 document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', TahvelExtension.init) : TahvelExtension.init()
 
-// Listen for messages from the popup
+// Listen for messages from the popup and from the background service worker
+// (which observes Tahvel network mutations via chrome.webRequest).
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'toggleDebugMode') {
+  // Issue #95: background SW detected a journal mutation. Clear that
+  // journal's cache and notify all active features so they re-fetch.
+  if (message.action === 'journalEdited') {
+    const journalId = Number(message.journalId)
+    if (!Number.isInteger(journalId) || journalId <= 0) {
+      sendResponse({ success: false, error: 'invalid journalId' })
+      return
+    }
+    if (Logger.isDebugMode()) Logger.debug(`[JournalEditMonitor] cache-clear requested for journal ${journalId}`)
+    cacheService.clearJournalCache(journalId).then(count => {
+      if (Logger.isDebugMode()) Logger.debug(`[JournalEditMonitor] cleared ${count} cache entries for journal ${journalId}; dispatching oa2-journal-cache-cleared`)
+      window.dispatchEvent(new CustomEvent('oa2-journal-cache-cleared', { detail: { journalId } }))
+      sendResponse({ success: true, count })
+    }).catch(error => {
+      Logger.warning(`[JournalEditMonitor] Cache clear failed for journal ${journalId}: ${error.message}`)
+      sendResponse({ success: false, error: error.message })
+    })
+    return true
+  } else if (message.action === 'toggleDebugMode') {
     if (message.enabled) {
       Logger.enableDebugMode()
       if (Logger.isDebugMode()) Logger.debug('Debug mode enabled from popup')

@@ -4,6 +4,7 @@ import { cacheService } from '../../../services/CacheService.js'
 import { styleService } from '../../../services/StyleService.js'
 import { DiscrepanciesTable } from './DiscrepanciesTable.js'
 import { getSchoolId } from '../../../lib/schoolId.js'
+import { onJournalCacheCleared } from '../../../lib/onJournalCacheCleared.js'
 
 // HEX constant and createButtonStyle function moved to DiscrepanciesTable class
 
@@ -79,10 +80,23 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
     await this.createLessonDiscrepanciesTable(false, 'activate')
     this.setupJournalSaveMonitoring()
     this.setupDialogObserver()
+
+    // Refresh in place when our journal's cache is cleared. The atomic
+    // remove+insert in DiscrepanciesTable.insertUnifiedTable makes the
+    // swap gapless, so we skip the 1s settle delay activate() uses.
+    this._unsubCacheCleared = onJournalCacheCleared(journalId => {
+      const myId = this.currentJournalId || this.extractJournalId()
+      if (journalId != null && myId != null && journalId !== myId) return
+      this.createLessonDiscrepanciesTable(true, 'cacheCleared').catch(error =>
+        Logger.error(`[${this.name}] cache-cleared refresh failed`, error)
+      )
+    })
   }
 
   onDeactivate() {
     this.isActive = false
+    this._unsubCacheCleared?.()
+    this._unsubCacheCleared = null
     this.cleanupMonitoring()
     this.reset()
     styleService.removeCSS('lesson-discrepancies-styles')

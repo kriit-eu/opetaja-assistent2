@@ -42,7 +42,12 @@ global.chrome = {
     onInstalled: { addListener: onInstalledAdd },
     onStartup: { addListener: onStartupAdd },
     getURL: path => `chrome-extension://test/${path}`,
-    getManifest: () => ({ version: '1.0.0' })
+    getManifest: () => ({
+      version: '1.0.0',
+      content_scripts: [
+        { matches: ['*://tahvel.edu.ee/*', '*://test.tahvel.eenet.ee/*'] }
+      ]
+    })
   },
   storage: {
     ...global.chrome?.storage,

@@ -11,6 +11,7 @@ global.HTMLElement = window.HTMLElement
 global.MutationObserver = window.MutationObserver
 global.Node = window.Node
 global.Event = window.Event
+global.CustomEvent = window.CustomEvent
 global.MouseEvent = window.MouseEvent
 global.getComputedStyle = window.getComputedStyle.bind(window)
 
@@ -153,7 +154,17 @@ function createChromeMock() {
     runtime: {
       onMessage: { addListener: mock() },
       sendMessage: mock(),
-      getManifest: mock(() => ({}))
+      getManifest: mock(() => ({
+        content_scripts: [
+          { matches: ['*://tahvel.edu.ee/*', '*://test.tahvel.eenet.ee/*'] }
+        ]
+      }))
+    },
+    webRequest: {
+      onCompleted: { addListener: mock(), removeListener: mock() }
+    },
+    tabs: {
+      sendMessage: mock(() => Promise.resolve())
     }
   }
 }
@@ -176,6 +187,7 @@ export function restoreGlobalDOM() {
   global.HTMLElement = window.HTMLElement
   global.MutationObserver = window.MutationObserver
   global.Node = window.Node
+  global.CustomEvent = window.CustomEvent
   global.getComputedStyle = window.getComputedStyle.bind(window)
 
   // Restore console mock

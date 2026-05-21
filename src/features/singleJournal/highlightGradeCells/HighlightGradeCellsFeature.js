@@ -3,6 +3,7 @@ import Logger from '../../../services/Logger.js'
 import { styleService } from '../../../services/StyleService.js'
 import { getNativeJournalHeaderCells } from '../../../lib/journalTableHeaders.js'
 import { findEntryIndexForHeader } from '../../../lib/journalEntryColumnMatcher.js'
+import { onJournalCacheCleared } from '../../../lib/onJournalCacheCleared.js'
 
 const POSITIVE_GRADES = new Set(['A', '3', '4', '5'])
 const NEGATIVE_GRADES = new Set(['MA', '1', '2', 'X'])
@@ -53,6 +54,18 @@ class HighlightGradeCellsFeature extends BaseFeature {
       this.run()
       this._setupObserver()
     }, 1000)
+
+    // Grade comments live in this feature's in-memory map, not the cache
+    // layer, so cacheService.clearJournalCache() doesn't touch them. Drop
+    // them ourselves (matching onDeactivate's reset, since _clearCommentCache
+    // alone leaves _commentJournalId/_commentPromise behind and an in-flight
+    // fetch could resolve with stale data after cache-clear).
+    this._unsubCacheCleared = onJournalCacheCleared(() => {
+      this._clearCommentCache()
+      this._commentJournalId = null
+      this._commentPromise = null
+      this.run()
+    })
   }
 
   onDeactivate() {
@@ -74,6 +87,8 @@ class HighlightGradeCellsFeature extends BaseFeature {
       document.removeEventListener('change', this._formChangeListener, true)
       this._formChangeListener = null
     }
+    this._unsubCacheCleared?.()
+    this._unsubCacheCleared = null
     this._removeTooltipListeners()
     this._clearCommentCache()
     this._commentJournalId = null

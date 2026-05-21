@@ -3,6 +3,7 @@
  */
 import Logger from './services/Logger.js'
 import { sentryService } from './services/SentryService.js'
+import { isJournalMutation, extractJournalIdFromUrl } from './lib/journalEditDetector.js'
 
 // Initialize Sentry for background context (no window event listeners)
 sentryService.initBackground()
@@ -10,6 +11,56 @@ sentryService.initBackground()
 // Use both the Logger and regular console.log for extra visibility
 Logger.info('Background script loaded')
 console.log('📔 Background script loaded - ' + new Date().toISOString())
+
+// Single source of truth for the Tahvel hosts: derived from manifest.json's
+// content_scripts matches so adding a host (e.g. a future staging server)
+// only requires updating the manifest, not this file.
+//   TAHVEL_TAB_URLS — match patterns for chrome.tabs.query / webRequest tabs
+//   TAHVEL_HOIS_URLS — same patterns narrowed to the /hois_back/ REST prefix
+//   TAHVEL_HOSTNAMES — bare hostnames for substring checks on URL strings
+const TAHVEL_TAB_URLS = chrome.runtime.getManifest().content_scripts[0].matches
+const TAHVEL_HOIS_URLS = TAHVEL_TAB_URLS.map(pattern => pattern.replace(/\/\*$/, '/hois_back/*'))
+const TAHVEL_HOSTNAMES = TAHVEL_TAB_URLS.map(pattern => pattern.replace(/^\*:\/\//, '').replace(/\/\*$/, ''))
+
+// Issue #95: observe Tahvel mutations via chrome.webRequest in the SW realm
+// (outside the page), then message the originating tab so content.js can
+// invalidate the journal cache. Page-realm fetch/XHR wraps would depend on
+// document_start beating the page's AngularJS bootstrap and could be
+// silently bypassed by any script that captured a fetch reference earlier.
+//
+// MV3 service workers terminate after idle and re-run this module on wake.
+// chrome.webRequest.onCompleted.addListener does NOT dedupe by function
+// reference, so an unguarded call would re-attach on each wake. Gate on a
+// globalThis flag to ensure single registration per SW process.
+//
+// Wrapped in try/catch as a safety net only — webRequest is declared in
+// manifest permissions so it's always available; the guard exists for the
+// rare case where enterprise policy revokes the API at runtime, in which
+// case the rest of the SW (Kriit proxy, cache alarm, Sentry, message
+// routing) must keep working.
+try {
+  if (!globalThis.__oa2WebRequestRegistered && chrome?.webRequest?.onCompleted?.addListener) {
+    chrome.webRequest.onCompleted.addListener(
+      details => {
+        if (!isJournalMutation(details)) return
+        const journalId = extractJournalIdFromUrl(details.url)
+        console.log(`[OA2] journal mutation detected: ${details.method} ${details.url} → ${details.statusCode} (journalId=${journalId})`)
+        // tabId is -1 for requests not attributable to a tab (e.g. SW prefetch).
+        if (typeof details.tabId !== 'number' || details.tabId < 0) return
+        chrome.tabs.sendMessage(details.tabId, { action: 'journalEdited', journalId }).catch(() => {
+          // Content script may not be loaded yet mid-navigation; next mutation retries.
+        })
+      },
+      { urls: TAHVEL_HOIS_URLS }
+    )
+    globalThis.__oa2WebRequestRegistered = true
+    console.log('[OA2] webRequest listener registered for Tahvel hosts')
+  } else if (!chrome?.webRequest?.onCompleted?.addListener) {
+    console.warn('[OA2] chrome.webRequest unavailable — journal mutation auto-refresh disabled')
+  }
+} catch (error) {
+  console.error('[OA2] Failed to register webRequest listener:', error)
+}
 
 // On fresh install, seed the banner-dismissed key to the current version so
 // first-time users don't see a "you updated" modal. Updates leave the key
@@ -55,9 +106,7 @@ async function broadcastCacheMaintenance() {
     // Cache maintenance can still run even if throttling timestamp persistence fails.
   }
   try {
-    const tabs = await chrome.tabs.query({
-      url: ['*://tahvel.edu.ee/*', '*://test.tahvel.eenet.ee/*']
-    })
+    const tabs = await chrome.tabs.query({ url: TAHVEL_TAB_URLS })
     for (const tab of tabs) {
       chrome.tabs.sendMessage(tab.id, { action: 'cacheMaintenanceTick' }).catch(() => {
         // Tab may not have content script loaded yet, ignore
@@ -91,7 +140,7 @@ chrome.runtime.onStartup.addListener(broadcastCacheMaintenance)
 // permissions required (uses `tabs`).
 function isTahvelTabUrl(url) {
   if (!url) return false
-  return url.includes('tahvel.edu.ee') || url.includes('test.tahvel.eenet.ee')
+  return TAHVEL_HOSTNAMES.some(host => url.includes(host))
 }
 
 chrome.tabs.onActivated.addListener(async({ tabId }) => {
@@ -117,9 +166,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // drops its in-memory key handle — otherwise tabs that didn't initiate the
   // rotation keep encrypting under the removed key.
   if (message.action === 'cryptoKeyRotated') {
-    chrome.tabs.query({
-      url: ['*://tahvel.edu.ee/*', '*://test.tahvel.eenet.ee/*']
-    }).then(tabs => {
+    chrome.tabs.query({ url: TAHVEL_TAB_URLS }).then(tabs => {
       for (const tab of tabs) {
         if (tab.id === sender.tab?.id) continue
         chrome.tabs.sendMessage(tab.id, { action: 'cryptoKeyRotated' }).catch(() => {})

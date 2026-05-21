@@ -43,11 +43,11 @@ describe('FinalGradesByOvFeature — public surface', () => {
   })
 
   describe('extractJournalId', () => {
-    test('returns journal id string from current window.location.href', () => {
+    test('returns journal id as Number from current window.location.href', () => {
       const orig = global.window
       try {
         global.window = { location: { href: 'https://tahvel.edu.ee/#/journal/54321/edit' } }
-        expect(feature.extractJournalId()).toBe('54321')
+        expect(feature.extractJournalId()).toBe(54321)
       } finally {
         global.window = orig
       }
