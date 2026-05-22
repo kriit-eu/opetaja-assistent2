@@ -129,14 +129,14 @@ export async function loadFeatures() {
     Logger.error('Error loading HighlightGradeCellsFeature:', error)
   }
 
-  // Load journal crosshair hover feature (always enabled)
+  // Load table reading guide hover feature (always enabled)
   try {
-    const JournalCrosshairFeature = (await import('../features/singleJournal/journalCrosshair/JournalCrosshairFeature.js')).default
-    const journalCrosshairFeature = new JournalCrosshairFeature()
-    allAvailableFeatures.singleJournal.push(journalCrosshairFeature)
-    Logger.debug('Feature "JournalCrosshairFeature" created')
+    const TableReadingGuideFeature = (await import('../features/singleJournal/tableReadingGuide/TableReadingGuideFeature.js')).default
+    const tableReadingGuideFeature = new TableReadingGuideFeature()
+    allAvailableFeatures.singleJournal.push(tableReadingGuideFeature)
+    Logger.debug('Feature "TableReadingGuideFeature" created')
   } catch (error) {
-    Logger.error('Error loading JournalCrosshairFeature:', error)
+    Logger.error('Error loading TableReadingGuideFeature:', error)
   }
 
   // Load assignment title helper row feature (always enabled)

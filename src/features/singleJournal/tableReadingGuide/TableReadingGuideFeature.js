@@ -3,10 +3,10 @@ import Logger from '../../../services/Logger.js'
 import { styleService } from '../../../services/StyleService.js'
 import { getNativeJournalHeaderCells } from '../../../lib/journalTableHeaders.js'
 
-const STYLE_ID = 'oa2-journal-crosshair-style'
-const ROW_CLASS = 'oa2-crosshair-row'
-const COL_CLASS = 'oa2-crosshair-col'
-const CELL_CLASS = 'oa2-crosshair-cell'
+const STYLE_ID = 'oa2-table-reading-guide-style'
+const ROW_CLASS = 'oa2-reading-guide-row'
+const COL_CLASS = 'oa2-reading-guide-col'
+const CELL_CLASS = 'oa2-reading-guide-cell'
 const WARNING_CLASSES = [
   'highlight-final-grade-red',
   'highlight-final-grade-yellow',
@@ -43,9 +43,9 @@ const OVERLAY_SELECTOR = [
   '[role="dialog"]'
 ].join(', ')
 
-export default class JournalCrosshairFeature extends BaseFeature {
+export default class TableReadingGuideFeature extends BaseFeature {
   constructor() {
-    super('journalCrosshair', /#\/journal\/\d+\/edit/)
+    super('tableReadingGuide', /#\/journal\/\d+\/edit/)
     this._mouseOverListener = null
     this._mouseOutListener = null
     this._highlightedCells = new Set()
@@ -55,7 +55,7 @@ export default class JournalCrosshairFeature extends BaseFeature {
   }
 
   onActivate() {
-    if (Logger.isDebugMode()) Logger.debug('[JournalCrosshairFeature] onActivate called')
+    if (Logger.isDebugMode()) Logger.debug('[TableReadingGuideFeature] onActivate called')
     this.injectCSS()
 
     this._mouseOverListener = event => this._onMouseOver(event)
@@ -245,7 +245,7 @@ export default class JournalCrosshairFeature extends BaseFeature {
     this._restoreSuppressedTitle()
     if (!cell.hasAttribute('title')) return
     this._suppressedTitleCell = cell
-    cell.dataset.oa2CrosshairSuppressedTitle = cell.getAttribute('title')
+    cell.dataset.oa2ReadingGuideSuppressedTitle = cell.getAttribute('title')
     cell.removeAttribute('title')
   }
 
@@ -253,8 +253,8 @@ export default class JournalCrosshairFeature extends BaseFeature {
     const cell = this._suppressedTitleCell
     this._suppressedTitleCell = null
     if (!cell || !cell.isConnected) return
-    const saved = cell.dataset.oa2CrosshairSuppressedTitle
-    delete cell.dataset.oa2CrosshairSuppressedTitle
+    const saved = cell.dataset.oa2ReadingGuideSuppressedTitle
+    delete cell.dataset.oa2ReadingGuideSuppressedTitle
     if (saved !== undefined) cell.setAttribute('title', saved)
   }
 

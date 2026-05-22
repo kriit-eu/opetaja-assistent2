@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { JSDOM } from 'jsdom'
-import JournalCrosshairFeature from '../../../src/features/singleJournal/journalCrosshair/JournalCrosshairFeature.js'
+import TableReadingGuideFeature from '../../../src/features/singleJournal/tableReadingGuide/TableReadingGuideFeature.js'
 import { restoreGlobalDOM } from '../../setup.js'
 
 function setupDom(url = 'https://tahvel.edu.ee/#/journal/123/edit') {
@@ -101,12 +101,12 @@ function fireMouse(eventName, target, relatedTarget = null) {
   document.dispatchEvent(event)
 }
 
-describe('JournalCrosshairFeature', () => {
+describe('TableReadingGuideFeature', () => {
   let feature
 
   beforeEach(() => {
     setupDom()
-    feature = new JournalCrosshairFeature()
+    feature = new TableReadingGuideFeature()
   })
 
   afterEach(() => {
@@ -122,12 +122,12 @@ describe('JournalCrosshairFeature', () => {
 
   test('injects style with row, column, focal-cell rules and all warning-class exclusions', () => {
     feature.injectCSS()
-    const style = document.getElementById('oa2-journal-crosshair-style')
+    const style = document.getElementById('oa2-table-reading-guide-style')
     expect(style).not.toBeNull()
     const css = style.textContent
-    expect(css).toContain('oa2-crosshair-row')
-    expect(css).toContain('oa2-crosshair-col')
-    expect(css).toContain('oa2-crosshair-cell')
+    expect(css).toContain('oa2-reading-guide-row')
+    expect(css).toContain('oa2-reading-guide-col')
+    expect(css).toContain('oa2-reading-guide-cell')
     expect(css).toContain('box-shadow')
     const warningClasses = [
       'highlight-final-grade-red',
@@ -145,9 +145,9 @@ describe('JournalCrosshairFeature', () => {
 
   test('injects higher-specificity background-image rule for AssignmentTitleRow custom rows', () => {
     feature.injectCSS()
-    const css = document.getElementById('oa2-journal-crosshair-style').textContent
-    expect(css).toContain('thead tr.oa2-assignment-title-row th.oa2-crosshair-col')
-    expect(css).toContain('thead tr.oa2-assignment-outcome-row th.oa2-crosshair-col')
+    const css = document.getElementById('oa2-table-reading-guide-style').textContent
+    expect(css).toContain('thead tr.oa2-assignment-title-row th.oa2-reading-guide-col')
+    expect(css).toContain('thead tr.oa2-assignment-outcome-row th.oa2-reading-guide-col')
     expect(css).toMatch(/background-color:\s*transparent\s*!important/)
   })
 
@@ -159,23 +159,23 @@ describe('JournalCrosshairFeature', () => {
     const focal = rows[1].children[2]
     fireMouse('mouseover', focal)
 
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
 
     Array.from(rows[1].children).forEach(sibling => {
       if (sibling === focal) return
-      expect(sibling.classList.contains('oa2-crosshair-row')).toBe(true)
+      expect(sibling.classList.contains('oa2-reading-guide-row')).toBe(true)
     })
 
     const headerCell = document.querySelectorAll('thead tr th')[2]
-    expect(headerCell.classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(rows[0].children[2].classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(rows[2].children[2].classList.contains('oa2-crosshair-col')).toBe(true)
+    expect(headerCell.classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(rows[0].children[2].classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(rows[2].children[2].classList.contains('oa2-reading-guide-col')).toBe(true)
 
-    expect(rows[0].children[3].classList.contains('oa2-crosshair-col')).toBe(false)
-    expect(rows[0].children[1].classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(rows[0].children[3].classList.contains('oa2-reading-guide-col')).toBe(false)
+    expect(rows[0].children[1].classList.contains('oa2-reading-guide-col')).toBe(false)
   })
 
-  test('moving to a new cell clears the prior crosshair before painting the new one', () => {
+  test('moving to a new cell clears the prior highlight before painting the new one', () => {
     buildTable()
     feature.activate()
 
@@ -184,32 +184,32 @@ describe('JournalCrosshairFeature', () => {
     const second = rows[2].children[3]
 
     fireMouse('mouseover', first)
-    expect(first.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(first.classList.contains('oa2-reading-guide-cell')).toBe(true)
 
     fireMouse('mouseover', second, first)
-    expect(first.classList.contains('oa2-crosshair-cell')).toBe(false)
-    expect(first.classList.contains('oa2-crosshair-row')).toBe(false)
-    expect(first.classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(first.classList.contains('oa2-reading-guide-cell')).toBe(false)
+    expect(first.classList.contains('oa2-reading-guide-row')).toBe(false)
+    expect(first.classList.contains('oa2-reading-guide-col')).toBe(false)
 
-    expect(second.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(second.classList.contains('oa2-reading-guide-cell')).toBe(true)
   })
 
-  test('mousing out of the table clears all crosshair classes', () => {
+  test('mousing out of the table clears all reading-guide classes', () => {
     buildTable()
     feature.activate()
 
     const focal = document.querySelectorAll('tbody tr')[1].children[2]
     fireMouse('mouseover', focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
 
     const outside = document.createElement('div')
     document.body.appendChild(outside)
     fireMouse('mouseout', focal, outside)
 
     document.querySelectorAll('td, th').forEach(cell => {
-      expect(cell.classList.contains('oa2-crosshair-row')).toBe(false)
-      expect(cell.classList.contains('oa2-crosshair-col')).toBe(false)
-      expect(cell.classList.contains('oa2-crosshair-cell')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-row')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-col')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-cell')).toBe(false)
     })
   })
 
@@ -221,12 +221,12 @@ describe('JournalCrosshairFeature', () => {
     const focal = rows[1].children[2]
     const neighbor = rows[1].children[3]
     fireMouse('mouseover', focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
 
     fireMouse('mouseout', focal, neighbor)
 
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
-    expect(rows[1].children[1].classList.contains('oa2-crosshair-row')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
+    expect(rows[1].children[1].classList.contains('oa2-reading-guide-row')).toBe(true)
   })
 
   test('mouseout to a Material overlay (cdk-overlay-container) does not clear', () => {
@@ -235,7 +235,7 @@ describe('JournalCrosshairFeature', () => {
 
     const focal = document.querySelectorAll('tbody tr')[0].children[2]
     fireMouse('mouseover', focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
 
     const overlay = document.createElement('div')
     overlay.className = 'cdk-overlay-container'
@@ -245,7 +245,7 @@ describe('JournalCrosshairFeature', () => {
 
     fireMouse('mouseout', focal, popup)
 
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
   })
 
   test('custom injected header rows participate in the column highlight (no mid-band gap)', () => {
@@ -261,7 +261,7 @@ describe('JournalCrosshairFeature', () => {
     expect(customRows.length).toBe(2)
     customRows.forEach(row => {
       const colCell = row.children[2]
-      expect(colCell.classList.contains('oa2-crosshair-col')).toBe(true)
+      expect(colCell.classList.contains('oa2-reading-guide-col')).toBe(true)
     })
   })
 
@@ -279,9 +279,9 @@ describe('JournalCrosshairFeature', () => {
     expect(sissekandedTh.textContent).toBe('Sissekanded')
     expect(dayTh.textContent).toBe('11.04')
 
-    expect(sissekandedTh.classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(dayTh.classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(headerRows[1].children[1].classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(sissekandedTh.classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(dayTh.classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(headerRows[1].children[1].classList.contains('oa2-reading-guide-col')).toBe(false)
   })
 
   test('column highlight for second spanned column targets the right sub-row header', () => {
@@ -297,9 +297,9 @@ describe('JournalCrosshairFeature', () => {
     const dayTh11 = headerRows[1].children[0]
     const dayTh13 = headerRows[1].children[1]
 
-    expect(sissekandedTh.classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(dayTh13.classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(dayTh11.classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(sissekandedTh.classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(dayTh13.classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(dayTh11.classList.contains('oa2-reading-guide-col')).toBe(false)
   })
 
   test('hovering a cell outside the journal table is ignored', () => {
@@ -320,9 +320,9 @@ describe('JournalCrosshairFeature', () => {
     fireMouse('mouseover', document.getElementById('outside'))
 
     document.querySelectorAll('#studentTable td, #studentTable th').forEach(cell => {
-      expect(cell.classList.contains('oa2-crosshair-cell')).toBe(false)
-      expect(cell.classList.contains('oa2-crosshair-row')).toBe(false)
-      expect(cell.classList.contains('oa2-crosshair-col')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-cell')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-row')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-col')).toBe(false)
     })
   })
 
@@ -332,32 +332,32 @@ describe('JournalCrosshairFeature', () => {
 
     const focal = document.querySelectorAll('tbody tr')[0].children[2]
     fireMouse('mouseover', focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
 
     const headerTh = document.querySelector('thead tr th')
-    expect(headerTh.classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(headerTh.classList.contains('oa2-reading-guide-col')).toBe(false)
     fireMouse('mouseover', headerTh, focal)
 
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(false)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(false)
     document.querySelectorAll('td, th').forEach(cell => {
-      expect(cell.classList.contains('oa2-crosshair-row')).toBe(false)
-      expect(cell.classList.contains('oa2-crosshair-col')).toBe(false)
-      expect(cell.classList.contains('oa2-crosshair-cell')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-row')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-col')).toBe(false)
+      expect(cell.classList.contains('oa2-reading-guide-cell')).toBe(false)
     })
   })
 
-  test('hovering the matching column header (already oa2-crosshair-col) does NOT clear the highlight', () => {
+  test('hovering the matching column header (already oa2-reading-guide-col) does NOT clear the highlight', () => {
     buildTable()
     feature.activate()
 
     const focal = document.querySelectorAll('tbody tr')[0].children[2]
     fireMouse('mouseover', focal)
     const matchingHeader = document.querySelectorAll('thead tr th')[2]
-    expect(matchingHeader.classList.contains('oa2-crosshair-col')).toBe(true)
+    expect(matchingHeader.classList.contains('oa2-reading-guide-col')).toBe(true)
 
     fireMouse('mouseover', matchingHeader, focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
-    expect(matchingHeader.classList.contains('oa2-crosshair-col')).toBe(true)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
+    expect(matchingHeader.classList.contains('oa2-reading-guide-col')).toBe(true)
   })
 
   test('suppresses native title on focal cell and restores it on clear', () => {
@@ -369,7 +369,7 @@ describe('JournalCrosshairFeature', () => {
 
     fireMouse('mouseover', focal)
     expect(focal.hasAttribute('title')).toBe(false)
-    expect(focal.dataset.oa2CrosshairSuppressedTitle).toBe('Hinne puudub')
+    expect(focal.dataset.oa2ReadingGuideSuppressedTitle).toBe('Hinne puudub')
     expect(feature._suppressedTitleCell).toBe(focal)
 
     const outside = document.createElement('div')
@@ -377,7 +377,7 @@ describe('JournalCrosshairFeature', () => {
     fireMouse('mouseout', focal, outside)
 
     expect(focal.getAttribute('title')).toBe('Hinne puudub')
-    expect(focal.dataset.oa2CrosshairSuppressedTitle).toBeUndefined()
+    expect(focal.dataset.oa2ReadingGuideSuppressedTitle).toBeUndefined()
     expect(feature._suppressedTitleCell).toBeNull()
   })
 
@@ -392,15 +392,15 @@ describe('JournalCrosshairFeature', () => {
     const focal = tbodyRow.children[3]
     fireMouse('mouseover', focal)
 
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
-    expect(stray.classList.contains('oa2-crosshair-row')).toBe(false)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
+    expect(stray.classList.contains('oa2-reading-guide-row')).toBe(false)
 
     const headerCells = document.querySelectorAll('thead tr th')
-    expect(headerCells[2].classList.contains('oa2-crosshair-col')).toBe(true)
-    expect(headerCells[1].classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(headerCells[2].classList.contains('oa2-reading-guide-col')).toBe(true)
+    expect(headerCells[1].classList.contains('oa2-reading-guide-col')).toBe(false)
   })
 
-  test('clear sweeps crosshair classes from cells not tracked in the Set (Angular node reuse)', () => {
+  test('clear sweeps reading-guide classes from cells not tracked in the Set (Angular node reuse)', () => {
     buildTable()
     feature.activate()
 
@@ -408,7 +408,7 @@ describe('JournalCrosshairFeature', () => {
     fireMouse('mouseover', focal)
 
     const orphan = document.querySelectorAll('tbody tr')[2].children[2]
-    expect(orphan.classList.contains('oa2-crosshair-col')).toBe(true)
+    expect(orphan.classList.contains('oa2-reading-guide-col')).toBe(true)
 
     feature._highlightedCells.delete(orphan)
 
@@ -416,7 +416,7 @@ describe('JournalCrosshairFeature', () => {
     document.body.appendChild(outside)
     fireMouse('mouseout', focal, outside)
 
-    expect(orphan.classList.contains('oa2-crosshair-col')).toBe(false)
+    expect(orphan.classList.contains('oa2-reading-guide-col')).toBe(false)
   })
 
   test('onDeactivate removes listeners, clears classes, and removes the style tag', () => {
@@ -425,15 +425,15 @@ describe('JournalCrosshairFeature', () => {
 
     const focal = document.querySelectorAll('tbody tr')[0].children[2]
     fireMouse('mouseover', focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(true)
-    expect(document.getElementById('oa2-journal-crosshair-style')).not.toBeNull()
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(true)
+    expect(document.getElementById('oa2-table-reading-guide-style')).not.toBeNull()
 
     feature.deactivate()
 
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(false)
-    expect(document.getElementById('oa2-journal-crosshair-style')).toBeNull()
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(false)
+    expect(document.getElementById('oa2-table-reading-guide-style')).toBeNull()
 
     fireMouse('mouseover', focal)
-    expect(focal.classList.contains('oa2-crosshair-cell')).toBe(false)
+    expect(focal.classList.contains('oa2-reading-guide-cell')).toBe(false)
   })
 })
