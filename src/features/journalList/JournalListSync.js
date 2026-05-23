@@ -33,6 +33,12 @@ import {
   extractEntryTypeDifferences,
   countTotalDifferences
 } from './journalListSync/differenceExtractors.js'
+import {
+  createStudentMap,
+  extractAssignmentsFromEntries,
+  getAddInfoFromExistingStudents,
+  getAssignmentNameFromEntry
+} from './journalListSync/assignmentMapper.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -2485,98 +2491,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {Object} Student map
    */
   createStudentMap(journalStudents, studentDetailsMap = {}) {
-    if (Logger.isDebugMode()) {
-      Logger.debug('=== CREATING STUDENT MAP ===')
-      Logger.debug(`Journal students count: ${journalStudents ? journalStudents.length : 0}`)
-      Logger.debug(`Student details map count: ${Object.keys(studentDetailsMap).length}`)
-    }
-
-    const studentMap = {
-      idToPersonalCode: {},
-      personalCodeToName: {},
-      journalStudentIdToId: {}
-    }
-
-    // First, map journal student IDs to student IDs
-    if (journalStudents && Array.isArray(journalStudents)) {
-      if (Logger.isDebugMode()) {
-        Logger.debug(`Processing ${journalStudents.length} journal students...`)
-      }
-
-      journalStudents.forEach((journalStudent, index) => {
-        if (Logger.isDebugMode()) {
-          Logger.debug(`Processing journal student ${index + 1}/${journalStudents.length}`)
-        }
-
-        if (journalStudent?.id && journalStudent?.studentId) {
-          studentMap.journalStudentIdToId[journalStudent.id] = journalStudent.studentId
-          if (Logger.isDebugMode()) {
-            Logger.debug(`Mapped journalStudentId ${journalStudent.id} -> studentId ${journalStudent.studentId}`)
-          }
-
-          // If we have details for this student from our direct API calls
-          if (studentDetailsMap[journalStudent.studentId]) {
-            const details = studentDetailsMap[journalStudent.studentId]
-            studentMap.idToPersonalCode[journalStudent.studentId] = details.personalCode
-            studentMap.personalCodeToName[details.personalCode] = details.name
-            if (Logger.isDebugMode()) {
-              Logger.debug(`Added personal code mapping: studentId ${journalStudent.studentId} -> "${details.personalCode}" (${details.name})`)
-            }
-          }
-          // If we don't have details, log the issue but don't necessarily throw an error
-          else {
-            Logger.warning(`❌ No personal code found for student ID ${journalStudent.studentId} in student details map`)
-            Logger.debug(`Available student detail IDs: ${Object.keys(studentDetailsMap).join(', ')}`)
-            Logger.debug(`Journal student data: ${JSON.stringify(journalStudent)}`)
-
-            // Instead of throwing an error immediately, let's try to get the data from the journal student itself
-            if (journalStudent.student && journalStudent.student.idcode) {
-              if (Logger.isDebugMode()) {
-                Logger.debug(`✅ Found personal code in journal student data: ${journalStudent.student.idcode}`)
-              }
-              studentMap.idToPersonalCode[journalStudent.studentId] = journalStudent.student.idcode
-              const studentName = journalStudent.student.fullname || journalStudent.studentName || 'Unknown'
-              studentMap.personalCodeToName[journalStudent.student.idcode] = studentName
-              if (Logger.isDebugMode()) {
-                Logger.debug(
-                  `Added personal code mapping from journal data: studentId ${journalStudent.studentId} -> "${journalStudent.student.idcode}" (${studentName})`
-                )
-              }
-            } else {
-              Logger.error(`🚫 Cannot find personal code for student ID ${journalStudent.studentId} anywhere`)
-              const errorMsg = `No personal code found for student ID ${journalStudent.studentId} in student details map - cannot proceed`
-              Logger.error(errorMsg)
-              throw new Error(errorMsg)
-            }
-          }
-        } else {
-          Logger.warning(`⚠️ Journal student ${index + 1} missing id or studentId: ${JSON.stringify(journalStudent)}`)
-        }
-      })
-    } else {
-      Logger.warning('⚠️ No valid journal students array provided')
-    }
-
-    // Log final mapping statistics
-    if (Logger.isDebugMode()) {
-      const personalCodeCount = Object.keys(studentMap.idToPersonalCode).length
-      const nameCount = Object.keys(studentMap.personalCodeToName).length
-      const journalMappingCount = Object.keys(studentMap.journalStudentIdToId).length
-
-      Logger.debug(`Final mapping statistics:`)
-      Logger.debug(`- Personal code mappings: ${personalCodeCount}`)
-      Logger.debug(`- Name mappings: ${nameCount}`)
-      Logger.debug(`- Journal student mappings: ${journalMappingCount}`)
-
-      if (personalCodeCount > 0) {
-        const samplePersonalCodes = Object.values(studentMap.idToPersonalCode).slice(0, 3)
-        Logger.debug(`Sample personal codes: ${samplePersonalCodes.join(', ')}`)
-      }
-
-      Logger.debug('=== END CREATING STUDENT MAP ===')
-    }
-
-    return studentMap
+    return createStudentMap(journalStudents, studentDetailsMap)
   }
 
   /**
@@ -2589,194 +2504,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {Array} Assignments
    */
   extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents = [], studentDetailsMap = {}, journalEntriesWithGrades = []) {
-    const assignments = []
-
-    if (!journalEntries || !Array.isArray(journalEntries)) {
-      return assignments
-    }
-
-    // Filter for graded entries only (exclude outcome entries)
-    const gradedEntries = journalEntries.filter(
-      entry =>
-        entry.entryType === 'SISSEKANNE_H' || // Graded entry
-        entry.entryType === 'SISSEKANNE_I' || // Independent work
-        entry.entryType === 'SISSEKANNE_P' // Practical work
-    )
-
-    // Debug: Log count of different entry types
-    const entryCounts = {
-      SISSEKANNE_H: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_H').length,
-      SISSEKANNE_I: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_I').length,
-      SISSEKANNE_P: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_P').length,
-      SISSEKANNE_O: gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O').length
-    }
-
-    // Debug: Log outcome entries specifically
-    if (entryCounts['SISSEKANNE_O'] > 0) {
-      const outcomeEntries = gradedEntries.filter(e => e.entryType === 'SISSEKANNE_O')
-      outcomeEntries.forEach(() => {})
-    }
-
-    // Create a map of entry IDs to entries with grades from journalEntriesByDate
-    const entriesWithGradesMap = {}
-    if (journalEntriesWithGrades && Array.isArray(journalEntriesWithGrades)) {
-      journalEntriesWithGrades.forEach(entry => {
-        // Handle regular entries with IDs
-        if (entry.id && (entry.entryType === 'SISSEKANNE_H' || entry.entryType === 'SISSEKANNE_I' || entry.entryType === 'SISSEKANNE_P')) {
-          entriesWithGradesMap[entry.id] = entry
-        }
-        // Handle outcome entries with curriculumModuleOutcomes
-        if (entry.curriculumModuleOutcomes && entry.entryType === 'SISSEKANNE_O') {
-          entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`] = entry
-        }
-      })
-    }
-
-    gradedEntries.forEach(entry => {
-      // Log when we process an outcome entry
-      if (entry.entryType === 'SISSEKANNE_O') {
-        // No-op block removed (was empty)
-      }
-
-      // Extract results for this assignment
-      const results = []
-
-      // Handle different entry types for finding grades
-      let entryWithGrades
-      if (entry.entryType === 'SISSEKANNE_O') {
-        // For outcome entries, look up by curriculumModuleOutcomes
-        entryWithGrades = entriesWithGradesMap[`outcome_${entry.curriculumModuleOutcomes}`]
-      } else {
-        // For regular entries, look up by ID
-        entryWithGrades = entriesWithGradesMap[entry.id]
-      }
-
-      // Create a map of students who have results for this assignment
-      const studentResultsMap = {}
-      if (entryWithGrades) {
-        if (entry.entryType === 'SISSEKANNE_O' && entryWithGrades.studentOutcomeResults) {
-          // Handle outcome entries with studentOutcomeResults
-          Object.entries(entryWithGrades.studentOutcomeResults).forEach(([journalStudentId, studentResults]) => {
-            studentResultsMap[journalStudentId] = studentResults
-          })
-        } else if (entryWithGrades.journalStudentResults) {
-          // Handle regular entries with journalStudentResults
-          Object.entries(entryWithGrades.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
-            studentResultsMap[journalStudentId] = studentResults
-          })
-        }
-      } else if (entry.journalStudentResults) {
-        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
-        Logger.debug(`Using fallback entry for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'})`)
-        Object.entries(entry.journalStudentResults).forEach(([journalStudentId, studentResults]) => {
-          studentResultsMap[journalStudentId] = studentResults
-        })
-      } else {
-        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
-        Logger.debug(`No grades found for assignment ${entryIdForLog} (${entry.nameEt || 'Unnamed'}), but including all students with empty grades`)
-      }
-
-      // Include ALL journal students for this assignment, not just those with results
-      if (journalStudents && Array.isArray(journalStudents)) {
-        journalStudents.forEach(journalStudent => {
-          if (!journalStudent || !journalStudent.id) return
-
-          const journalStudentId = journalStudent.id.toString()
-
-          // Check if this student has results for this assignment
-          const studentResults = studentResultsMap[journalStudentId]
-          let grade = ''
-
-          if (studentResults && studentResults.length > 0 && studentResults[0].grade && studentResults[0].grade.code) {
-            // Get grade if available
-            grade = studentResults[0].grade.code.replace('KUTSEHINDAMINE_', '')
-          }
-          // If no results or no grade, grade remains empty string
-
-          // Get student ID from journal student ID
-          const studentId = studentMap.journalStudentIdToId[journalStudentId]
-          if (!studentId) return
-
-          // Get personal code from student ID
-          const personalCode = studentMap.idToPersonalCode[studentId]
-
-          // If we can't get the personal code, skip this student (don't throw error for missing students)
-          if (!personalCode) {
-            Logger.warning(`No personal code found for student ID ${studentId}, skipping`)
-            return
-          }
-
-          // Get student name, active status, and deleted status from our maps
-          let studentName = 'Unknown Student'
-          let studentIsActive = true // Default to active if we can't determine status
-          let studentIsDeleted = false
-
-          // Get student details from our maps
-          if (personalCode && studentMap.personalCodeToName[personalCode]) {
-            studentName = studentMap.personalCodeToName[personalCode]
-          } else {
-            // Use the student name from the journal students array
-            if (journalStudent.studentName) {
-              studentName = journalStudent.studentName
-              // Store this mapping for future use
-              if (personalCode) {
-                studentMap.personalCodeToName[personalCode] = journalStudent.studentName
-                Logger.debug(`Added name mapping for ${personalCode}: ${journalStudent.studentName}`)
-              }
-            }
-          }
-
-          // Check if we have student details in our cache
-          let studentIsGraduated = false
-          if (studentId && studentDetailsMap[studentId]) {
-            // Use the isActive, isDeleted, and isGraduated flags from the student details
-            studentIsActive = studentDetailsMap[studentId].isActive
-            studentIsDeleted = studentDetailsMap[studentId].isDeleted || false
-            studentIsGraduated = studentDetailsMap[studentId].isGraduated || false
-          }
-
-          // Add result for this student (including those with empty grades)
-          results.push({
-            grade,
-            studentPersonalCode: personalCode,
-            studentName,
-            studentIsActive: studentIsActive,
-            studentIsDeleted: studentIsDeleted,
-            studentIsGraduated: studentIsGraduated
-          })
-        })
-      } else {
-        const entryIdForLog = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
-        Logger.warning(`No journal students provided for assignment ${entryIdForLog}, cannot include all students`)
-      }
-
-      // Get the assignment name
-      const assignmentName = entry.nameEt || this.getAssignmentNameFromEntry(entry)
-
-      // Always include assignments with valid ID and name, even if they don't have results yet
-      // This ensures all assignments are sent to Kriit, not just those with grades
-      // Handle both regular entries (with id) and outcome entries (with curriculumModuleOutcomes)
-      const assignmentId = entry.entryType === 'SISSEKANNE_O' ? entry.curriculumModuleOutcomes : entry.id
-
-      if (assignmentId && assignmentName) {
-        assignments.push({
-          assignmentExternalId: assignmentId,
-          assignmentName: assignmentName,
-          assignmentInstructions: entry.content || '',
-          assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
-          assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
-          // If Tahvel entry contains lessons, include it for Kriit to consume; coerce to Number or null
-          lessons: typeof entry.lessons !== 'undefined' && entry.lessons !== null ? Number(entry.lessons) : null,
-          // Include entry type so Kriit knows whether it's independent work or practical work
-          entryType: entry.entryType || null,
-          results
-        })
-
-        // Log whether this assignment has results or not
-      }
-    })
-
-    return assignments
+    return extractAssignmentsFromEntries(journalEntries, studentMap, journalStudents, studentDetailsMap, journalEntriesWithGrades)
   }
 
   /**
@@ -2784,68 +2512,14 @@ class JournalListSyncFeature extends BaseFeature {
    * @param {Array} students - Journal entry students
    * @returns {string} addInfo value
    */
-  getAddInfoFromExistingStudents(students) {
-    if (!students || !Array.isArray(students) || students.length === 0) {
-      return null
-    }
-
-    // Look for a student with a non-null addInfo
-    for (const student of students) {
-      if (student.addInfo) {
-        Logger.debug(`Found existing addInfo pattern: ${student.addInfo}`)
-
-        // Extract the base URL pattern (everything before the last slash and number)
-        const match = student.addInfo.match(/(.*\/)[0-9]+$/)
-        if (match && match[1]) {
-          const baseUrl = match[1]
-          Logger.debug(`Extracted base URL: ${baseUrl}`)
-
-          // Return the base URL with a placeholder number
-          // We'll use the same number as the existing pattern
-          const lastPart = student.addInfo.split('/').pop()
-          return `${baseUrl}${lastPart}`
-        }
-
-        // If we can't extract a pattern, just return the addInfo as is
-        return student.addInfo
-      }
-    }
-
-    // If no student has addInfo, return null
-    return null
-  }
+  getAddInfoFromExistingStudents(students) { return getAddInfoFromExistingStudents(students) }
 
   /**
    * Get a readable assignment name from a journal entry
    * @param {Object} entry - Journal entry
    * @returns {string} Assignment name
    */
-  getAssignmentNameFromEntry(entry) {
-    if (entry.nameEt) return entry.nameEt
-
-    if (entry.content) {
-      // Extract first line or first sentence from instructions
-      const firstSentence = entry.content
-        .split(/[.!\n]/)[0] // Split by period, exclamation mark or newline
-        .trim()
-        .slice(0, 100) // Limit length
-
-      if (firstSentence) {
-        return firstSentence.length === 100 ? `${firstSentence}...` : firstSentence
-      }
-    }
-
-    // Use a type-specific name if nothing else is available
-    return entry.entryType === 'SISSEKANNE_H'
-      ? 'Hindeline töö'
-      : entry.entryType === 'SISSEKANNE_I'
-        ? 'Iseseisev töö'
-        : entry.entryType === 'SISSEKANNE_P'
-          ? 'Praktiline töö'
-          : entry.entryType === 'SISSEKANNE_O'
-            ? 'Õppetulemus'
-            : 'Päeviku sissekanne'
-  }
+  getAssignmentNameFromEntry(entry) { return getAssignmentNameFromEntry(entry) }
 
   /**
    * Sync data with Kriit
