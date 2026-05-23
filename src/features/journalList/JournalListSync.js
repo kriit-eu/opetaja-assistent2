@@ -79,6 +79,16 @@ import {
   fetchJournalsFromApi
 } from './journalListSync/tahvelDataFetchers.js'
 import { getTahvelSubjectsWithAssignmentsAndGrades } from './journalListSync/tahvelSubjectsAggregator.js'
+import {
+  updateUI,
+  updateProgressUI,
+  showSuccessBanner,
+  showErrorBanner,
+  showMissingApiKeyBanner,
+  showAllInSyncBanner,
+  showDifferencesBanner,
+  removeSyncBanner
+} from './journalListSync/syncBannerUI.js'
 
 // Re-exported to preserve the existing public import path.
 export { getTahvelSubjectsWithAssignmentsAndGrades }
@@ -1049,230 +1059,14 @@ class JournalListSyncFeature extends BaseFeature {
     return studentDetailsMap
   }
 
-  /**
-   * Update the UI based on current state
-   */
-  updateUI() {
-    if (!this.isActive) return
-    // Don't remove banner if we're currently syncing (loading state)
-    if (!this.isLoading) {
-      bannerService.removeBanner()
-    }
-
-    if (this.isLoading) {
-      // If banner doesn't exist yet, create it; otherwise just update the content
-      if (!bannerService.hasBanner()) {
-        bannerService.showLoadingBanner()
-      }
-      return
-    }
-
-    if (this.error) {
-      this.showErrorBanner()
-      return
-    }
-
-    // Decide whether to show the differences banner.
-    // Show when we have differences OR when Kriit reported newAssignments in the global runtime cache.
-    const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-    const hasNewAssignments = Object.keys(globalNewAssignments || {}).length > 0
-
-    if ((this.differences && this.differences.length > 0) || hasNewAssignments) {
-      this.showDifferencesBanner()
-      return
-    }
-
-    // If there are no differences and no new assignments, show the all-in-sync banner
-    this.showAllInSyncBanner()
-  }
-
-  /**
-   * Update progress UI during sync
-   * @param {number} current - Current progress
-   * @param {number} total - Total items
-   */
-  updateProgressUI(current, total) {
-    if (!this.isActive) return
-    // Show progress banner during sync
-    bannerService.updateProgressUI(current, total, 'Sünkroniseerin hindeid Kriidist Tahvlisse...')
-  }
-
-  /**
-   * Show success banner
-   * @param {string} message - Success message
-   */
-  showSuccessBanner(message) {
-    if (!this.isActive) return
-    // Show success banner with refresh and close actions
-    bannerService.showSuccessBanner(message, {
-      onRefresh: () => this.proceedWithKriitApiCall(),
-      onClose: () => bannerService.removeBanner()
-    })
-  }
-
-  /**
-   * Show error banner
-   */
-  showErrorBanner() {
-    const options = {
-      onRetry: () => this.proceedWithKriitApiCall(),
-      onClearCache: () => {
-        this.clearCache().then(result => {
-          alert(
-            `Puhastatud ${result.total} vahemälu kirjet:\n` +
-              `- API vahemälu: ${result.api} kirjet\n` +
-              `- Funktsiooni vahemälu: ${result.feature} kirjet\n` +
-              `- Mälu vahemälu: ${result.runtime} kirjet\n\n` +
-              'Klõpsake "Proovi uuesti" värske andmete saamiseks.'
-          )
-        })
-      },
-      onSettings: () => this.resetKriitApiToken(),
-      onRefresh: () => window.location.reload()
-    }
-
-    journalSyncBannerService.showSyncErrorBanner(this.error, options)
-  }
-
-  /**
-   * Show a banner when the Kriit API key is missing
-   */
-  showMissingApiKeyBanner() {
-    journalSyncBannerService.showMissingApiKeyBanner()
-  }
-
-  /**
-   * Show green banner when all grades are in sync
-   */
-  showAllInSyncBanner() {
-    journalSyncBannerService.showAllInSyncBanner(
-      async() => {
-        // When refresh button is clicked, trigger Tahvel search and wait for table update
-        Logger.debug('Värskenda button clicked - triggering Tahvel search for current study year')
-        try {
-          const submitButton = document.querySelector('button[type="submit"]')
-          if (submitButton) {
-            submitButton.click()
-            await this.waitForTableUpdate()
-          } else {
-            Logger.warning('Submit button not found, refreshing without triggering search')
-          }
-          await this.clearCache()
-        } catch (err) {
-          Logger.warning('Failed to trigger search or clear cache:', err.message)
-        }
-        await this.fetchJournalData()
-      },
-      () => bannerService.removeBanner()
-    )
-  }
-
-  /**
-   * Show differences banner
-   */
-  showDifferencesBanner() {
-    const totalDifferences = this.countTotalDifferences()
-
-    // Print each detected grade difference with details only in debug mode
-    if (Logger.isDebugMode() && Array.isArray(this.differences)) {
-      this.differences.forEach(subject => {
-        if (subject && Array.isArray(subject.assignments)) {
-          subject.assignments.forEach(assignment => {
-            if (assignment && Array.isArray(assignment.results)) {
-              assignment.results.forEach(result => {
-                const tahvelGrade = result.currentGrade || '(puudub)'
-                const kriitGrade = result.grade || '(puudub)'
-                // Log when there is a difference (treat kriit null as a valid value)
-                if (tahvelGrade !== kriitGrade) {
-                  Logger.debug(
-                    `[GRADE DIFF] Subject: ${subject.subjectName}, Assignment: ${assignment.assignmentName}, Student: ${result.studentName || '(nimi puudub)'}, Tahvel: ${tahvelGrade}, Kriit: ${kriitGrade}`
-                  )
-                }
-              })
-            }
-          })
-        }
-      })
-    }
-    // Include newAssignments in the total shown in the banner
-    const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-    const newAssignmentsCount = Object.values(globalNewAssignments || {}).reduce((acc, arr) => acc + (Array.isArray(arr) ? arr.length : 0), 0)
-    const totalForBanner = totalDifferences + newAssignmentsCount
-
-    journalSyncBannerService.showDifferencesBanner(
-      totalForBanner,
-      async() => {
-        // First, sync new assignments to Tahvel if any exist
-        const globalNewAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-        if (Object.keys(globalNewAssignments).length > 0) {
-          Logger.debug('Syncing new assignments to Tahvel before grade sync')
-          try {
-            // Import and trigger the TahvelNewAssignmentSync feature
-            const { tahvelNewAssignmentSync } = await import('./TahvelNewAssignmentSync.js')
-            await tahvelNewAssignmentSync.syncNewAssignmentsToTahvel(globalNewAssignments)
-          } catch (err) {
-            Logger.error('Failed to sync new assignments to Tahvel:', err)
-          }
-        }
-
-        // Run the batched sync, including assignment-level metadata changes.
-        const syncResult = await this.syncWithKriit()
-        const failedSyncs = syncResult?.failedSyncs || []
-        const successfulCount = syncResult?.successfulChangeCount ?? syncResult?.successfulSyncs?.length ?? 0
-        if (failedSyncs.length > 0) {
-          this.isLoading = false
-          this.error = this.buildSyncFailureMessage(failedSyncs, successfulCount)
-          this.updateUI()
-          return
-        }
-        if (this.error && !this.error.includes('Kõik hinded on juba sünkroonis')) return
-      },
-      async() => {
-        // Trigger Tahvel search and wait for table update before refreshing
-        Logger.debug('Refresh button clicked - triggering Tahvel search for current study year')
-        try {
-          const submitButton = document.querySelector('button[type="submit"]')
-          if (submitButton) {
-            submitButton.click()
-            await this.waitForTableUpdate()
-          } else {
-            Logger.warning('Submit button not found, refreshing without triggering search')
-          }
-          await this.clearCache()
-        } catch (err) {
-          Logger.warning('Failed to trigger search or clear cache:', err.message)
-        }
-        await this.fetchJournalData()
-      },
-      container => {
-        const assignmentNameDiffs = this.extractAssignmentNameDifferences()
-        const gradeDiffs = Array.isArray(this.differences) ? this.differences : []
-        const dueDateDiffs = this.extractDueDateDifferences()
-        const entryDateDiffs = this.extractEntryDateDifferences()
-        const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
-        const entryTypeDiffs = this.extractEntryTypeDifferences()
-        const newAssignments = (window.journalListSync && window.journalListSync.newAssignments) || {}
-        differenceRenderer.render(
-          container,
-          assignmentNameDiffs,
-          gradeDiffs,
-          dueDateDiffs,
-          entryDateDiffs,
-          assignmentHoursDiffs,
-          entryTypeDiffs,
-          newAssignments
-        )
-      }
-    )
-  }
-
-  /**
-   * Remove sync banner from the DOM (used by message listener through context)
-   */
-  // noinspection JSUnusedGlobalSymbols
-  removeSyncBanner() {
-    bannerService.removeBanner()
-  }
+  updateUI() { return updateUI(this) }
+  updateProgressUI(current, total) { return updateProgressUI(this, current, total) }
+  showSuccessBanner(message) { return showSuccessBanner(this, message) }
+  showErrorBanner() { return showErrorBanner(this) }
+  showMissingApiKeyBanner() { return showMissingApiKeyBanner() }
+  showAllInSyncBanner() { return showAllInSyncBanner(this) }
+  showDifferencesBanner() { return showDifferencesBanner(this) }
+  removeSyncBanner() { return removeSyncBanner() }
 
   /**
    * Set Kriit API token and save to chrome.storage
