@@ -89,6 +89,12 @@ import {
   showDifferencesBanner,
   removeSyncBanner
 } from './journalListSync/syncBannerUI.js'
+import {
+  getSelectedStudyYear,
+  getStudyYearIdFromText,
+  setupStudyYearMonitoring,
+  waitForTableUpdate
+} from './journalListSync/studyYearMonitor.js'
 
 // Re-exported to preserve the existing public import path.
 export { getTahvelSubjectsWithAssignmentsAndGrades }
@@ -262,177 +268,10 @@ class JournalListSyncFeature extends BaseFeature {
     this.setupStudyYearMonitoring()
   }
 
-  /**
-   * Get currently selected study year from the dropdown
-   * @returns {string|null} Selected study year text (e.g., "2025/2026") or null if not found
-   */
-  getSelectedStudyYear() {
-    const studyYearSelector = document.querySelector('.selected-option.ng-tns-c929221873-0')
-    if (studyYearSelector) {
-      const yearText = studyYearSelector.textContent.trim()
-      Logger.debug('Selected study year from dropdown:', yearText)
-      return yearText
-    }
-    Logger.debug('Study year selector not found in DOM')
-    return null
-  }
-
-  /**
-   * Convert study year text (e.g., "2025/2026") to study year ID by querying the API
-   * @param {string} yearText - Study year text from dropdown
-   * @returns {Promise<number|null>} Study year ID or null if not found
-   */
-  async getStudyYearIdFromText(yearText) {
-    if (!yearText) return null
-
-    try {
-      const yearId = await resolveStudyYearIdFromText(this.api, yearText)
-      if (yearId) {
-        Logger.debug(`Resolved study year "${yearText}" to ID: ${yearId}`)
-        return yearId
-      }
-    } catch (err) {
-      Logger.warning('Failed to resolve study year ID from text:', err.message)
-    }
-
-    return null
-  }
-
-  /**
-   * Set up monitoring for study year selector changes and submit button clicks
-   */
-  setupStudyYearMonitoring() {
-    // Store initial study year
-    this.lastStudyYear = this.getSelectedStudyYear()
-    Logger.debug('Initial study year:', this.lastStudyYear)
-
-    // Find submit button
-    const submitButton = document.querySelector('button[type="submit"]')
-    if (!submitButton) {
-      Logger.debug('Submit button not found for study year monitoring')
-      return
-    }
-
-    // Add click listener to submit button
-    submitButton.addEventListener('click', () => {
-      Logger.debug('Submit button clicked - monitoring for table changes')
-      this.waitForTableUpdate()
-        .then(() => {
-          Logger.debug('Table updated - refreshing journal sync data')
-          this.fetchJournalData()
-        })
-        .catch(err => {
-          Logger.warning('Error waiting for table update:', err)
-          // Fallback: refresh after a delay
-          setTimeout(() => this.fetchJournalData(), 2000)
-        })
-    })
-
-    Logger.debug('Study year monitoring set up successfully')
-  }
-
-  /**
-   * Wait for the journal table to update after study year change
-   * @returns {Promise} Resolves when table has updated
-   */
-  waitForTableUpdate() {
-    return new Promise((resolve, _reject) => {
-      let timeout
-      const timeoutDuration = 10000 // 10 seconds max wait
-
-      // Try multiple selectors for the table container
-      const findTableContainer = () => {
-        const selectors = [
-          'md-table-container',
-          '#main-content md-table-container',
-          'md-table-container table',
-          '#main-content table',
-          '[role="table"]',
-          'table tbody'
-        ]
-
-        for (const selector of selectors) {
-          const element = document.querySelector(selector)
-          if (element) {
-            Logger.debug(`Found table container with selector: ${selector}`)
-            return element
-          }
-        }
-        return null
-      }
-
-      // Initial attempt to find table container
-      let tableContainer = findTableContainer()
-
-      if (!tableContainer) {
-        // Table might not be rendered yet - wait a bit and try again
-        Logger.debug('Table container not found immediately, waiting 500ms...')
-        setTimeout(() => {
-          tableContainer = findTableContainer()
-
-          if (!tableContainer) {
-            Logger.warning('Table container not found after delay - using fallback timeout')
-            // Don't reject - just use timeout fallback
-            timeout = setTimeout(() => {
-              Logger.debug('Fallback timeout - proceeding with refresh')
-              resolve()
-            }, 2000)
-            return
-          }
-
-          setupObserver(tableContainer)
-        }, 500)
-        return
-      }
-
-      // Setup observer function
-      const setupObserver = container => {
-        // Disconnect any existing observer
-        if (this.tableObserver) {
-          this.tableObserver.disconnect()
-        }
-
-        // Create mutation observer to detect table changes
-        this.tableObserver = new MutationObserver(mutations => {
-          // Check if table content has changed (rows added/removed/modified)
-          const hasTableChanges = mutations.some(
-            mutation =>
-              mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0 || mutation.type === 'characterData' || mutation.type === 'attributes'
-          )
-
-          if (hasTableChanges) {
-            Logger.debug('Table content changed - mutations detected')
-            clearTimeout(timeout)
-            if (this.tableObserver) {
-              this.tableObserver.disconnect()
-            }
-            // Add small delay to ensure table is fully rendered
-            setTimeout(() => resolve(), 500)
-          }
-        })
-
-        // Start observing table changes
-        this.tableObserver.observe(container, {
-          childList: true,
-          subtree: true,
-          characterData: true,
-          attributes: true
-        })
-
-        // Set timeout as fallback
-        timeout = setTimeout(() => {
-          Logger.debug('Table update timeout - proceeding anyway')
-          if (this.tableObserver) {
-            this.tableObserver.disconnect()
-          }
-          resolve()
-        }, timeoutDuration)
-      }
-
-      // If we found the container immediately, setup observer
-      setupObserver(tableContainer)
-    })
-  }
+  getSelectedStudyYear() { return getSelectedStudyYear() }
+  async getStudyYearIdFromText(yearText) { return getStudyYearIdFromText(this.api, yearText) }
+  setupStudyYearMonitoring() { return setupStudyYearMonitoring(this) }
+  waitForTableUpdate() { return waitForTableUpdate(this) }
 
   /**
    * Called when the feature is deactivated
