@@ -14,6 +14,7 @@
 
 import Logger from '../../../services/Logger.js'
 import { buildGradesForNotification, notifyKriitGradesSynced } from '../KriitSyncNotifier.js'
+import { collectSyncWorkItems } from './syncDataCollection.js'
 
 export async function syncWithKriit(feature) {
   if (Array.isArray(feature.differences)) {
@@ -56,143 +57,7 @@ export async function syncWithKriit(feature) {
       return
     }
 
-    const syncData = []
-    if (Logger.isDebugMode()) {
-      Logger.debug('=== COLLECTING SYNC DATA ===')
-      Logger.debug(`Processing ${feature.differences ? feature.differences.length : 0} subjects with differences`)
-    }
-
-    feature.differences.forEach((subject, subjectIndex) => {
-      if (Logger.isDebugMode()) {
-        Logger.debug(`Subject ${subjectIndex + 1}: ${subject.subjectName} (ID: ${subject.subjectExternalId})`)
-      }
-
-      if (!subject.assignments || !Array.isArray(subject.assignments)) {
-        Logger.warning(`⚠️ Subject ${subjectIndex + 1}: No assignments array`)
-        return
-      }
-
-      if (Logger.isDebugMode()) {
-        Logger.debug(`  - Has ${subject.assignments.length} assignments`)
-      }
-      subject.assignments.forEach((assignment, assignmentIndex) => {
-        if (Logger.isDebugMode()) {
-          Logger.debug(`  Assignment ${assignmentIndex + 1}: ${assignment.assignmentName} (ID: ${assignment.assignmentExternalId})`)
-        }
-
-        if (!assignment.results || !Array.isArray(assignment.results)) {
-          Logger.debug(`⚠️ Assignment ${assignmentIndex + 1}: No results array`)
-          return
-        }
-
-        if (Logger.isDebugMode()) {
-          Logger.debug(`    - Has ${assignment.results.length} results`)
-        }
-        assignment.results.forEach((result, resultIndex) => {
-          Logger.debug(
-            `    Result ${resultIndex + 1}: ${result.studentName} | PersonalCode: "${result.studentPersonalCode}" | CurrentGrade: "${result.currentGrade}" | NewGrade: "${result.grade}"`
-          )
-
-          if (!result.studentPersonalCode) {
-            Logger.error(`❌ Result ${resultIndex + 1}: Missing personal code - cannot proceed with sync`)
-            const errorMsg = 'Found missing personal code for a student - cannot proceed with sync'
-            Logger.error(errorMsg)
-            feature.error = errorMsg
-            throw new Error(errorMsg)
-          }
-
-          if (result.studentIsDeleted === true) {
-            if (Logger.isDebugMode()) {
-              Logger.debug(
-                `⏭️ Result ${resultIndex + 1}: Skipping grade sync for deleted student: ${result.studentName} (${result.studentPersonalCode})`
-              )
-            }
-            return
-          }
-
-          if (typeof result.studentPersonalCode === 'string' && result.studentPersonalCode.includes('fallback-')) {
-            const errorMsg = `Found invalid personal code: ${result.studentPersonalCode} - cannot proceed with sync`
-            Logger.error(errorMsg)
-            feature.error = errorMsg
-            throw new Error(errorMsg)
-          }
-
-          const normalizeGrade = grade => {
-            if (grade === null || grade === undefined || grade === '' || grade === '(puudub)') {
-              return null
-            }
-            const normalized = String(grade).trim()
-            if (normalized.startsWith('KUTSEHINDAMINE_')) {
-              return normalized.replace('KUTSEHINDAMINE_', '')
-            }
-            return normalized
-          }
-
-          const tahvelGrade = normalizeGrade(result.currentGrade)
-          const kriitGrade = normalizeGrade(result.grade)
-
-          Logger.debug(`    Grade comparison: Tahvel="${tahvelGrade}" vs Kriit="${kriitGrade}"`)
-
-          if (tahvelGrade !== kriitGrade) {
-            if (Logger.isDebugMode()) {
-              Logger.debug(`✅ Result ${resultIndex + 1}: Grade sync needed`)
-            }
-            Logger.debug(`Student personal code type: ${typeof result.studentPersonalCode}, value: "${result.studentPersonalCode}"`)
-            Logger.debug(`Grade type: ${typeof result.grade}, value: "${result.grade}"`)
-            Logger.debug(`Will sync: Tahvel="${tahvelGrade}" -> Kriit="${kriitGrade}"`)
-
-            const personalCode = result.studentPersonalCode ? String(result.studentPersonalCode) : null
-            const gradeStr = result.grade === null ? null : result.grade === undefined ? undefined : String(result.grade)
-
-            if (!personalCode || gradeStr === undefined) {
-              Logger.warning(`⚠️ Result ${resultIndex + 1}: Skipping sync item due to missing data: personalCode="${personalCode}", grade="${gradeStr}"`)
-              return
-            }
-
-            const syncItem = {
-              journalId: subject.subjectExternalId,
-              assignmentId: assignment.assignmentExternalId,
-              studentPersonalCode: personalCode,
-              grade: gradeStr
-            }
-
-            syncData.push(syncItem)
-            if (Logger.isDebugMode()) {
-              Logger.debug(`📤 Added to sync queue: ${result.studentName} (${personalCode}) -> Grade ${gradeStr}`)
-            }
-          } else {
-            Logger.debug(`⏭️ Result ${resultIndex + 1}: Grades are the same, skipping: Tahvel="${tahvelGrade}", Kriit="${kriitGrade}"`)
-          }
-        })
-      })
-    })
-
-    if (Logger.isDebugMode()) {
-      Logger.debug(`=== SYNC DATA COLLECTION COMPLETE: ${syncData.length} items to sync ===`)
-    }
-
-    const assignmentLevelFields = feature.getAssignmentLevelSyncFields()
-    const assignmentLevelDifferences = []
-    if (feature.differences && Array.isArray(feature.differences)) {
-      feature.differences.forEach(subject => {
-        if (subject.assignments && Array.isArray(subject.assignments)) {
-          subject.assignments.forEach(assignment => {
-            const changes = feature.getAssignmentLevelChanges(assignment, assignmentLevelFields)
-
-            if (changes.length > 0) {
-              assignmentLevelDifferences.push({
-                journalId: subject.subjectExternalId,
-                assignmentId: assignment.assignmentExternalId,
-                changes
-              })
-              Logger.debug(
-                `📋 Found assignment-level difference: ${assignment.assignmentName?.kriit || assignment.assignmentName?.Tahvel || assignment.assignmentExternalId} (${changes.map(change => change.field.statusType).join(', ')})`
-              )
-            }
-          })
-        }
-      })
-    }
+    const { syncData, assignmentLevelDifferences, batches: collectedBatches } = collectSyncWorkItems(feature.differences)
 
     if (syncData.length === 0 && assignmentLevelDifferences.length === 0) {
       Logger.warning('No data to sync after processing')
@@ -229,40 +94,7 @@ export async function syncWithKriit(feature) {
     const failedSyncs = []
 
     try {
-      const assignmentMap = new Map()
-
-      for (const item of syncData) {
-        const key = `${item.journalId}::${item.assignmentId}`
-        if (!assignmentMap.has(key)) {
-          assignmentMap.set(key, {
-            journalId: item.journalId,
-            assignmentId: item.assignmentId,
-            students: [],
-            assignmentLevelOnly: false
-          })
-        }
-        assignmentMap.get(key).students.push({ studentPersonalCode: item.studentPersonalCode, grade: item.grade })
-      }
-
-      for (const assignmentDiff of assignmentLevelDifferences) {
-        const key = `${assignmentDiff.journalId}::${assignmentDiff.assignmentId}`
-        if (!assignmentMap.has(key)) {
-          assignmentMap.set(key, {
-            journalId: assignmentDiff.journalId,
-            assignmentId: assignmentDiff.assignmentId,
-            students: [],
-            assignmentLevelOnly: true
-          })
-          Logger.debug(`📋 Added assignment-level only batch: ${assignmentDiff.journalId}/${assignmentDiff.assignmentId}`)
-        }
-
-        const batch = assignmentMap.get(key)
-        for (const { field, value } of assignmentDiff.changes) {
-          batch[field.batchKey] = value
-        }
-      }
-
-      const batches = Array.from(assignmentMap.values())
+      const batches = collectedBatches
       feature.updateProgressUI(0, batches.length)
 
       for (let bi = 0; bi < batches.length; bi++) {
