@@ -104,16 +104,6 @@ export { getTahvelSubjectsWithAssignmentsAndGrades, computePayloadHash, fetchCac
 getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
 
 class JournalListSyncFeature extends BaseFeature {
-  /**
-   * Resolve a journal link element and extract journal ID from it.
-   * Accepts anchor elements, elements inside anchors (like span.linked-name),
-   * or elements with data attributes containing the ID.
-   * @param {Element} el - Element matched by selector
-   * @returns {Object|null} { href, id } or null if not resolvable
-   */
-  // Alias kept for legacy underscore-prefixed callers in test/main convention.
-  _resolveJournalFromElement(el) { return resolveJournalFromElement(el) }
-
   resolveJournalFromElement(el) { return resolveJournalFromElement(el) }
   /**
    * Extract assignment entry date differences from Kriit response

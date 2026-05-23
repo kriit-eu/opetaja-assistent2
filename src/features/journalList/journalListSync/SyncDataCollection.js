@@ -28,7 +28,7 @@ function normalizeGrade(grade) {
   return normalized
 }
 
-export function collectGradeSyncData(differences) {
+function collectGradeSyncData(differences) {
   const syncData = []
   if (Logger.isDebugMode()) {
     Logger.debug('=== COLLECTING SYNC DATA ===')
@@ -133,7 +133,7 @@ export function collectGradeSyncData(differences) {
   return syncData
 }
 
-export function collectAssignmentLevelDifferences(differences) {
+function collectAssignmentLevelDifferences(differences) {
   const assignmentLevelFields = getAssignmentLevelSyncFields()
   const assignmentLevelDifferences = []
 
@@ -160,7 +160,7 @@ export function collectAssignmentLevelDifferences(differences) {
   return assignmentLevelDifferences
 }
 
-export function buildSyncBatches(syncData, assignmentLevelDifferences) {
+function buildSyncBatches(syncData, assignmentLevelDifferences) {
   const assignmentMap = new Map()
 
   for (const item of syncData) {

@@ -15,8 +15,8 @@ import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { ApiService } from '../../../services/ApiService.js'
 
-export const ONE_DAY_MS = 24 * 60 * 60 * 1000
-export const ONE_WEEK_MS = 7 * ONE_DAY_MS
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const ONE_WEEK_MS = 7 * ONE_DAY_MS
 export const TWO_WEEKS_MS = 2 * ONE_WEEK_MS
 
 export const globalModuleTeacherCache = {}
