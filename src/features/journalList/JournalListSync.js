@@ -92,7 +92,7 @@ import {
 } from './journalListSync/studentDataPipeline.js'
 import { proceedWithKriitApiCall } from './journalListSync/kriitClient.js'
 import { collectJournalData } from './journalListSync/journalDataCollector.js'
-import { syncWithKriit, syncGradeToTahvel } from './journalListSync/gradeSyncEngine.js'
+import { syncWithKriit } from './journalListSync/gradeSyncEngine.js'
 import { fetchJournalData } from './journalListSync/fetchOrchestrator.js'
 
 // Re-exported to preserve the existing public import paths used by other
@@ -456,7 +456,6 @@ class JournalListSyncFeature extends BaseFeature {
   buildSyncFailureMessage(failedSyncs, successfulCount) { return buildSyncFailureMessage(failedSyncs, successfulCount) }
 
   async syncWithKriit() { return syncWithKriit(this) }
-  async syncGradeToTahvel(journalId, assignmentId, studentPersonalCode, grade) { return syncGradeToTahvel(this, journalId, assignmentId, studentPersonalCode, grade) }
 
   /**
    * Get student from cache using multiple lookup strategies
