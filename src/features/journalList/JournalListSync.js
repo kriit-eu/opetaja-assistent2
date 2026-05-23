@@ -55,6 +55,10 @@ import {
   getApiErrorStatus,
   buildSyncFailureMessage
 } from './journalListSync/assignmentLevelSync.js'
+import { computePayloadHash } from './journalListSync/payloadHash.js'
+
+// Re-exported so the existing test import path keeps working.
+export { computePayloadHash }
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -4667,32 +4671,6 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
   } catch (error) {
     Logger.error('Error in getTahvelSubjectsWithAssignmentsAndGrades:', error)
     throw error
-  }
-}
-
-/**
- * Compute a stable hash for a JSON payload. Uses SubtleCrypto SHA-1 when available.
- * Falls back to a simple checksum when crypto is not available.
- * @param {any} payload
- * @returns {Promise<string>} hex hash
- */
-export async function computePayloadHash(payload) {
-  try {
-    const text = JSON.stringify(payload)
-    if (window && window.crypto && window.crypto.subtle && window.TextEncoder) {
-      const encoder = new TextEncoder()
-      const data = encoder.encode(text)
-      const hashBuffer = await window.crypto.subtle.digest('SHA-1', data)
-      const hashArray = Array.from(new Uint8Array(hashBuffer))
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-    }
-    // Fallback simple checksum
-    let sum = 0
-    for (let i = 0; i < text.length; i++) sum = (sum + text.charCodeAt(i)) % 0xffffffff
-    return `fallback-${sum}`
-  } catch (error) {
-    Logger.warning('computePayloadHash failed:', error.message)
-    return 'hash-failed'
   }
 }
 
