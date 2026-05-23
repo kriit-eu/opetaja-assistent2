@@ -5143,7 +5143,7 @@ const pendingTeacherRequests = new Map()
  * @param {number} expiration - Cache expiration time in milliseconds
  * @returns {Promise<any>} The fetched data
  */
-async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
+export async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
   // Create a cache key from the endpoint
   const cacheKey = `${encodeURIComponent(endpoint.replace(/^\//, ''))}`
 
@@ -5179,7 +5179,7 @@ async function fetchCachedData(api, endpoint, expiration = ONE_DAY_MS) {
  * @param {Object} teacher - Teacher object with id, nameEt, fullname
  * @returns {Promise<Object>} Teacher data with personalCode, name, id
  */
-async function getTeacherPersonalCodeCached(api, teacher) {
+export async function getTeacherPersonalCodeCached(api, teacher) {
   const teacherId = teacher.id
   const teacherName = teacher.nameEt || teacher.fullname || ''
 
@@ -5470,7 +5470,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
  * @param {any} payload
  * @returns {Promise<string>} hex hash
  */
-async function computePayloadHash(payload) {
+export async function computePayloadHash(payload) {
   try {
     const text = JSON.stringify(payload)
     if (window && window.crypto && window.crypto.subtle && window.TextEncoder) {
