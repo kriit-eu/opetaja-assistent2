@@ -95,6 +95,11 @@ import {
   setupStudyYearMonitoring,
   waitForTableUpdate
 } from './journalListSync/studyYearMonitor.js'
+import {
+  setKriitApiToken,
+  resetKriitApiToken,
+  clearCache
+} from './journalListSync/tokenAndCache.js'
 
 // Re-exported to preserve the existing public import path.
 export { getTahvelSubjectsWithAssignmentsAndGrades }
@@ -907,87 +912,9 @@ class JournalListSyncFeature extends BaseFeature {
   showDifferencesBanner() { return showDifferencesBanner(this) }
   removeSyncBanner() { return removeSyncBanner() }
 
-  /**
-   * Set Kriit API token and save to chrome.storage
-   * @param {string} token - API token
-   */
-  setKriitApiToken(token) {
-    if (!token) {
-      Logger.error('Invalid token provided')
-      return
-    }
-
-    // Save token to chrome.storage.local
-    chrome.storage.local.set({ OA_kriitApiToken: token }, () => {
-      // Update API service
-      this.api.kriit.setAuthToken(token)
-
-      Logger.debug('Kriit API token updated')
-
-      // Refresh data
-      this.fetchJournalData()
-    })
-  }
-
-  /**
-   * Reset Kriit API token and prompt for a new one
-   */
-  resetKriitApiToken() {
-    // Remove current token
-    chrome.storage.local.remove(['OA_kriitApiToken'], () => {
-      // Prompt user for a new token
-      const newToken = prompt('Please enter your Kriit API token:', '')
-
-      if (newToken) {
-        // Set the new token
-        this.setKriitApiToken(newToken)
-        Logger.debug('New Kriit API token set')
-      } else {
-        // User cancelled or provided empty token
-        this.error = 'No token provided. Please set a valid Kriit API token.'
-        this.updateUI()
-      }
-    })
-  }
-
-  /**
-   * Clear all cache data
-   * @returns {Promise<Object>} Number of cache entries cleared
-   */
-  async clearCache() {
-    // Clear the teacher runtime cache
-    const teacherRuntimeCacheSize = Object.keys(this.globalTeacherCache).length
-
-    this.globalTeacherCache = {}
-
-    // Clear the module-level teacher cache too
-    const moduleTeacherCacheSize = Object.keys(globalModuleTeacherCache).length
-    Object.keys(globalModuleTeacherCache).forEach(key => {
-      delete globalModuleTeacherCache[key]
-    })
-
-    // Clear pending teacher requests
-    pendingTeacherRequests.clear()
-
-    // Clear all caches using the CacheService
-    const cacheCount = await cacheService.clearCache()
-
-    const totalCleared = teacherRuntimeCacheSize + moduleTeacherCacheSize + cacheCount
-
-    Logger.debug(`Cleared ${totalCleared} total cache entries:`)
-    Logger.debug(`- Cache service: ${cacheCount} entries`)
-    Logger.debug(`- Teacher runtime cache: ${teacherRuntimeCacheSize} entries`)
-    Logger.debug(`- Module teacher cache: ${moduleTeacherCacheSize} entries`)
-
-    return {
-      total: totalCleared,
-      api: cacheCount,
-      feature: 0, // No longer separately tracked as we use CacheService for everything
-      runtime: teacherRuntimeCacheSize + moduleTeacherCacheSize,
-      students: 0, // Students now handled by CacheService
-      teachers: teacherRuntimeCacheSize + moduleTeacherCacheSize
-    }
-  }
+  setKriitApiToken(token) { return setKriitApiToken(this, token) }
+  resetKriitApiToken() { return resetKriitApiToken(this) }
+  async clearCache() { return clearCache(this) }
 
   /**
    * Proceed with the actual Kriit API call
