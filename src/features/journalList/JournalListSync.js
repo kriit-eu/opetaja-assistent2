@@ -13,17 +13,10 @@
 import { BaseFeature } from '../../core/BaseFeature.js'
 import Logger from '../../services/Logger.js'
 import { styleService } from '../../services/StyleService.js'
-import { cacheService } from '../../services/CacheService.js'
-import { ApiService } from '../../services/ApiService.js'
-import { buildDiffSummary } from '../../lib/kriitSyncCheck.js'
 import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
 import { bannerService } from '../../services/BannerService.js'
-import { differenceRenderer, journalSyncBannerService } from './JournalSyncBanner.js'
-
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
-import { notifyKriitGradesSynced, buildGradesForNotification } from './KriitSyncNotifier.js'
-import { getSchoolId } from '../../lib/schoolId.js'
-import { resolveLessonPlanDate, resolveStudyYearIdFromText } from '../../lib/studyYear.js'
+
 import { resolveJournalFromElement } from './journalListSync/journalLinkResolver.js'
 import {
   extractEntryDateDifferences,
@@ -56,15 +49,7 @@ import {
   buildSyncFailureMessage
 } from './journalListSync/assignmentLevelSync.js'
 import { computePayloadHash } from './journalListSync/payloadHash.js'
-import {
-  ONE_DAY_MS,
-  ONE_WEEK_MS,
-  TWO_WEEKS_MS,
-  globalModuleTeacherCache,
-  pendingTeacherRequests,
-  fetchCachedData,
-  getTeacherPersonalCodeCached
-} from './journalListSync/teacherCache.js'
+import { fetchCachedData, getTeacherPersonalCodeCached } from './journalListSync/teacherCache.js'
 import {
   getJournalInfo,
   getJournalEntries,
@@ -110,15 +95,13 @@ import { collectJournalData } from './journalListSync/journalDataCollector.js'
 import { syncWithKriit, syncGradeToTahvel } from './journalListSync/gradeSyncEngine.js'
 import { fetchJournalData } from './journalListSync/fetchOrchestrator.js'
 
-// Re-exported to preserve the existing public import path.
-export { getTahvelSubjectsWithAssignmentsAndGrades }
+// Re-exported to preserve the existing public import paths used by other
+// features and by JournalListSync.test.js / JournalListSync.moduleHelpers.test.js.
+export { getTahvelSubjectsWithAssignmentsAndGrades, computePayloadHash, fetchCachedData, getTeacherPersonalCodeCached }
 
 // Test-only hook: expose fetchCachedData on the aggregator function so
 // existing tests can replace it without re-importing internals.
 getTahvelSubjectsWithAssignmentsAndGrades.__fetchCachedData = fetchCachedData
-
-// Re-exported so the existing test import path keeps working.
-export { computePayloadHash, fetchCachedData, getTeacherPersonalCodeCached }
 
 class JournalListSyncFeature extends BaseFeature {
   /**
