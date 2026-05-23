@@ -108,6 +108,7 @@ import {
 import { proceedWithKriitApiCall } from './journalListSync/kriitClient.js'
 import { collectJournalData } from './journalListSync/journalDataCollector.js'
 import { syncWithKriit, syncGradeToTahvel } from './journalListSync/gradeSyncEngine.js'
+import { fetchJournalData } from './journalListSync/fetchOrchestrator.js'
 
 // Re-exported to preserve the existing public import path.
 export { getTahvelSubjectsWithAssignmentsAndGrades }
@@ -350,85 +351,7 @@ class JournalListSyncFeature extends BaseFeature {
     this.updateUI()
   }
 
-  /**
-   * Fetch journal data from Tahvel and check for differences with Kriit
-   */
-  async fetchJournalData() {
-    try {
-      if (Logger.isDebugMode()) Logger.debug('[DEBUG] fetchJournalData called')
-      this.isLoading = true
-      this.updateUI()
-
-      // Always fetch the journal list from Tahvel REST API (most reliable method)
-      const apiJournalList = await this.fetchJournalsFromApi()
-      if (Logger.isDebugMode()) Logger.debug(`Fetched ${apiJournalList ? apiJournalList.length : 0} journals from Tahvel API`)
-
-      if (!apiJournalList || apiJournalList.length === 0) {
-        Logger.warning('No journals returned from API')
-        this.isLoading = false
-        this.differences = []
-        this.error = 'Could not fetch journal list from Tahvel API'
-        this.updateUI()
-        return
-      }
-
-      Logger.debug('Using API-provided journal list for data collection')
-      // Map API items into a minimal structure for collectJournalData
-      const mapped = apiJournalList.map(item => ({
-        __apiJournal: true,
-        id: item.id,
-        nameEt: item.nameEt || item.name || item.nameEt,
-        studentCount: item.studentCount || 0,
-        canEdit: item.canEdit
-      }))
-
-      // Collect data using API-provided journal ids
-      const journalData = await this.collectJournalData(mapped)
-
-      // Validate data before sending
-      if (!journalData || !Array.isArray(journalData) || journalData.length === 0) {
-        Logger.warning('No journal data to send to Kriit')
-        this.isLoading = false
-        this.differences = []
-        this.updateUI()
-        return
-      }
-
-      // Send data to Kriit immediately
-      this.isLoading = true
-      this.error = null
-      this.differences = []
-      await this.proceedWithKriitApiCall(journalData)
-
-      // Automatically sync outcome entries (SISSEKANNE_O) to Kriit
-      // Pass accessible journal IDs so OutComes only fetches journals we can access
-      const accessibleJournalIds = new Set(journalData.map(j => j.subjectExternalId).filter(Boolean))
-      await this.sendOutcomeEntriesToKriit(accessibleJournalIds)
-    } catch (error) {
-      Logger.error('Error fetching journal data:', error)
-      this.isLoading = false
-
-      // Provide more specific error messages based on the error
-      if (!this.journalLinks || this.journalLinks.length === 0) {
-        this.error = 'No journal links found on the page. Please make sure you are on the journal list page.'
-      } else if (error.message && error.message.includes('404')) {
-        this.error = 'API endpoint not found (404). Please check if you are on the correct page.'
-      } else if (error.message && error.message.includes('403')) {
-        this.error = 'Authentication error (403). Please check your Kriit API token.'
-      } else if (error.message && error.message.includes('undefined')) {
-        this.error = 'Data processing error: ' + error.message + '. This may be due to missing student group data.'
-      } else {
-        this.error = error.message || 'Failed to fetch data'
-      }
-
-      Logger.debug('Setting error message:', this.error)
-
-      // Reset differences to empty array
-      this.differences = []
-
-      this.updateUI()
-    }
-  }
+  async fetchJournalData() { return fetchJournalData(this) }
 
   async collectJournalData(apiList = null) { return collectJournalData(this, apiList) }
 
