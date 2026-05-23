@@ -39,6 +39,22 @@ import {
   getAddInfoFromExistingStudents,
   getAssignmentNameFromEntry
 } from './journalListSync/assignmentMapper.js'
+import {
+  getAssignmentLevelSyncFields,
+  getAssignmentLevelChangeValue,
+  getAssignmentLevelChanges,
+  getAssignmentLevelBatchChanges,
+  updateAssignmentLevelSyncStatuses,
+  applyAssignmentLevelChangesToDifference,
+  getAssignmentLevelFailureTypes,
+  getSyncFailureTypes,
+  getSyncTypeNames,
+  countSuccessfulSyncChanges,
+  buildAssignmentLevelUpdatePayload,
+  normalizeTahvelDueDate,
+  getApiErrorStatus,
+  buildSyncFailureMessage
+} from './journalListSync/assignmentLevelSync.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -2521,175 +2537,20 @@ class JournalListSyncFeature extends BaseFeature {
    */
   getAssignmentNameFromEntry(entry) { return getAssignmentNameFromEntry(entry) }
 
-  /**
-   * Sync data with Kriit
-   */
-
-  getAssignmentLevelSyncFields() {
-    return [
-      { batchKey: 'nameEt', diffKey: 'assignmentName', statusType: 'name', successLabel: 'ülesande nimetust', failureLabel: 'nimetus' },
-      { batchKey: 'homeworkDuedate', diffKey: 'assignmentDueAt', statusType: 'duedate', successLabel: 'tähtaega', failureLabel: 'tähtaeg' },
-      {
-        batchKey: 'entryDate',
-        diffKey: 'assignmentEntryDate',
-        statusType: 'entrydate',
-        successLabel: 'sissekande kuupäeva',
-        failureLabel: 'sissekande kuupäev'
-      },
-      { batchKey: 'entryType', diffKey: 'entryType', statusType: 'entrytype', successLabel: 'sissekande tüüpi', failureLabel: 'sissekande tüüp' },
-      {
-        batchKey: 'lessons',
-        diffKey: 'assignmentHours',
-        statusType: 'hours',
-        successLabel: 'ülesande tundide arvu',
-        failureLabel: 'tundide arv',
-        scalar: true
-      }
-    ]
-  }
-
-  getAssignmentLevelChangeValue(assignment, field) {
-    if (field.scalar) {
-      const value = assignment[field.diffKey]
-      return value === undefined || value === null ? undefined : value
-    }
-
-    const diff = assignment[field.diffKey]
-    if (!diff || typeof diff !== 'object' || !diff.kriit || diff.kriit === diff.Tahvel) return undefined
-    return diff.kriit
-  }
-
-  getAssignmentLevelChanges(assignment, fields = this.getAssignmentLevelSyncFields()) {
-    return fields
-      .map(field => ({ field, value: this.getAssignmentLevelChangeValue(assignment, field) }))
-      .filter(change => change.value !== undefined)
-  }
-
-  getAssignmentLevelBatchChanges(batch, fields = this.getAssignmentLevelSyncFields()) {
-    return fields.map(field => ({ field, value: batch[field.batchKey] })).filter(change => change.value !== undefined && change.value !== null)
-  }
-
-  updateAssignmentLevelSyncStatuses(journalSyncBannerService, batch, isSynced) {
-    for (const { field } of this.getAssignmentLevelBatchChanges(batch)) {
-      journalSyncBannerService.updateItemSyncStatus(batch.journalId, batch.assignmentId, field.statusType, isSynced)
-    }
-  }
-
-  applyAssignmentLevelChangesToDifference(assignmentObj, batch) {
-    for (const { field, value } of this.getAssignmentLevelBatchChanges(batch)) {
-      if (field.scalar) {
-        delete assignmentObj[field.diffKey]
-        continue
-      }
-
-      assignmentObj[field.diffKey] = assignmentObj[field.diffKey] || {}
-      assignmentObj[field.diffKey].Tahvel = value
-    }
-  }
-
-  getAssignmentLevelFailureTypes(batch) {
-    const types = this.getAssignmentLevelBatchChanges(batch).map(({ field }) => field.statusType)
-    return types.length > 0 ? types : ['assignment']
-  }
-
-  getSyncFailureTypes(batch, hasStudentUpdates) {
-    const types = this.getAssignmentLevelFailureTypes(batch)
-    if (hasStudentUpdates && !types.includes('grade')) types.push('grade')
-    return types
-  }
-
-  getSyncTypeNames() {
-    return {
-      ...Object.fromEntries(this.getAssignmentLevelSyncFields().map(field => [field.statusType, field.failureLabel])),
-      assignment: 'muudatus',
-      grade: 'hinne'
-    }
-  }
-
-  countSuccessfulSyncChanges(successfulSyncs, batches) {
-    const successfulKeys = new Set(successfulSyncs.map(sync => `${sync.journalId}::${sync.assignmentId}`))
-    const gradeCount = successfulSyncs.reduce((count, sync) => count + (sync.updated || 0), 0)
-    const assignmentLevelCount = batches.reduce((count, batch) => successfulKeys.has(`${batch.journalId}::${batch.assignmentId}`) ? count + this.getAssignmentLevelBatchChanges(batch).length : count, 0)
-
-    return gradeCount + assignmentLevelCount
-  }
-
-  /**
-   * Build a Tahvel journal entry update payload for assignment-level changes only.
-   * Tahvel requires journalEntryStudents to be present on PUT; omitting it returns
-   * 500, while [] preserves existing rows and avoids resubmitting stale student rows.
-   * @param {Object} entryData Current journal entry data from Tahvel
-   * @param {Object} updates Assignment-level fields to overwrite
-   * @returns {Object} Payload for PUT /journals/:journalId/journalEntry/:assignmentId
-   */
-  buildAssignmentLevelUpdatePayload(entryData, updates = {}) {
-    const payload = {
-      ...entryData,
-      ...updates,
-      journalEntryStudents: []
-    }
-
-    if (Array.isArray(payload.journalEntryTeachers)) {
-      payload.journalEntryTeachers = payload.journalEntryTeachers.map(id => String(id))
-    }
-
-    return payload
-  }
-
-  /**
-   * Normalize a Tahvel due date value to the datetime shape used by journal entry PUTs.
-   * @param {string|null|undefined} dueDate Due date from Kriit or Tahvel entry data
-   * @returns {string|null|undefined} Normalized due date
-   */
-  normalizeTahvelDueDate(dueDate) {
-    const due = dueDate
-    if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(due)) {
-      return `${due}T23:59:59.000Z`
-    }
-    if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(due)) {
-      return `${due}.000Z`
-    }
-    if (typeof due === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+$/.test(due)) {
-      return `${due}Z`
-    }
-    return due
-  }
-
-  /**
-   * Extract HTTP status from ApiService errors.
-   * @param {Error} error Error thrown by ApiService
-   * @returns {number|null} HTTP status or null
-   */
-  getApiErrorStatus(error) {
-    return error?.status || Number(error?.message?.match(/API Error:\s*(\d+)/)?.[1]) || null
-  }
-
-  /**
-   * Build a user-facing sync failure message without student identifiers.
-   * @param {Array<Object>} failedSyncs Failed sync items
-   * @param {number} successfulCount Number of successful sync items
-   * @returns {string} Error message
-   */
-  buildSyncFailureMessage(failedSyncs, successfulCount = 0) {
-    const count = Array.isArray(failedSyncs) ? failedSyncs.length : 0
-    const labels = (failedSyncs || [])
-      .map(failure => {
-        const assignmentName = failure.assignmentName || (failure.assignmentId ? `ülesanne ${failure.assignmentId}` : 'tundmatu ülesanne')
-        const typeNames = this.getSyncTypeNames()
-        const failureTypes = Array.isArray(failure.types) && failure.types.length > 0 ? failure.types : [failure.type]
-        const typeName = failureTypes.map(type => typeNames[type] || 'muudatus').join(', ')
-        const status = failure.status ? `, HTTP ${failure.status}` : ''
-        return `${assignmentName} (${typeName}${status})`
-      })
-      .join('; ')
-
-    let message = `Sünkroniseerimine ebaõnnestus ${count} muudatuse puhul${labels ? `: ${labels}` : ''}.`
-    if (successfulCount > 0) message = `Sünkroniseerimine osaliselt õnnestus: ${successfulCount} õnnestus, ${count} ebaõnnestus${labels ? `. ${labels}.` : '.'}`
-    if ((failedSyncs || []).some(failure => failure.status === 412 || String(failure.error || '').includes('412'))) {
-      message += ' Tahvel lükkas vähemalt ühe päeviku sissekande uuenduse tagasi (412 Precondition Failed). Värskenda andmeid ja proovi uuesti.'
-    }
-    return message
-  }
+  getAssignmentLevelSyncFields() { return getAssignmentLevelSyncFields() }
+  getAssignmentLevelChangeValue(assignment, field) { return getAssignmentLevelChangeValue(assignment, field) }
+  getAssignmentLevelChanges(assignment, fields) { return getAssignmentLevelChanges(assignment, fields) }
+  getAssignmentLevelBatchChanges(batch, fields) { return getAssignmentLevelBatchChanges(batch, fields) }
+  updateAssignmentLevelSyncStatuses(service, batch, isSynced) { return updateAssignmentLevelSyncStatuses(service, batch, isSynced) }
+  applyAssignmentLevelChangesToDifference(assignmentObj, batch) { return applyAssignmentLevelChangesToDifference(assignmentObj, batch) }
+  getAssignmentLevelFailureTypes(batch) { return getAssignmentLevelFailureTypes(batch) }
+  getSyncFailureTypes(batch, hasStudentUpdates) { return getSyncFailureTypes(batch, hasStudentUpdates) }
+  getSyncTypeNames() { return getSyncTypeNames() }
+  countSuccessfulSyncChanges(successfulSyncs, batches) { return countSuccessfulSyncChanges(successfulSyncs, batches) }
+  buildAssignmentLevelUpdatePayload(entryData, updates) { return buildAssignmentLevelUpdatePayload(entryData, updates) }
+  normalizeTahvelDueDate(dueDate) { return normalizeTahvelDueDate(dueDate) }
+  getApiErrorStatus(error) { return getApiErrorStatus(error) }
+  buildSyncFailureMessage(failedSyncs, successfulCount) { return buildSyncFailureMessage(failedSyncs, successfulCount) }
 
   async syncWithKriit() {
     // Debug: Log all journal students and their personal codes before syncing
