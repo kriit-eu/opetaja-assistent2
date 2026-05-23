@@ -30,7 +30,7 @@ export async function loadFeatures() {
   if (kriitEnabled) {
     // Import Kriit-dependent features only when Kriit is enabled
     try {
-      const { journalListSync } = await import('../features/journalList/JournalListSync.js')
+      const { journalListSync } = await import('../features/journalList/journalListSync/JournalListSync.js')
       allAvailableFeatures.journalList.push(journalListSync)
       Logger.debug('Feature "journalListSync" created')
     } catch (error) {

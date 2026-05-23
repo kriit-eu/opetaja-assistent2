@@ -36,7 +36,7 @@ describe('JournalListSync lesson dates', () => {
     }
 
     // Get fresh reference to journalListSync and reset its state
-    const module = await import('../../../src/features/journalList/JournalListSync.js')
+    const module = await import('../../../src/features/journalList/journalListSync/JournalListSync.js')
     journalListSync = module.journalListSync
     // Reset the api to ensure clean state
     journalListSync.api = null

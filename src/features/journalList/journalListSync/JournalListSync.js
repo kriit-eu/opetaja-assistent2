@@ -10,14 +10,14 @@
  * Displays a banner on journal list page showing differences that need to be synced
  */
 
-import { BaseFeature } from '../../core/BaseFeature.js'
-import Logger from '../../services/Logger.js'
-import { styleService } from '../../services/StyleService.js'
-import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
-import { bannerService } from '../../services/BannerService.js'
-import { sendOutcomeEntriesToKriit } from './OutComes.js'
+import { BaseFeature } from '../../../core/BaseFeature.js'
+import Logger from '../../../services/Logger.js'
+import { styleService } from '../../../services/StyleService.js'
+import { setupKriitMessageListener } from '../../../services/MessageListenerService.js'
+import { bannerService } from '../../../services/BannerService.js'
+import { sendOutcomeEntriesToKriit } from '../OutComes.js'
 
-import { resolveJournalFromElement } from './journalListSync/JournalLinkResolver.js'
+import { resolveJournalFromElement } from './JournalLinkResolver.js'
 import {
   extractEntryDateDifferences,
   extractAssignmentNameDifferences,
@@ -25,13 +25,13 @@ import {
   extractAssignmentHoursDifferences,
   extractEntryTypeDifferences,
   countTotalDifferences
-} from './journalListSync/DifferenceExtractors.js'
+} from './DifferenceExtractors.js'
 import {
   createStudentMap,
   extractAssignmentsFromEntries,
   getAddInfoFromExistingStudents,
   getAssignmentNameFromEntry
-} from './journalListSync/AssignmentMapper.js'
+} from './AssignmentMapper.js'
 import {
   getAssignmentLevelSyncFields,
   getAssignmentLevelChangeValue,
@@ -47,9 +47,9 @@ import {
   normalizeTahvelDueDate,
   getApiErrorStatus,
   buildSyncFailureMessage
-} from './journalListSync/AssignmentLevelSync.js'
-import { computePayloadHash } from './journalListSync/PayloadHash.js'
-import { fetchCachedData, getTeacherPersonalCodeCached } from './journalListSync/TeacherCache.js'
+} from './AssignmentLevelSync.js'
+import { computePayloadHash } from './PayloadHash.js'
+import { fetchCachedData, getTeacherPersonalCodeCached } from './TeacherCache.js'
 import {
   getJournalInfo,
   getJournalEntries,
@@ -62,8 +62,8 @@ import {
   getLastLessonFromPlan,
   getLessonDates,
   fetchJournalsFromApi
-} from './journalListSync/TahvelDataFetchers.js'
-import { getTahvelSubjectsWithAssignmentsAndGrades } from './journalListSync/TahvelSubjectsAggregator.js'
+} from './TahvelDataFetchers.js'
+import { getTahvelSubjectsWithAssignmentsAndGrades } from './TahvelSubjectsAggregator.js'
 import {
   updateUI,
   updateProgressUI,
@@ -73,27 +73,27 @@ import {
   showAllInSyncBanner,
   showDifferencesBanner,
   removeSyncBanner
-} from './journalListSync/SyncBannerUI.js'
+} from './SyncBannerUI.js'
 import {
   getSelectedStudyYear,
   getStudyYearIdFromText,
   setupStudyYearMonitoring,
   waitForTableUpdate
-} from './journalListSync/StudyYearMonitor.js'
+} from './StudyYearMonitor.js'
 import {
   setKriitApiToken,
   resetKriitApiToken,
   clearCache
-} from './journalListSync/TokenAndCache.js'
+} from './TokenAndCache.js'
 import {
   processStudentData,
   getDetailedStudentInfo,
   getCachedStudent
-} from './journalListSync/StudentDataPipeline.js'
-import { proceedWithKriitApiCall } from './journalListSync/KriitClient.js'
-import { collectJournalData } from './journalListSync/JournalDataCollector.js'
-import { syncWithKriit } from './journalListSync/GradeSyncEngine.js'
-import { fetchJournalData } from './journalListSync/FetchOrchestrator.js'
+} from './StudentDataPipeline.js'
+import { proceedWithKriitApiCall } from './KriitClient.js'
+import { collectJournalData } from './JournalDataCollector.js'
+import { syncWithKriit } from './GradeSyncEngine.js'
+import { fetchJournalData } from './FetchOrchestrator.js'
 
 // Re-exported to preserve the existing public import paths used by other
 // features and by JournalListSync.test.js / JournalListSync.moduleHelpers.test.js.

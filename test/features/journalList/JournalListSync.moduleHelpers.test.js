@@ -16,7 +16,7 @@ import {
   fetchCachedData,
   getTeacherPersonalCodeCached,
   computePayloadHash
-} from '../../../src/features/journalList/JournalListSync.js'
+} from '../../../src/features/journalList/journalListSync/JournalListSync.js'
 import { cacheService } from '../../../src/services/CacheService.js'
 import { restoreChromeMock } from '../../setup.js'
 

@@ -1,5 +1,5 @@
 import { describe, test, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { getTahvelSubjectsWithAssignmentsAndGrades, journalListSync } from '../../../src/features/journalList/JournalListSync'
+import { getTahvelSubjectsWithAssignmentsAndGrades, journalListSync } from '../../../src/features/journalList/journalListSync/JournalListSync.js'
 import { notifyKriitGradesSynced, buildGradesForNotification } from '../../../src/features/journalList/KriitSyncNotifier.js'
 import { JSDOM } from 'jsdom'
 import { restoreChromeMock, restoreGlobalDOM } from '../../setup.js'
