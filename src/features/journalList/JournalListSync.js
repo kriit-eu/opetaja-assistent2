@@ -25,6 +25,14 @@ import { notifyKriitGradesSynced, buildGradesForNotification } from './KriitSync
 import { getSchoolId } from '../../lib/schoolId.js'
 import { resolveLessonPlanDate, resolveStudyYearIdFromText } from '../../lib/studyYear.js'
 import { resolveJournalFromElement } from './journalListSync/journalLinkResolver.js'
+import {
+  extractEntryDateDifferences,
+  extractAssignmentNameDifferences,
+  extractDueDateDifferences,
+  extractAssignmentHoursDifferences,
+  extractEntryTypeDifferences,
+  countTotalDifferences
+} from './journalListSync/differenceExtractors.js'
 
 class JournalListSyncFeature extends BaseFeature {
   /**
@@ -41,183 +49,15 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Extract assignment entry date differences from Kriit response
    */
-  extractEntryDateDifferences() {
-    Logger.debug('✨ [extractEntryDateDifferences] Called')
-    const entryDateDiffs = []
-    if (!this.differences || !Array.isArray(this.differences)) {
-      return entryDateDiffs
-    }
+  extractEntryDateDifferences() { return extractEntryDateDifferences(this.differences) }
 
-    this.differences.forEach(subjectDiff => {
-      if (!Array.isArray(subjectDiff.assignments)) return
-      subjectDiff.assignments.forEach(assignment => {
-        if (assignment.assignmentEntryDate && typeof assignment.assignmentEntryDate === 'object') {
-          const kriitEntryDate = assignment.assignmentEntryDate.kriit
-          const tahvelEntryDate = assignment.assignmentEntryDate.Tahvel
-          if (kriitEntryDate !== tahvelEntryDate && !(kriitEntryDate == null && tahvelEntryDate == null)) {
-            let assignmentName = assignment.assignmentName
-            if (assignmentName && typeof assignmentName === 'object') {
-              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
-            }
-            entryDateDiffs.push({
-              assignmentExternalId: assignment.assignmentExternalId,
-              assignmentName,
-              kriit: kriitEntryDate,
-              Tahvel: tahvelEntryDate,
-              subjectName: subjectDiff.subjectName || '',
-              subjectExternalId: subjectDiff.subjectExternalId || ''
-            })
-          }
-        }
-      })
-    })
+  extractAssignmentNameDifferences() { return extractAssignmentNameDifferences(this.differences) }
 
-    return entryDateDiffs
-  }
-  /**
-   * Extract assignment name differences from Kriit response
-   */
-  extractAssignmentNameDifferences() {
-    Logger.debug('✨ [extractAssignmentNameDifferences] Called')
-    const groupedDiffs = []
-    if (!this.differences || !Array.isArray(this.differences)) {
-      Logger.debug('✨ [extractAssignmentNameDifferences] No differences array found.')
-      return groupedDiffs
-    }
-    this.differences.forEach(subject => {
-      if (subject && Array.isArray(subject.assignments)) {
-        const nameDiffs = subject.assignments
-          .filter(a => {
-            if (a.assignmentName && typeof a.assignmentName === 'object') {
-              // Only show difference if both are present and different
-              return a.assignmentName.kriit && a.assignmentName.Tahvel && a.assignmentName.kriit !== a.assignmentName.Tahvel
-            }
-            return false
-          })
-          .map(a => ({
-            kriit: a.assignmentName.kriit,
-            Tahvel: a.assignmentName.Tahvel,
-            assignmentExternalId: a.assignmentExternalId
-          }))
-        if (nameDiffs.length > 0) {
-          groupedDiffs.push({
-            subjectName: subject.subjectName,
-            subjectExternalId: subject.subjectExternalId,
-            nameDiffs
-          })
-        }
-      }
-    })
-    Logger.debug(`✨ [extractAssignmentNameDifferences] Total subjects with differences: ${groupedDiffs.length}`)
-    return groupedDiffs
-  }
+  extractDueDateDifferences() { return extractDueDateDifferences(this.differences) }
 
-  extractDueDateDifferences() {
-    const dueDateDiffs = []
-    if (!this.differences || !Array.isArray(this.differences)) {
-      return dueDateDiffs
-    }
-    this.differences.forEach(subjectDiff => {
-      if (!Array.isArray(subjectDiff.assignments)) return
-      subjectDiff.assignments.forEach(assignment => {
-        if (assignment.assignmentDueAt && typeof assignment.assignmentDueAt === 'object') {
-          const kriitDue = assignment.assignmentDueAt.kriit
-          const tahvelDue = assignment.assignmentDueAt.Tahvel
-          if (kriitDue !== tahvelDue && !(kriitDue == null && tahvelDue == null)) {
-            let assignmentName = assignment.assignmentName
-            if (assignmentName && typeof assignmentName === 'object') {
-              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
-            }
-            dueDateDiffs.push({
-              assignmentExternalId: assignment.assignmentExternalId,
-              assignmentName,
-              kriit: kriitDue,
-              Tahvel: tahvelDue,
-              subjectName: subjectDiff.subjectName || '',
-              subjectExternalId: subjectDiff.subjectExternalId || ''
-            })
-          }
-        }
-      })
-    })
-    return dueDateDiffs
-  }
+  extractAssignmentHoursDifferences() { return extractAssignmentHoursDifferences(this.differences) }
 
-  /**
-   * Extract assignment hours differences from Kriit response
-   */
-  extractAssignmentHoursDifferences() {
-    const hoursDiffs = []
-    if (!this.differences || !Array.isArray(this.differences)) {
-      return hoursDiffs
-    }
-    this.differences.forEach(subjectDiff => {
-      if (!Array.isArray(subjectDiff.assignments)) return
-      subjectDiff.assignments.forEach(assignment => {
-        if (typeof assignment.assignmentHours !== 'undefined' && assignment.assignmentHours !== null) {
-          let assignmentName = assignment.assignmentName
-          if (assignmentName && typeof assignmentName === 'object') {
-            assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
-          }
-          hoursDiffs.push({
-            assignmentExternalId: assignment.assignmentExternalId,
-            assignmentName,
-            kriitHours: assignment.assignmentHours,
-            subjectName: subjectDiff.subjectName || '',
-            subjectExternalId: subjectDiff.subjectExternalId || ''
-          })
-        }
-      })
-    })
-    return hoursDiffs
-  }
-
-  /**
-   * Extract entry type differences from Kriit response
-   */
-  extractEntryTypeDifferences() {
-    Logger.debug('✨ [extractEntryTypeDifferences] Called')
-    const entryTypeDiffs = []
-    if (!this.differences || !Array.isArray(this.differences)) {
-      Logger.debug('✨ [extractEntryTypeDifferences] No differences array found')
-      return entryTypeDiffs
-    }
-    Logger.debug(`✨ [extractEntryTypeDifferences] Processing ${this.differences.length} subjects`)
-    this.differences.forEach(subjectDiff => {
-      if (!Array.isArray(subjectDiff.assignments)) return
-      subjectDiff.assignments.forEach(assignment => {
-        if (assignment.entryType && typeof assignment.entryType === 'object') {
-          const kriitType = assignment.entryType.kriit
-          const tahvelType = assignment.entryType.Tahvel
-          Logger.debug(
-            `✨ [extractEntryTypeDifferences] Assignment ${assignment.assignmentExternalId}: kriit="${kriitType}", tahvel="${tahvelType}"`
-          )
-          if (kriitType !== tahvelType && !(kriitType == null && tahvelType == null)) {
-            let assignmentName = assignment.assignmentName
-            if (assignmentName && typeof assignmentName === 'object') {
-              assignmentName = assignmentName.kriit || assignmentName.Tahvel || ''
-            }
-            const diff = {
-              assignmentExternalId: assignment.assignmentExternalId,
-              assignmentName,
-              kriit: kriitType,
-              Tahvel: tahvelType,
-              subjectName: subjectDiff.subjectName || '',
-              subjectExternalId: subjectDiff.subjectExternalId || ''
-            }
-            entryTypeDiffs.push(diff)
-            Logger.debug(`✨ [extractEntryTypeDifferences] Added diff:`, JSON.stringify(diff))
-          }
-        } else if (Logger.isDebugMode()) {
-          Logger.debug(
-            `✨ [extractEntryTypeDifferences] Assignment ${assignment.assignmentExternalId}: entryType is not an object (${typeof assignment.entryType})`
-          )
-        }
-      })
-    })
-    Logger.debug(`✨ [extractEntryTypeDifferences] Total entry type differences: ${entryTypeDiffs.length}`)
-    return entryTypeDiffs
-  }
+  extractEntryTypeDifferences() { return extractEntryTypeDifferences(this.differences) }
 
   /**
    * Send only outcome entries (SISSEKANNE_O) to Kriit API
@@ -1833,74 +1673,7 @@ class JournalListSyncFeature extends BaseFeature {
     }
   }
 
-  /**
-   * Count total number of differences
-   * @returns {number} Total number of differences
-   */
-  countTotalDifferences() {
-    Logger.debug('✨ [countTotalDifferences] Called')
-    let count = 0
-
-    if (!this.differences || !Array.isArray(this.differences)) {
-      Logger.debug('✨ [countTotalDifferences] No differences array, returning 0')
-      return 0
-    }
-
-    // Count grade differences
-    let gradeCount = 0
-    this.differences.forEach(subject => {
-      if (subject && Array.isArray(subject.assignments)) {
-        subject.assignments.forEach(assignment => {
-          if (assignment && Array.isArray(assignment.results)) {
-            assignment.results.forEach(result => {
-              const tahvelGrade = result.currentGrade || '(puudub)'
-              const kriitGrade = result.grade || '(puudub)'
-              // Count as difference if either grade is missing or different
-              if (tahvelGrade !== kriitGrade) {
-                gradeCount++
-              }
-            })
-          }
-        })
-      }
-    })
-    Logger.debug(`✨ [countTotalDifferences] Grade differences: ${gradeCount}`)
-    count += gradeCount
-
-    // Count assignment name differences
-    const assignmentNameDiffs = this.extractAssignmentNameDifferences()
-    let nameCount = 0
-    assignmentNameDiffs.forEach(subject => {
-      if (subject.nameDiffs && subject.nameDiffs.length > 0) {
-        nameCount += subject.nameDiffs.length
-      }
-    })
-    Logger.debug(`✨ [countTotalDifferences] Name differences: ${nameCount}`)
-    count += nameCount
-
-    // Count due date differences
-    const dueDateDiffs = this.extractDueDateDifferences()
-    Logger.debug(`✨ [countTotalDifferences] Due date differences: ${dueDateDiffs.length}`)
-    count += dueDateDiffs.length
-
-    // Count entry date differences
-    const entryDateDiffs = this.extractEntryDateDifferences()
-    Logger.debug(`✨ [countTotalDifferences] Entry date differences: ${entryDateDiffs.length}`)
-    count += entryDateDiffs.length
-
-    // Count assignment hours differences
-    const assignmentHoursDiffs = this.extractAssignmentHoursDifferences()
-    Logger.debug(`✨ [countTotalDifferences] Hours differences: ${assignmentHoursDiffs.length}`)
-    count += assignmentHoursDiffs.length
-
-    // Count entry type differences
-    const entryTypeDiffs = this.extractEntryTypeDifferences()
-    Logger.debug(`✨ [countTotalDifferences] Entry type differences: ${entryTypeDiffs.length}`)
-    count += entryTypeDiffs.length
-
-    Logger.debug(`✨ [countTotalDifferences] TOTAL differences: ${count}`)
-    return count
-  }
+  countTotalDifferences() { return countTotalDifferences(this.differences) }
 
   /**
    * Get comprehensive lesson dates (first, next, last) from timetable and õppetöögraafik
