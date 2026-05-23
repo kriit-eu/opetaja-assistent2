@@ -16,7 +16,7 @@
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
 import { buildDiffSummary } from '../../../lib/kriitSyncCheck.js'
-import { computePayloadHash } from './payloadHash.js'
+import { computePayloadHash } from './PayloadHash.js'
 
 export async function proceedWithKriitApiCall(feature, providedJournalData = null) {
   try {

@@ -8,7 +8,7 @@
 
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
-import { globalModuleTeacherCache, pendingTeacherRequests } from './teacherCache.js'
+import { globalModuleTeacherCache, pendingTeacherRequests } from './TeacherCache.js'
 
 export function setKriitApiToken(feature, token) {
   if (!token) {

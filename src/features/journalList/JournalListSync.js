@@ -17,7 +17,7 @@ import { setupKriitMessageListener } from '../../services/MessageListenerService
 import { bannerService } from '../../services/BannerService.js'
 import { sendOutcomeEntriesToKriit } from './OutComes.js'
 
-import { resolveJournalFromElement } from './journalListSync/journalLinkResolver.js'
+import { resolveJournalFromElement } from './journalListSync/JournalLinkResolver.js'
 import {
   extractEntryDateDifferences,
   extractAssignmentNameDifferences,
@@ -25,13 +25,13 @@ import {
   extractAssignmentHoursDifferences,
   extractEntryTypeDifferences,
   countTotalDifferences
-} from './journalListSync/differenceExtractors.js'
+} from './journalListSync/DifferenceExtractors.js'
 import {
   createStudentMap,
   extractAssignmentsFromEntries,
   getAddInfoFromExistingStudents,
   getAssignmentNameFromEntry
-} from './journalListSync/assignmentMapper.js'
+} from './journalListSync/AssignmentMapper.js'
 import {
   getAssignmentLevelSyncFields,
   getAssignmentLevelChangeValue,
@@ -47,9 +47,9 @@ import {
   normalizeTahvelDueDate,
   getApiErrorStatus,
   buildSyncFailureMessage
-} from './journalListSync/assignmentLevelSync.js'
-import { computePayloadHash } from './journalListSync/payloadHash.js'
-import { fetchCachedData, getTeacherPersonalCodeCached } from './journalListSync/teacherCache.js'
+} from './journalListSync/AssignmentLevelSync.js'
+import { computePayloadHash } from './journalListSync/PayloadHash.js'
+import { fetchCachedData, getTeacherPersonalCodeCached } from './journalListSync/TeacherCache.js'
 import {
   getJournalInfo,
   getJournalEntries,
@@ -62,8 +62,8 @@ import {
   getLastLessonFromPlan,
   getLessonDates,
   fetchJournalsFromApi
-} from './journalListSync/tahvelDataFetchers.js'
-import { getTahvelSubjectsWithAssignmentsAndGrades } from './journalListSync/tahvelSubjectsAggregator.js'
+} from './journalListSync/TahvelDataFetchers.js'
+import { getTahvelSubjectsWithAssignmentsAndGrades } from './journalListSync/TahvelSubjectsAggregator.js'
 import {
   updateUI,
   updateProgressUI,
@@ -73,27 +73,27 @@ import {
   showAllInSyncBanner,
   showDifferencesBanner,
   removeSyncBanner
-} from './journalListSync/syncBannerUI.js'
+} from './journalListSync/SyncBannerUI.js'
 import {
   getSelectedStudyYear,
   getStudyYearIdFromText,
   setupStudyYearMonitoring,
   waitForTableUpdate
-} from './journalListSync/studyYearMonitor.js'
+} from './journalListSync/StudyYearMonitor.js'
 import {
   setKriitApiToken,
   resetKriitApiToken,
   clearCache
-} from './journalListSync/tokenAndCache.js'
+} from './journalListSync/TokenAndCache.js'
 import {
   processStudentData,
   getDetailedStudentInfo,
   getCachedStudent
-} from './journalListSync/studentDataPipeline.js'
-import { proceedWithKriitApiCall } from './journalListSync/kriitClient.js'
-import { collectJournalData } from './journalListSync/journalDataCollector.js'
-import { syncWithKriit } from './journalListSync/gradeSyncEngine.js'
-import { fetchJournalData } from './journalListSync/fetchOrchestrator.js'
+} from './journalListSync/StudentDataPipeline.js'
+import { proceedWithKriitApiCall } from './journalListSync/KriitClient.js'
+import { collectJournalData } from './journalListSync/JournalDataCollector.js'
+import { syncWithKriit } from './journalListSync/GradeSyncEngine.js'
+import { fetchJournalData } from './journalListSync/FetchOrchestrator.js'
 
 // Re-exported to preserve the existing public import paths used by other
 // features and by JournalListSync.test.js / JournalListSync.moduleHelpers.test.js.

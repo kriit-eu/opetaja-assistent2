@@ -11,8 +11,8 @@
 
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
-import { resolveJournalFromElement } from './journalLinkResolver.js'
-import { getTeacherPersonalCodeCached } from './teacherCache.js'
+import { resolveJournalFromElement } from './JournalLinkResolver.js'
+import { getTeacherPersonalCodeCached } from './TeacherCache.js'
 
 export async function collectJournalData(feature, apiList = null) {
   try {

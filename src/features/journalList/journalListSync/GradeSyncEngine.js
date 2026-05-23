@@ -16,9 +16,9 @@
  */
 
 import Logger from '../../../services/Logger.js'
-import { collectSyncWorkItems } from './syncDataCollection.js'
-import { executeBatches } from './syncBatchExecutor.js'
-import { reportNothingToSync, reportBatchOutcome } from './syncOutcomeReporter.js'
+import { collectSyncWorkItems } from './SyncDataCollection.js'
+import { executeBatches } from './SyncBatchExecutor.js'
+import { reportNothingToSync, reportBatchOutcome } from './SyncOutcomeReporter.js'
 
 function logSyncContext(feature) {
   Logger.debug('[SYNC] Mapping journalStudentIdToStudentId:', JSON.stringify(feature.journalStudentIdToStudentId))

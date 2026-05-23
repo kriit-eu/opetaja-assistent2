@@ -10,7 +10,7 @@
  */
 
 import Logger from '../../../services/Logger.js'
-import { fetchCachedData, getTeacherPersonalCodeCached, TWO_WEEKS_MS } from './teacherCache.js'
+import { fetchCachedData, getTeacherPersonalCodeCached, TWO_WEEKS_MS } from './TeacherCache.js'
 
 export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = []) {
   try {

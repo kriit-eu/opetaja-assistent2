@@ -15,7 +15,7 @@
 
 import Logger from '../../../services/Logger.js'
 import { cacheService } from '../../../services/CacheService.js'
-import { getStudentDetails, getJournalStudents, getJournalEntries } from './tahvelDataFetchers.js'
+import { getStudentDetails, getJournalStudents, getJournalEntries } from './TahvelDataFetchers.js'
 
 export async function processStudentData(feature, journalId, journalStudents) {
   const studentDetailsMap = {}

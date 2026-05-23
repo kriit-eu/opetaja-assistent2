@@ -15,7 +15,7 @@
  */
 
 import Logger from '../../../services/Logger.js'
-import { getAssignmentLevelSyncFields, getAssignmentLevelChanges } from './assignmentLevelSync.js'
+import { getAssignmentLevelSyncFields, getAssignmentLevelChanges } from './AssignmentLevelSync.js'
 
 function normalizeGrade(grade) {
   if (grade === null || grade === undefined || grade === '' || grade === '(puudub)') {
