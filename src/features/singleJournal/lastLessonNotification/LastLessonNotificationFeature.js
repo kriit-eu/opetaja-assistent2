@@ -66,7 +66,7 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       return
     }
 
-    const { timetable, journalEntries, journalInfo } = await this.#fetchData(journalId)
+    const { timetable, journalEntries, journalInfo, teacherId } = await this.#fetchData(journalId)
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] timetable:', timetable)
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] journalEntries:', journalEntries)
 
@@ -97,7 +97,6 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       } else if (plannedMahtALessons > 0 && timetableLessons < plannedMahtALessons) {
         // Timetable is incomplete - get approximate from lesson plan
         if (Logger.isDebugMode()) Logger.debug(`[LastLessonNotificationFeature] Timetable incomplete (${timetableLessons}/${plannedMahtALessons}), fetching from lesson plan`)
-        const teacherId = journalInfo?.journalTeachers?.[0]?.id
         if (teacherId) {
           const lastLessonFromPlan = await this.#getLastLessonFromPlan(journalId, teacherId)
           if (lastLessonFromPlan) {
@@ -122,7 +121,6 @@ export default class LastLessonNotificationFeature extends BaseFeature {
       }
     } else {
       // No timetable entries - try to get from lesson plan
-      const teacherId = journalInfo?.journalTeachers?.[0]?.id
       if (teacherId) {
         const lastLessonFromPlan = await this.#getLastLessonFromPlan(journalId, teacherId)
         if (lastLessonFromPlan) {
@@ -324,23 +322,24 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     try {
       info = await this.api.tahvel.get(`/journals/${journalId}`, {}, { cache: true, cacheExpiration: 864e5, suppressErrorStatuses: [412] })
     } catch (error) {
-      if (isExpectedTahvelStatus(error, [412])) return { timetable: [], journalEntries: [], journalInfo: null }
+      if (isExpectedTahvelStatus(error, [412])) return { timetable: [], journalEntries: [], journalInfo: null, teacherId: null }
       throw error
     }
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Journal info:', info)
 
     if (!info) {
       if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] No journal info found')
-      return { timetable: [], journalEntries: [], journalInfo: null }
+      return { timetable: [], journalEntries: [], journalInfo: null, teacherId: null }
     }
 
     const schoolId = await getSchoolId(this.api, info)
-    const teacherId = info.journalTeachers?.[0]?.id
+    const currentTeacherId = await this.#getCurrentTeacherId()
+    const teacherId = this.#selectTeacherId(info, currentTeacherId)
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] schoolId:', schoolId, 'teacherId:', teacherId)
 
     if (!teacherId || !schoolId) {
       if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Missing teacherId or schoolId')
-      return { timetable: [], journalEntries: [], journalInfo: info }
+      return { timetable: [], journalEntries: [], journalInfo: info, teacherId: null }
     }
 
     // Get study year dates
@@ -376,7 +375,46 @@ export default class LastLessonNotificationFeature extends BaseFeature {
     }
     if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Journal entries:', journalEntries)
 
-    return { timetable, journalEntries: journalEntries ?? [], journalInfo: info }
+    return { timetable, journalEntries: journalEntries ?? [], journalInfo: info, teacherId }
+  }
+
+  async #getCurrentTeacherId() {
+    try {
+      const userInfo = await this.api.tahvel.get('/user', {}, { cache: false })
+      return this.#extractTeacherId(userInfo)
+    } catch (error) {
+      if (Logger.isDebugMode()) Logger.debug('[LastLessonNotificationFeature] Could not resolve current teacher ID:', error.message)
+      return null
+    }
+  }
+
+  #extractTeacherId(userInfo) {
+    if (userInfo?.teacher?.id != null) return this.#normalizeTeacherId(userInfo.teacher.id)
+    if (userInfo?.teacher != null && typeof userInfo.teacher !== 'object') return this.#normalizeTeacherId(userInfo.teacher)
+    if (userInfo?.teacherId != null) return this.#normalizeTeacherId(userInfo.teacherId)
+    if (userInfo?.person?.teacherId != null) return this.#normalizeTeacherId(userInfo.person.teacherId)
+    return null
+  }
+
+  #normalizeTeacherId(value) {
+    const teacherId = Number(value)
+    return Number.isInteger(teacherId) && teacherId > 0 ? teacherId : null
+  }
+
+  #selectTeacherId(journalInfo, currentTeacherId) {
+    const journalTeacherIds = (journalInfo?.journalTeachers || [])
+      .map(teacher => this.#normalizeTeacherId(teacher?.id))
+      .filter(teacherId => teacherId != null)
+
+    if (currentTeacherId != null && journalTeacherIds.includes(currentTeacherId)) {
+      return currentTeacherId
+    }
+
+    if (currentTeacherId == null && journalTeacherIds.length > 1) {
+      return null
+    }
+
+    return journalTeacherIds[0] || currentTeacherId || null
   }
 
   /**
