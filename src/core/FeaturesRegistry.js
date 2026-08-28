@@ -129,6 +129,16 @@ export async function loadFeatures() {
     Logger.error('Error loading HighlightGradeCellsFeature:', error)
   }
 
+  // Load right-click cell context menu feature (always enabled)
+  try {
+    const CellContextMenuFeature = (await import('../features/singleJournal/cellContextMenu/CellContextMenuFeature.js')).default
+    const cellContextMenuFeature = new CellContextMenuFeature()
+    allAvailableFeatures.singleJournal.push(cellContextMenuFeature)
+    Logger.debug('Feature "CellContextMenuFeature" created')
+  } catch (error) {
+    Logger.error('Error loading CellContextMenuFeature:', error)
+  }
+
   // Load assignment title helper row feature (always enabled)
   try {
     const AssignmentTitleRowFeature = (await import('../features/singleJournal/assignmentTitleRow/AssignmentTitleRowFeature.js')).default

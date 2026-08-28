@@ -2214,6 +2214,12 @@ export default class LessonDiscrepanciesFeature extends BaseFeature {
         // Check if this is a PUT request to a journal entry endpoint
         const url = args[0]
         if (typeof url === 'string' && url.includes('/journalEntry/') && args[1]?.method === 'PUT') {
+          // Cell context-menu quick actions only change grade/absence, so a
+          // capacity/teacher validation refresh is pure cost — skip it to
+          // avoid flicker. See CellContextMenuFeature._applyChange.
+          if (window.__oaCellContextMenuPutInFlight) {
+            return response
+          }
           // Extract journal ID from URL
           const journalIdMatch = url.match(/\/journals\/(\d+)\/journalEntry\//)
           if (journalIdMatch && parseInt(journalIdMatch[1]) === this.currentJournalId) {
