@@ -129,6 +129,16 @@ export async function loadFeatures() {
     Logger.error('Error loading HighlightGradeCellsFeature:', error)
   }
 
+  // Load table reading guide hover feature (always enabled)
+  try {
+    const TableReadingGuideFeature = (await import('../features/singleJournal/tableReadingGuide/TableReadingGuideFeature.js')).default
+    const tableReadingGuideFeature = new TableReadingGuideFeature()
+    allAvailableFeatures.singleJournal.push(tableReadingGuideFeature)
+    Logger.debug('Feature "TableReadingGuideFeature" created')
+  } catch (error) {
+    Logger.error('Error loading TableReadingGuideFeature:', error)
+  }
+
   // Load assignment title helper row feature (always enabled)
   try {
     const AssignmentTitleRowFeature = (await import('../features/singleJournal/assignmentTitleRow/AssignmentTitleRowFeature.js')).default
