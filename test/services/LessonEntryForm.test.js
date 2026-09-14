@@ -27,19 +27,24 @@ test('fills current Tahvel controls, leaves topic/content to teacher and never s
     <tahvel-input formcontrolname="lessons"><input></tahvel-input>
     <tahvel-input formcontrolname="entryName"><input></tahvel-input>
     <textarea></textarea><button id="save">Salvesta</button></form>`, { url: 'https://tahvel.edu.ee/#/journal/8/edit' })
-  const original = { window: global.window, document: global.document, Event: global.Event }
-  Object.assign(global, { window: dom.window, document: dom.window.document, Event: dom.window.Event })
+  const original = { window: global.window, document: global.document, Event: global.Event, KeyboardEvent: global.KeyboardEvent }
+  Object.assign(global, { window: dom.window, document: dom.window.document, Event: dom.window.Event, KeyboardEvent: dom.window.KeyboardEvent })
   let saved = false
   let selected = false
   let dateInput = false
+  let committedDate = null
   document.getElementById('add').getClientRects = () => [{}]
   document.getElementById('save').onclick = event => { event.preventDefault(); saved = true }
   document.querySelector('[formcontrolname="entryType"] button').onclick = () => { selected = true }
   document.querySelector('[formcontrolname="entryDate"] input').oninput = () => { dateInput = true }
+  const dateField = document.querySelector('[formcontrolname="entryDate"] input')
+  dateField.onkeydown = event => { if (event.key === 'Enter' && dateInput) { event.preventDefault(); committedDate = dateField.value } }
+  dateField.onblur = () => { if (!committedDate) dateField.value = '' }
   try {
     await openLessonEntry({ journalId: 8, date: '2026-09-14', startLessonNr: 5, lessons: 2, capacityType: 'MAHT_a', groups: [{ id: 1, code: 'A' }] }, async() => { throw new Error('No access') })
     expect(selected).toBe(true)
     expect(dateInput).toBe(true)
+    expect(committedDate).toBe('14.09.2026')
     expect(document.querySelector('[formcontrolname="entryDate"] input').value).toBe('14.09.2026')
     expect(document.querySelector('[formcontrolname="lessons"] input').value).toBe('2')
     expect(document.querySelector('[formcontrolname="entryName"] input').value).toBe('')

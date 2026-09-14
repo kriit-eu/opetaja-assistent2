@@ -39,6 +39,9 @@ function input(form, name, value) {
   field.value = value
   field.dispatchEvent(new Event('input', { bubbles: true }))
   field.dispatchEvent(new Event('change', { bubbles: true }))
+  // Tahvel's date picker parses _term only after a keydown marks it modified.
+  // Enter commits the date through the component's own parser/modelChange.
+  if (field.closest('date-picker')) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
   field.dispatchEvent(new Event('blur', { bubbles: true }))
 }
 
