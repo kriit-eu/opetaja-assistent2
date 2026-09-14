@@ -2,6 +2,7 @@
  * Background script
  */
 import Logger from './services/Logger.js'
+import { registerLessonNotificationPrototype } from './services/LessonNotificationPrototype.js'
 import { sentryService } from './services/SentryService.js'
 
 // Initialize Sentry for background context (no window event listeners)
@@ -226,3 +227,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return
   }
 })
+
+registerLessonNotificationPrototype()

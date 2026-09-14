@@ -24,6 +24,7 @@ const storageLocalSet = mock(async () => undefined)
 
 global.chrome = {
   ...global.chrome,
+  notifications: { onClicked: { addListener: mock() } },
   alarms: {
     create: alarmsCreate,
     get: alarmsGet,
