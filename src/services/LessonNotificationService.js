@@ -42,7 +42,8 @@ async function reconcile(state) {
   const now = Date.now()
   const alarms = await chrome.alarms.getAll()
   const existing = new Set(alarms.map(a => a.name))
-  const planned = new Map((state.blocks || []).filter(b => b.date === tallinnDate(now) && ((b.end) > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
+  const planned = new Map((state.blocks || []).filter(b =>
+    b.date === tallinnDate(now) && (b.end > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
     .map(b => [PREFIX + b.key, b]))
   for (const alarm of alarms) {
     if (alarm.name.startsWith(PREFIX) && !planned.has(alarm.name)) await chrome.alarms.clear(alarm.name)
@@ -89,8 +90,10 @@ async function refresh(origin) {
     const nextDate = new Date(`${sourceDate}T12:00:00Z`)
     nextDate.setUTCDate(nextDate.getUTCDate() + 1)
     const data = await lessonGet(origin, `/timetableevents/timetableByTeacher/${schoolId}`, {
-      teachers: teacherId, from: new Date(lessonTimestamp(sourceDate, '00:00')).toISOString(),
-      thru: new Date(lessonTimestamp(nextDate.toISOString().slice(0, 10), '00:00') - 1).toISOString(), lang: 'ET'
+      teachers: teacherId,
+from: new Date(lessonTimestamp(sourceDate, '00:00')).toISOString(),
+      thru: new Date(lessonTimestamp(nextDate.toISOString().slice(0, 10), '00:00') - 1).toISOString(),
+lang: 'ET'
     })
     if (!Array.isArray(data?.timetableEvents)) throw new Error('Tunniplaani vastus on vigane')
     const timesResponse = await fetch(chrome.runtime.getURL('src/features/singleJournal/lessonDiscrepancies/LessonTimes.json'))
@@ -119,9 +122,11 @@ async function notify(name) {
   if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || (block.end) > Date.now()) return
   if (await chrome.notifications.getPermissionLevel() !== 'granted') return
   await chrome.notifications.create(name, {
-    type: 'basic', iconUrl: chrome.runtime.getURL('icon128.png'),
+    type: 'basic',
+iconUrl: chrome.runtime.getURL('icon128.png'),
     title: `Tund lõppes: ${block.name} · ${block.groups.map(g => g.code).join(', ')}`,
-    message: `${block.timeStart}–${block.timeEnd}. Klõpsa päeviku sissekande lisamiseks.`, requireInteraction: true
+    message: `${block.timeStart}–${block.timeEnd}. Klõpsa päeviku sissekande lisamiseks.`,
+requireInteraction: true
   })
   state.sent ||= {}
   state.sent[block.key] = block
@@ -153,7 +158,7 @@ export function registerLessonNotifications() {
   })
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     let origin
-    try { origin = new URL(sender.url).origin } catch {}
+    try { origin = new URL(sender.url).origin } catch { /* Extension messages may have no page URL. */ }
     if (message.action === 'lessonNotificationStatus' && sender.id === chrome.runtime.id && !sender.tab) {
       serialize(async() => {
         const state = await readState()

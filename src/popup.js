@@ -42,9 +42,9 @@ function initPopup() {
   if (document.getElementById('lesson-notification-schedule-status')) chrome.runtime.sendMessage({ action: 'lessonNotificationStatus' }).then(result => {
     const status = document.getElementById('lesson-notification-schedule-status')
     if (!status) return
-    status.textContent = result?.error ? `Tunniplaan: ${result.error}` : result?.updatedAt ?
-      `Täna ees: ${result.planned} tunniplokki. ${result.nextAt ? `Järgmine märguanne: ${new Date(result.nextAt).toLocaleTimeString('et-EE')}. ` : ''}Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.` :
-      'Automaatsete märguannete ajastamiseks ava Tahvel ja logi sisse.'
+    status.textContent = result?.error ? `Tunniplaan: ${result.error}` : result?.updatedAt
+      ? `Täna ees: ${result.planned} tunniplokki. ${result.nextAt ? `Järgmine märguanne: ${new Date(result.nextAt).toLocaleTimeString('et-EE')}. ` : ''}Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.`
+      : 'Automaatsete märguannete ajastamiseks ava Tahvel ja logi sisse.'
   }).catch(() => {})
   // Get DOM elements
   const debugModeCheckbox = document.getElementById('debug-mode')

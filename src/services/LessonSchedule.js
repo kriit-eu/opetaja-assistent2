@@ -9,8 +9,14 @@ export function lessonTimestamp(date, time) {
   let result = target
   for (let i = 0; i < 3; i++) {
     const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/Tallinn', year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+      timeZone: 'Europe/Tallinn',
+year: 'numeric',
+month: '2-digit',
+day: '2-digit',
+      hour: '2-digit',
+minute: '2-digit',
+second: '2-digit',
+hourCycle: 'h23'
     }).formatToParts(new Date(result)).map(p => [p.type, p.value]))
     const wall = Date.parse(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`)
     result += target - wall
@@ -25,11 +31,16 @@ export function buildLessonBlocks(events, lessonTimes, date) {
       const first = lessonTimes.find(t => t.timeStart === e.timeStart.slice(0, 5))
       const last = lessonTimes.find(t => t.timeEnd === e.timeEnd.slice(0, 5))
       return {
-        journalId: Number(e.journalId), date, start: lessonTimestamp(date, e.timeStart), end: lessonTimestamp(date, e.timeEnd),
-        timeStart: e.timeStart.slice(0, 5), timeEnd: e.timeEnd.slice(0, 5),
+        journalId: Number(e.journalId),
+date,
+start: lessonTimestamp(date, e.timeStart),
+end: lessonTimestamp(date, e.timeEnd),
+        timeStart: e.timeStart.slice(0, 5),
+timeEnd: e.timeEnd.slice(0, 5),
         startLessonNr: first?.number ?? null,
         lessons: first && last && last.number >= first.number ? last.number - first.number + 1 : null,
-        name: e.nameEt || e.name || 'Tund', capacityType: e.capacityType || 'MAHT_a',
+        name: e.nameEt || e.name || 'Tund',
+capacityType: e.capacityType || 'MAHT_a',
         groups: (e.studentGroups || []).map(g => ({ id: g.id, code: g.code })),
         subgroupKey: (e.subgroups || []).map(g => g.id ?? g.code).sort().join(','),
         eventIds: [e.id].filter(id => id != null)
@@ -46,7 +57,8 @@ export function buildLessonBlocks(events, lessonTimes, date) {
       previous.timeEnd = slot.timeEnd
       previous.lessons += slot.lessons
       previous.eventIds.push(...slot.eventIds)
-    } else if (!blocks.some(b => b.journalId === slot.journalId && b.start === slot.start && b.end === slot.end && JSON.stringify(b.groups) === JSON.stringify(slot.groups))) {
+    } else if (!blocks.some(b => b.journalId === slot.journalId && b.start === slot.start && b.end === slot.end &&
+      JSON.stringify(b.groups) === JSON.stringify(slot.groups))) {
       blocks.push(slot)
     }
   }

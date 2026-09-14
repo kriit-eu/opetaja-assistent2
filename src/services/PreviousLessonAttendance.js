@@ -51,7 +51,7 @@ export async function previousLessonAttendance(get, block) {
   return {
     names: [...absent.values()].map(s => s.name),
     students: [...absent.values()],
-    warning: failures.length ? `Eelmise tunni puudujate info pole kättesaadav (${failures.join(', ')}). Kontrolli kohalolekut.` :
-      null
+    warning: failures.length ? `Eelmise tunni puudujate info pole kättesaadav (${failures.join(', ')}). Kontrolli kohalolekut.`
+      : null
   }
 }

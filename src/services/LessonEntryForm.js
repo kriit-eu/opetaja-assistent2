@@ -57,7 +57,8 @@ function check(control) {
 /** Open and prefill a notified journal entry, never submitting it. */
 export async function openLessonEntry(block, get, onOpened = () => {}) {
   const add = await waitFor(() => window.location.hash === `#/journal/${block.journalId}/edit` && [...document.querySelectorAll('button')].find(b =>
-    /lisa\s+(uus\s+)?sissekanne/i.test(b.textContent) && b.getClientRects().length && !b.disabled))
+    ['lisa uus sissekanne', 'lisa sissekanne'].includes(b.textContent.trim().toLowerCase().replace(/\s+/g, ' ')) &&
+    b.getClientRects().length && !b.disabled))
   add.click()
   const form = await waitFor(() => document.querySelector('form.tahvel-form [formcontrolname="entryType"]')?.closest('form'))
   onOpened()
