@@ -1,6 +1,6 @@
 import Logger from './Logger.js'
 import { cryptoService } from './CryptoService.js'
-import { buildLessonBlocks, tallinnDate, lessonTimestamp, timetableSourceDate, mapTimetableToDate, shiftTestNotifications } from './LessonSchedule.js'
+import { buildLessonBlocks, tallinnDate, lessonTimestamp } from './LessonSchedule.js'
 
 const KEY = 'OA_lessonNotifications'
 const REFRESH = 'oa2-lesson-refresh'
@@ -42,14 +42,14 @@ async function reconcile(state) {
   const now = Date.now()
   const alarms = await chrome.alarms.getAll()
   const existing = new Set(alarms.map(a => a.name))
-  const planned = new Map((state.blocks || []).filter(b => b.date === tallinnDate(now) && ((b.notificationAt ?? b.end) > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
+  const planned = new Map((state.blocks || []).filter(b => b.date === tallinnDate(now) && ((b.end) > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
     .map(b => [PREFIX + b.key, b]))
   for (const alarm of alarms) {
     if (alarm.name.startsWith(PREFIX) && !planned.has(alarm.name)) await chrome.alarms.clear(alarm.name)
   }
   for (const [name, block] of planned) {
     const alarm = await chrome.alarms.get(name)
-    const when = block.notificationAt ?? block.end
+    const when = block.end
     if (!alarm || alarm.scheduledTime !== when) await chrome.alarms.create(name, { when })
   }
   const tomorrow = new Date(`${tallinnDate(now)}T12:00:00Z`)
@@ -60,10 +60,18 @@ async function reconcile(state) {
 /** Refresh today's timetable; an expired session retains only today's previous schedule. */
 async function refresh(origin) {
   const state = await readState()
+  // Discard schedules persisted by the earlier clock-shift prototype.
+  if (state.testClock) {
+    state.blocks = []
+    state.sent = {}
+    delete state.testClock
+    await saveState(state)
+    await reconcile(state)
+  }
   origin ||= state.origin
   if (!ORIGINS.includes(origin)) return
   const date = tallinnDate()
-  const sourceDate = timetableSourceDate(date)
+  const sourceDate = date
   try {
     const user = await lessonGet(origin, '/user')
     const teacherId = user.teacherId ?? user.teacher
@@ -91,17 +99,7 @@ async function refresh(origin) {
       state.sent = {}
       await reconcile({ blocks: [] })
     }
-    state.blocks = buildLessonBlocks(mapTimetableToDate(data.timetableEvents, sourceDate, date), times, date).map(block => ({ ...block, lessonTimes: times }))
-    if (sourceDate !== date) {
-      const testKey = `${date}:${sourceDate}:one-minute-v1`
-      const savedOffset = state.testClock?.key === testKey ? state.testClock.offset : null
-      const shifted = shiftTestNotifications(state.blocks, Date.now(), savedOffset)
-      if (savedOffset == null && shifted.offset != null) state.sent = {}
-      state.blocks = shifted.blocks
-      state.testClock = { key: testKey, offset: shifted.offset }
-    } else {
-      state.testClock = null
-    }
+    state.blocks = buildLessonBlocks(data.timetableEvents, times, date).map(block => ({ ...block, lessonTimes: times }))
     state.sourceDate = sourceDate
     state.sent = Object.fromEntries(Object.entries(state.sent || {}).filter(([, sent]) => sent.date === date))
     state.updatedAt = Date.now()
@@ -118,7 +116,7 @@ async function refresh(origin) {
 async function notify(name) {
   const state = await readState()
   const block = state.blocks?.find(b => PREFIX + b.key === name)
-  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || (block.notificationAt ?? block.end) > Date.now()) return
+  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || (block.end) > Date.now()) return
   if (await chrome.notifications.getPermissionLevel() !== 'granted') return
   await chrome.notifications.create(name, {
     type: 'basic', iconUrl: chrome.runtime.getURL('icon128.png'),
@@ -133,6 +131,7 @@ async function notify(name) {
 /** Install persistent alarm handlers; the 15-minute timer is not reset on worker wakes. */
 export function registerLessonNotifications() {
   const run = task => task.catch(error => Logger.warning('Tunni märguanne:', error.message))
+  run(chrome.alarms.clear('oa2-lesson-notification-prototype'))
   chrome.alarms.get(REFRESH, alarm => { if (!alarm) chrome.alarms.create(REFRESH, { periodInMinutes: 15 }) })
   chrome.alarms.onAlarm.addListener(alarm => {
     if (alarm.name === REFRESH || alarm.name === MIDNIGHT) run(serialize(() => refresh()))
@@ -158,8 +157,8 @@ export function registerLessonNotifications() {
     if (message.action === 'lessonNotificationStatus' && sender.id === chrome.runtime.id && !sender.tab) {
       serialize(async() => {
         const state = await readState()
-        const future = (state.blocks || []).filter(b => (b.notificationAt ?? b.end) > Date.now() && !state.sent?.[b.key])
-        return { updatedAt: state.updatedAt, error: state.error, sourceDate: state.sourceDate, testMode: state.sourceDate && state.sourceDate !== tallinnDate(), planned: future.length, nextAt: future[0]?.notificationAt ?? future[0]?.end }
+        const future = (state.blocks || []).filter(b => (b.end) > Date.now() && !state.sent?.[b.key])
+        return { updatedAt: state.updatedAt, error: state.error, sourceDate: state.sourceDate, planned: future.length, nextAt: future[0]?.end }
       }).then(respond, () => respond({ error: 'Tunniplaani olekut ei saanud lugeda' }))
       return true
     }

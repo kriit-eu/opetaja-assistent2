@@ -3,25 +3,6 @@ export function tallinnDate(now = Date.now()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Tallinn', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now))
 }
 
-/** One-day user-requested test: run Wednesday's timetable on Monday. */
-export function timetableSourceDate(date) {
-  return date === '2026-09-14' ? '2026-09-16' : date
-}
-
-/** Move only the requested source day's events to today's test date. */
-export function mapTimetableToDate(events, sourceDate, targetDate) {
-  return events.filter(event => event.date?.slice(0, 10) === sourceDate)
-    .map(event => ({ ...event, date: targetDate }))
-}
-
-/** Shift notification times once, keeping actual lesson dates/times for form filling. */
-export function shiftTestNotifications(blocks, now, savedOffset = null) {
-  if (!blocks.length) return { blocks, offset: savedOffset }
-  const next = blocks.find(block => block.end > now) || blocks[0]
-  const offset = savedOffset ?? now + 60000 - next.end
-  return { blocks: blocks.map(block => ({ ...block, notificationAt: block.end + offset })), offset }
-}
-
 /** Convert a Tallinn wall-clock time to an epoch timestamp (including DST). */
 export function lessonTimestamp(date, time) {
   const target = Date.parse(`${date.slice(0, 10)}T${time.slice(0, 5)}:00Z`)

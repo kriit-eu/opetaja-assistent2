@@ -26,6 +26,7 @@ global.chrome = {
   ...global.chrome,
   notifications: { onClicked: { addListener: mock() } },
   alarms: {
+    clear: async() => true,
     create: alarmsCreate,
     get: alarmsGet,
     onAlarm: { addListener: onAlarmAdd }

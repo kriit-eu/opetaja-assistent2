@@ -43,19 +43,9 @@ function initPopup() {
     const status = document.getElementById('lesson-notification-schedule-status')
     if (!status) return
     status.textContent = result?.error ? `Tunniplaan: ${result.error}` : result?.updatedAt ?
-      `${result.testMode ? 'TEST: kolmapäeva tunniplaan ajanihkega. ' : ''}Täna ees: ${result.planned} tunniplokki. ${result.nextAt ? `Järgmine märguanne: ${new Date(result.nextAt).toLocaleTimeString('et-EE')}. ` : ''}Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.` :
+      `Täna ees: ${result.planned} tunniplokki. ${result.nextAt ? `Järgmine märguanne: ${new Date(result.nextAt).toLocaleTimeString('et-EE')}. ` : ''}Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.` :
       'Automaatsete märguannete ajastamiseks ava Tahvel ja logi sisse.'
   }).catch(() => {})
-  document.getElementById('test-lesson-notification')?.addEventListener('click', async() => {
-    const status = document.getElementById('test-lesson-notification-status')
-    try {
-      const result = await chrome.runtime.sendMessage({ action: 'scheduleLessonNotificationPrototype' })
-      if (!result?.success) throw new Error(result?.error || 'Ajastamine ebaõnnestus')
-      status.textContent = 'Märguanne on ajastatud ühe minuti pärast. Võid selle akna sulgeda.'
-    } catch (error) {
-      status.textContent = `Viga: ${error.message}`
-    }
-  })
   // Get DOM elements
   const debugModeCheckbox = document.getElementById('debug-mode')
   const clearCacheButton = document.getElementById('clear-cache')

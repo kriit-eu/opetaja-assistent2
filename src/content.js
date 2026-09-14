@@ -2,7 +2,6 @@
  * Õpetaja Assistent 2 - Main content script
  */
 import TahvelExtension from './core/Extension.js'
-import { openPrototypeEntryForm } from './services/PrototypeEntryForm.js'
 import { initializeLessonEntry } from './services/LessonEntryForm.js'
 import Logger from './services/Logger.js'
 import { cacheService } from './services/CacheService.js'
@@ -11,7 +10,6 @@ import { ApiService } from './services/ApiService.js'
 import { sentryService } from './services/SentryService.js'
 
 const VERSION = '6'
-openPrototypeEntryForm()
 initializeLessonEntry()
 
 // Initialize Sentry error tracking before anything else
