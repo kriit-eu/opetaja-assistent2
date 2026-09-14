@@ -1,6 +1,24 @@
 import { test, expect } from 'bun:test'
-import { buildLessonBlocks, lessonTimestamp, tallinnDate } from '../../src/services/LessonSchedule.js'
+import { buildLessonBlocks, lessonTimestamp, tallinnDate, timetableSourceDate, mapTimetableToDate, shiftTestNotifications } from '../../src/services/LessonSchedule.js'
 import { previousLessonAttendance } from '../../src/services/PreviousLessonAttendance.js'
+
+test('test clock fires after two minutes without drifting on refresh or changing form times', () => {
+  const blocks = [{ start: 1000, end: 2000 }, { start: 3000, end: 4000 }]
+  const first = shiftTestNotifications(blocks, 2500)
+  expect(first.blocks[1].notificationAt).toBe(122500)
+  expect(first.blocks[1].end).toBe(4000)
+  expect(shiftTestNotifications(blocks, 3500, first.offset).blocks).toEqual(first.blocks)
+  expect(shiftTestNotifications(blocks, 5000).blocks[0].notificationAt).toBe(125000)
+})
+
+test('Wednesday test applies only on the requested day and retains lesson clock times', () => {
+  expect(timetableSourceDate('2026-09-14')).toBe('2026-09-16')
+  expect(timetableSourceDate('2026-09-15')).toBe('2026-09-15')
+  const original = { date: '2026-09-16T00:00:00Z', timeStart: '09:55', timeEnd: '10:40', journalId: 8 }
+  const mapped = mapTimetableToDate([original, { ...original, date: '2026-09-17' }], '2026-09-16', '2026-09-14')
+  expect(mapped).toEqual([{ ...original, date: '2026-09-14' }])
+  expect(original.date).toBe('2026-09-16T00:00:00Z')
+})
 
 test('Tallinn timestamps respect winter/summer time and date rollover', () => {
   expect(new Date(lessonTimestamp('2026-01-10', '10:00')).toISOString()).toBe('2026-01-10T08:00:00.000Z')

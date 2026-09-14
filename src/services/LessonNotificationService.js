@@ -1,6 +1,6 @@
 import Logger from './Logger.js'
 import { cryptoService } from './CryptoService.js'
-import { buildLessonBlocks, tallinnDate, lessonTimestamp } from './LessonSchedule.js'
+import { buildLessonBlocks, tallinnDate, lessonTimestamp, timetableSourceDate, mapTimetableToDate, shiftTestNotifications } from './LessonSchedule.js'
 
 const KEY = 'OA_lessonNotifications'
 const REFRESH = 'oa2-lesson-refresh'
@@ -42,14 +42,15 @@ async function reconcile(state) {
   const now = Date.now()
   const alarms = await chrome.alarms.getAll()
   const existing = new Set(alarms.map(a => a.name))
-  const planned = new Map((state.blocks || []).filter(b => b.date === tallinnDate(now) && (b.end > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
+  const planned = new Map((state.blocks || []).filter(b => b.date === tallinnDate(now) && ((b.notificationAt ?? b.end) > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
     .map(b => [PREFIX + b.key, b]))
   for (const alarm of alarms) {
     if (alarm.name.startsWith(PREFIX) && !planned.has(alarm.name)) await chrome.alarms.clear(alarm.name)
   }
   for (const [name, block] of planned) {
     const alarm = await chrome.alarms.get(name)
-    if (!alarm || alarm.scheduledTime !== block.end) await chrome.alarms.create(name, { when: block.end })
+    const when = block.notificationAt ?? block.end
+    if (!alarm || alarm.scheduledTime !== when) await chrome.alarms.create(name, { when })
   }
   const tomorrow = new Date(`${tallinnDate(now)}T12:00:00Z`)
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
@@ -62,6 +63,7 @@ async function refresh(origin) {
   origin ||= state.origin
   if (!ORIGINS.includes(origin)) return
   const date = tallinnDate()
+  const sourceDate = timetableSourceDate(date)
   try {
     const user = await lessonGet(origin, '/user')
     const teacherId = user.teacherId ?? user.teacher
@@ -72,20 +74,35 @@ async function refresh(origin) {
       return
     }
     const owner = `${origin}:${schoolId}:${teacherId}`
-    if (state.owner !== owner) { state.blocks = []; state.sent = {} }
+    if (state.owner !== owner) { state.blocks = []; state.sent = {}; state.testClock = null }
     // Record the identity before fetching the timetable, so a failed fetch after an
     // account switch cannot reuse another teacher's schedule.
     Object.assign(state, { origin, owner, schoolId, teacherId })
-    const nextDate = new Date(`${date}T12:00:00Z`)
+    const nextDate = new Date(`${sourceDate}T12:00:00Z`)
     nextDate.setUTCDate(nextDate.getUTCDate() + 1)
     const data = await lessonGet(origin, `/timetableevents/timetableByTeacher/${schoolId}`, {
-      teachers: teacherId, from: new Date(lessonTimestamp(date, '00:00')).toISOString(),
+      teachers: teacherId, from: new Date(lessonTimestamp(sourceDate, '00:00')).toISOString(),
       thru: new Date(lessonTimestamp(nextDate.toISOString().slice(0, 10), '00:00') - 1).toISOString(), lang: 'ET'
     })
     if (!Array.isArray(data?.timetableEvents)) throw new Error('Tunniplaani vastus on vigane')
     const timesResponse = await fetch(chrome.runtime.getURL('src/features/singleJournal/lessonDiscrepancies/LessonTimes.json'))
     const times = (await timesResponse.json())[schoolId] || []
-    state.blocks = buildLessonBlocks(data.timetableEvents, times, date).map(block => ({ ...block, lessonTimes: times }))
+    if (state.sourceDate !== sourceDate) {
+      state.sent = {}
+      await reconcile({ blocks: [] })
+    }
+    state.blocks = buildLessonBlocks(mapTimetableToDate(data.timetableEvents, sourceDate, date), times, date).map(block => ({ ...block, lessonTimes: times }))
+    if (sourceDate !== date) {
+      const testKey = `${date}:${sourceDate}`
+      const savedOffset = state.testClock?.key === testKey ? state.testClock.offset : null
+      const shifted = shiftTestNotifications(state.blocks, Date.now(), savedOffset)
+      if (savedOffset == null && shifted.offset != null) state.sent = {}
+      state.blocks = shifted.blocks
+      state.testClock = { key: testKey, offset: shifted.offset }
+    } else {
+      state.testClock = null
+    }
+    state.sourceDate = sourceDate
     state.sent = Object.fromEntries(Object.entries(state.sent || {}).filter(([, sent]) => sent.date === date))
     state.updatedAt = Date.now()
     state.error = null
@@ -101,7 +118,7 @@ async function refresh(origin) {
 async function notify(name) {
   const state = await readState()
   const block = state.blocks?.find(b => PREFIX + b.key === name)
-  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || block.end > Date.now()) return
+  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || (block.notificationAt ?? block.end) > Date.now()) return
   if (await chrome.notifications.getPermissionLevel() !== 'granted') return
   await chrome.notifications.create(name, {
     type: 'basic', iconUrl: chrome.runtime.getURL('icon128.png'),
@@ -141,7 +158,8 @@ export function registerLessonNotifications() {
     if (message.action === 'lessonNotificationStatus' && sender.id === chrome.runtime.id && !sender.tab) {
       serialize(async() => {
         const state = await readState()
-        return { updatedAt: state.updatedAt, error: state.error, planned: (state.blocks || []).filter(b => b.end > Date.now()).length }
+        const future = (state.blocks || []).filter(b => (b.notificationAt ?? b.end) > Date.now() && !state.sent?.[b.key])
+        return { updatedAt: state.updatedAt, error: state.error, sourceDate: state.sourceDate, testMode: state.sourceDate && state.sourceDate !== tallinnDate(), planned: future.length, nextAt: future[0]?.notificationAt ?? future[0]?.end }
       }).then(respond, () => respond({ error: 'Tunniplaani olekut ei saanud lugeda' }))
       return true
     }

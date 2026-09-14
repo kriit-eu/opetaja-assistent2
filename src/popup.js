@@ -43,7 +43,7 @@ function initPopup() {
     const status = document.getElementById('lesson-notification-schedule-status')
     if (!status) return
     status.textContent = result?.error ? `Tunniplaan: ${result.error}` : result?.updatedAt ?
-      `Täna ees: ${result.planned} tunniplokki. Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.` :
+      `${result.testMode ? 'TEST: kolmapäeva tunniplaan ajanihkega. ' : ''}Täna ees: ${result.planned} tunniplokki. ${result.nextAt ? `Järgmine märguanne: ${new Date(result.nextAt).toLocaleTimeString('et-EE')}. ` : ''}Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.` :
       'Automaatsete märguannete ajastamiseks ava Tahvel ja logi sisse.'
   }).catch(() => {})
   document.getElementById('test-lesson-notification')?.addEventListener('click', async() => {

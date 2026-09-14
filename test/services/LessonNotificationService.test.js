@@ -1,14 +1,14 @@
 import { test, expect } from 'bun:test'
 import { registerLessonNotifications } from '../../src/services/LessonNotificationService.js'
 import { cryptoService } from '../../src/services/CryptoService.js'
-import { tallinnDate } from '../../src/services/LessonSchedule.js'
+import { tallinnDate, timetableSourceDate } from '../../src/services/LessonSchedule.js'
 
 test('refresh reconciles cancellations, preserves schedule on session failure, and deduplicates notifications', async() => {
   const original = { chrome: global.chrome, fetch: global.fetch, encrypt: cryptoService.encrypt, decrypt: cryptoService.decrypt }
   const handlers = {}
   const alarms = new Map()
   let stored = {}
-  let events = [{ id: 1, journalId: 8, date: tallinnDate(), timeStart: '23:00', timeEnd: '23:45', studentGroups: [] }]
+  let events = [{ id: 1, journalId: 8, date: timetableSourceDate(tallinnDate()), timeStart: '23:00', timeEnd: '23:45', studentGroups: [] }]
   let expired = false
   let notifications = 0
   cryptoService.encrypt = async text => ({ ct: text })
@@ -47,6 +47,7 @@ test('refresh reconciles cancellations, preserves schedule on session failure, a
     await refresh()
     expect([...alarms.keys()].filter(k => k.startsWith('oa2-lesson:'))).toEqual([])
     state.blocks[0].end = Date.now() - 1000
+    state.blocks[0].notificationAt = Date.now() - 1000
     stored.OA_lessonNotifications = { ct: JSON.stringify(state) }
     handlers.alarm({ name: 'oa2-lesson:' + state.blocks[0].key })
     await message('lessonNotificationStatus')
