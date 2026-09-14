@@ -94,5 +94,8 @@ export async function closeAllPagesExcept(context, keepPage = null) {
 export async function clearExtensionStorage(serviceWorker) {
   await serviceWorker.evaluate(async() => {
     await new Promise(resolve => chrome.storage.local.clear(resolve))
+    // Match a fresh install: unrelated feature tests must not be covered by
+    // the update modal just because their settings were reset between tests.
+    await chrome.storage.local.set({ OA_updateBannerDismissed: chrome.runtime.getManifest().version })
   })
 }
