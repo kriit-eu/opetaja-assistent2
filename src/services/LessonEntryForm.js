@@ -52,11 +52,12 @@ function check(control) {
 }
 
 /** Open and prefill a notified journal entry, never submitting it. */
-export async function openLessonEntry(block, get) {
+export async function openLessonEntry(block, get, onOpened = () => {}) {
   const add = await waitFor(() => window.location.hash === `#/journal/${block.journalId}/edit` && [...document.querySelectorAll('button')].find(b =>
     /lisa\s+(uus\s+)?sissekanne/i.test(b.textContent) && b.getClientRects().length && !b.disabled))
   add.click()
   const form = await waitFor(() => document.querySelector('form.tahvel-form [formcontrolname="entryType"]')?.closest('form'))
+  onOpened()
   let userEdited = false
   const edited = event => { if (event.isTrusted) userEdited = true }
   form.addEventListener('input', edited)
@@ -99,29 +100,48 @@ export function initializeLessonEntry() {
   let lastRefresh = 0
   let opening = false
   const trigger = async() => {
-    if (Date.now() - lastRefresh > 30000) {
+    const url = new URL(window.location.href)
+    const key = url.searchParams.get('oa2Lesson')
+    // Consume the saved notification before refresh can replace scheduler state.
+    if (!key && Date.now() - lastRefresh > 30000) {
       lastRefresh = Date.now()
       chrome.runtime.sendMessage({ action: 'refreshLessonNotifications' }).catch(() => {})
     }
-    const url = new URL(window.location.href)
-    const key = url.searchParams.get('oa2Lesson')
     if (!key || opening || !/^#\/journal\/\d+\/edit$/.test(url.hash)) return
     opening = true
     try {
-      const { block } = await chrome.runtime.sendMessage({ action: 'getLessonNotification', key })
-      if (!block || url.hash !== `#/journal/${block.journalId}/edit`) return
-      url.searchParams.delete('oa2Lesson')
-      window.history.replaceState(window.history.state, '', url)
+      const response = await chrome.runtime.sendMessage({ action: 'getLessonNotification', key })
+      const block = response?.block
+      if (!block) throw new Error(response?.error || 'Teavituse tunni andmed pole kättesaadavad. Kontrolli Tahvli sisselogimist ja proovi lehte värskendada.')
+      if (window.location.hash !== `#/journal/${block.journalId}/edit`) return
       await openLessonEntry(block, async(path, params = {}) => {
         const apiUrl = new URL(`/hois_back${path}`, window.location.origin)
         Object.entries(params).forEach(([k, v]) => apiUrl.searchParams.set(k, String(v)))
         const response = await fetch(apiUrl, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(15000) })
         if (!response.ok) throw new Error('Tahvli andmed pole kättesaadavad')
         return response.json()
+      }, () => {
+        const current = new URL(window.location.href)
+        if (current.searchParams.get('oa2Lesson') === key) {
+          current.searchParams.delete('oa2Lesson')
+          window.history.replaceState(window.history.state, '', current)
+        }
+        document.getElementById('oa2-lesson-open-error')?.remove()
       })
     } finally { opening = false }
   }
-  const run = () => trigger().catch(error => console.warn('ÕA2 tunni vorm:', error.message))
+  const run = () => trigger().catch(error => {
+    console.warn('ÕA2 tunni vorm:', error.message)
+    let notice = document.getElementById('oa2-lesson-open-error')
+    if (!notice) {
+      notice = document.createElement('div')
+      notice.id = 'oa2-lesson-open-error'
+      notice.setAttribute('role', 'alert')
+      notice.style.cssText = 'position:fixed;top:12px;right:12px;max-width:460px;padding:16px;background:#fff3cd;color:#332701;z-index:99999'
+      document.body.append(notice)
+    }
+    notice.textContent = `ÕA2 ei saanud sissekande vormi avada: ${error.message}`
+  })
   window.addEventListener('hashchange', () => { lastRefresh = 0; run() })
   window.addEventListener('focus', run)
   run()

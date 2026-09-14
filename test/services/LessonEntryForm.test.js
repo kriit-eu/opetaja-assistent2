@@ -1,6 +1,22 @@
 import { test, expect } from 'bun:test'
 import { JSDOM } from 'jsdom'
-import { openLessonEntry } from '../../src/services/LessonEntryForm.js'
+import { openLessonEntry, initializeLessonEntry } from '../../src/services/LessonEntryForm.js'
+
+test('notification entry reads saved data before refresh and explains a missing response without consuming the link', async() => {
+  const dom = new JSDOM('<body></body>', { url: 'https://tahvel.edu.ee/?oa2Lesson=saved#/journal/8/edit' })
+  const original = { window: global.window, document: global.document, chrome: global.chrome }
+  const actions = []
+  Object.assign(global, { window: dom.window, document: dom.window.document, chrome: { runtime: {
+    sendMessage: async message => { actions.push(message.action); return undefined }
+  } } })
+  try {
+    initializeLessonEntry()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(actions).toEqual(['getLessonNotification'])
+    expect(document.querySelector('[role="alert"]').textContent).toContain('ei saanud sissekande vormi avada')
+    expect(new URL(window.location.href).searchParams.get('oa2Lesson')).toBe('saved')
+  } finally { Object.assign(global, original); dom.window.close() }
+})
 
 test('fills current Tahvel controls, leaves topic/content to teacher and never saves', async() => {
   const dom = new JSDOM(`<button id="add">LISA UUS SISSEKANNE</button><form class="tahvel-form">

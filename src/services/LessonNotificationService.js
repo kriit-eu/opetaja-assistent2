@@ -171,11 +171,11 @@ export function registerLessonNotifications() {
       serialize(async() => {
         const state = await readState()
         const block = state.sent?.[message.key]
-        if (state.origin !== origin || !block || block.date !== tallinnDate()) return null
+        if (state.origin !== origin || !block || block.date !== tallinnDate()) throw new Error('Salvestatud teavituse andmed puuduvad või teavitus on aegunud.')
         const user = await lessonGet(origin, '/user')
-        if (`${origin}:${user.school?.id}:${user.teacherId ?? user.teacher}` !== state.owner) return null
+        if (`${origin}:${user.school?.id}:${user.teacherId ?? user.teacher}` !== state.owner) throw new Error('Logi Tahvlisse sisse teavituse saanud õpetaja kontoga.')
         return { ...block, schoolId: state.schoolId }
-      }).then(block => respond({ block }), () => respond({ block: null }))
+      }).then(block => respond({ block }), error => respond({ block: null, error: error.message }))
       return true
     }
     return false
