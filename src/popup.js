@@ -39,6 +39,13 @@ document.addEventListener('DOMContentLoaded', function() {
  * Initialize the popup
  */
 function initPopup() {
+  if (document.getElementById('lesson-notification-schedule-status')) chrome.runtime.sendMessage({ action: 'lessonNotificationStatus' }).then(result => {
+    const status = document.getElementById('lesson-notification-schedule-status')
+    if (!status) return
+    status.textContent = result?.error ? `Tunniplaan: ${result.error}` : result?.updatedAt ?
+      `Täna ees: ${result.planned} tunniplokki. Uuendatud ${new Date(result.updatedAt).toLocaleTimeString('et-EE')}.` :
+      'Automaatsete märguannete ajastamiseks ava Tahvel ja logi sisse.'
+  }).catch(() => {})
   document.getElementById('test-lesson-notification')?.addEventListener('click', async() => {
     const status = document.getElementById('test-lesson-notification-status')
     try {

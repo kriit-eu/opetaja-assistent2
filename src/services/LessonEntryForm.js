@@ -1,0 +1,128 @@
+import { previousLessonAttendance } from './PreviousLessonAttendance.js'
+
+/** Wait for a rendered field without retaining observers after timeout. */
+async function waitFor(find, timeout = 20000) {
+  const end = Date.now() + timeout
+  while (Date.now() < end) {
+    const result = find()
+    if (result) return result
+    await new Promise(resolve => setTimeout(resolve, 150))
+  }
+  throw new Error('Tahvli vorm ei ole valmis. Ava sissekanne käsitsi.')
+}
+
+/** Show a durable status inside the form, using text only. */
+function status(form, text) {
+  let element = form.querySelector('.oa2-lesson-prefill-status')
+  if (!element) {
+    element = document.createElement('p')
+    element.className = 'oa2-lesson-prefill-status'
+    element.setAttribute('role', 'status')
+    element.style.cssText = 'padding:12px;background:#fff3cd;color:#332701'
+    form.prepend(element)
+  }
+  element.textContent = text
+}
+
+/** Select a current Tahvel dropdown by its rendered label. */
+async function select(form, name, label) {
+  const field = await waitFor(() => form.querySelector(`tahvel-select[formcontrolname="${name}"]`))
+  field.querySelector('.field').click()
+  const option = await waitFor(() => [...field.querySelectorAll('button.dropdown-item')].find(b => b.textContent.trim() === label))
+  option.click()
+}
+
+/** Fill an Angular control using the same input/change events as manual typing. */
+function input(form, name, value) {
+  const field = form.querySelector(`[formcontrolname="${name}"] input`)
+  if (!field) throw new Error(`Väli ${name} puudub`)
+  field.value = value
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+  field.dispatchEvent(new Event('change', { bubbles: true }))
+  field.dispatchEvent(new Event('blur', { bubbles: true }))
+}
+
+/** Check a native Tahvel checkbox without toggling an already selected value. */
+function check(control) {
+  if (!control) return false
+  const button = control.querySelector('button')
+  if (!button || button.disabled) return false
+  if (!control.querySelector('.checked') && !button.classList.contains('checked') && button.getAttribute('aria-checked') !== 'true') button.click()
+  return true
+}
+
+/** Open and prefill a notified journal entry, never submitting it. */
+export async function openLessonEntry(block, get) {
+  const add = await waitFor(() => window.location.hash === `#/journal/${block.journalId}/edit` && [...document.querySelectorAll('button')].find(b =>
+    /lisa\s+(uus\s+)?sissekanne/i.test(b.textContent) && b.getClientRects().length && !b.disabled))
+  add.click()
+  const form = await waitFor(() => document.querySelector('form.tahvel-form [formcontrolname="entryType"]')?.closest('form'))
+  let userEdited = false
+  const edited = event => { if (event.isTrusted) userEdited = true }
+  form.addEventListener('input', edited)
+  form.addEventListener('click', edited)
+  status(form, 'ÕA2 täidab tunni andmeid…')
+  try {
+    await select(form, 'entryType', block.capacityType === 'MAHT_p' ? 'Praktiline töö' : block.capacityType === 'MAHT_i' ? 'Iseseisev töö' : 'Tund')
+    const capacity = block.capacityType === 'MAHT_p' ? 'Praktiline õpe' : block.capacityType === 'MAHT_i' ? 'Iseseisev õpe' : 'Auditoorne õpe'
+    check([...form.querySelectorAll('checkbox[formcontrolname="selected"]')].find(c => c.textContent.trim() === capacity))
+    input(form, 'entryDate', block.date.split('-').reverse().join('.'))
+    if (block.startLessonNr != null) await select(form, 'startLessonNr', String(block.startLessonNr))
+    if (block.lessons != null) input(form, 'lessons', String(block.lessons))
+    status(form, 'Tunni andmed on täidetud. Laadin eelmise tunni puudujaid…')
+    const attendance = await previousLessonAttendance(get, block)
+    if (!form.isConnected) return
+    if (userEdited) {
+      status(form, 'Vormi muudeti puudujate laadimise ajal. Puudujaid automaatselt ei muudetud; kontrolli need käsitsi.')
+      return
+    }
+    for (const student of attendance.students) {
+      const rows = [...form.querySelectorAll('tbody tr')].filter(row => {
+        const spans = row.querySelectorAll('.student-cell > span > span')
+        return spans[0]?.textContent.trim() === student.name && spans[1]?.textContent.replace(/^\s*,\s*/, '').trim() === student.group
+      })
+      if (rows.length === 1) {
+        const control = rows[0].querySelector('checkbox[formcontrolname="absenceWithoutReason"]')
+        // Never replace Tahvel's own excused/practice absences.
+        if (!rows[0].querySelector('checkbox[formcontrolname="absenceExcused"],checkbox[formcontrolname="absencePractice"]')) check(control)
+      }
+    }
+    status(form, `${attendance.warning || ''} Lisa tunni nimetus ja sisu ning kontrolli andmed enne salvestamist.${block.lessons == null ? ' Algustundi või tundide arvu ei saanud tunniaegade järgi tuvastada.' : ''}`)
+  } catch (error) { status(form, `Eeltäitmine jäi pooleli: ${error.message} Kontrolli andmeid ja täida puuduvad väljad käsitsi.`) } finally {
+    form.removeEventListener('input', edited)
+    form.removeEventListener('click', edited)
+  }
+}
+
+/** Start refreshes on page load/navigation and consume a notification link after authentication. */
+export function initializeLessonEntry() {
+  let lastRefresh = 0
+  let opening = false
+  const trigger = async() => {
+    if (Date.now() - lastRefresh > 30000) {
+      lastRefresh = Date.now()
+      chrome.runtime.sendMessage({ action: 'refreshLessonNotifications' }).catch(() => {})
+    }
+    const url = new URL(window.location.href)
+    const key = url.searchParams.get('oa2Lesson')
+    if (!key || opening || !/^#\/journal\/\d+\/edit$/.test(url.hash)) return
+    opening = true
+    try {
+      const { block } = await chrome.runtime.sendMessage({ action: 'getLessonNotification', key })
+      if (!block || url.hash !== `#/journal/${block.journalId}/edit`) return
+      url.searchParams.delete('oa2Lesson')
+      window.history.replaceState(window.history.state, '', url)
+      await openLessonEntry(block, async(path, params = {}) => {
+        const apiUrl = new URL(`/hois_back${path}`, window.location.origin)
+        Object.entries(params).forEach(([k, v]) => apiUrl.searchParams.set(k, String(v)))
+        const response = await fetch(apiUrl, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(15000) })
+        if (!response.ok) throw new Error('Tahvli andmed pole kättesaadavad')
+        return response.json()
+      })
+    } finally { opening = false }
+  }
+  const run = () => trigger().catch(error => console.warn('ÕA2 tunni vorm:', error.message))
+  window.addEventListener('hashchange', () => { lastRefresh = 0; run() })
+  window.addEventListener('focus', run)
+  run()
+}

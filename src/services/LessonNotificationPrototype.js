@@ -1,7 +1,7 @@
 import Logger from './Logger.js'
 
 export const PROTOTYPE_ALARM = 'oa2-lesson-notification-prototype'
-export const PROTOTYPE_URL = 'https://tahvel.edu.ee/#/journal/433792/edit?oa2NewEntry=1'
+export const PROTOTYPE_URL = 'https://tahvel.edu.ee/?oa2NewEntry=1#/journal/433792/edit'
 
 /** Register the manually triggered one-minute notification prototype. */
 export function registerLessonNotificationPrototype() {
