@@ -93,7 +93,7 @@ async function refresh(origin) {
     }
     state.blocks = buildLessonBlocks(mapTimetableToDate(data.timetableEvents, sourceDate, date), times, date).map(block => ({ ...block, lessonTimes: times }))
     if (sourceDate !== date) {
-      const testKey = `${date}:${sourceDate}`
+      const testKey = `${date}:${sourceDate}:one-minute-v1`
       const savedOffset = state.testClock?.key === testKey ? state.testClock.offset : null
       const shifted = shiftTestNotifications(state.blocks, Date.now(), savedOffset)
       if (savedOffset == null && shifted.offset != null) state.sent = {}

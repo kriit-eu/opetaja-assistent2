@@ -2,13 +2,13 @@ import { test, expect } from 'bun:test'
 import { buildLessonBlocks, lessonTimestamp, tallinnDate, timetableSourceDate, mapTimetableToDate, shiftTestNotifications } from '../../src/services/LessonSchedule.js'
 import { previousLessonAttendance } from '../../src/services/PreviousLessonAttendance.js'
 
-test('test clock fires after two minutes without drifting on refresh or changing form times', () => {
+test('test clock fires after one minute without drifting on refresh or changing form times', () => {
   const blocks = [{ start: 1000, end: 2000 }, { start: 3000, end: 4000 }]
   const first = shiftTestNotifications(blocks, 2500)
-  expect(first.blocks[1].notificationAt).toBe(122500)
+  expect(first.blocks[1].notificationAt).toBe(62500)
   expect(first.blocks[1].end).toBe(4000)
   expect(shiftTestNotifications(blocks, 3500, first.offset).blocks).toEqual(first.blocks)
-  expect(shiftTestNotifications(blocks, 5000).blocks[0].notificationAt).toBe(125000)
+  expect(shiftTestNotifications(blocks, 5000).blocks[0].notificationAt).toBe(65000)
 })
 
 test('Wednesday test applies only on the requested day and retains lesson clock times', () => {

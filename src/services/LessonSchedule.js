@@ -18,7 +18,7 @@ export function mapTimetableToDate(events, sourceDate, targetDate) {
 export function shiftTestNotifications(blocks, now, savedOffset = null) {
   if (!blocks.length) return { blocks, offset: savedOffset }
   const next = blocks.find(block => block.end > now) || blocks[0]
-  const offset = savedOffset ?? now + 2 * 60000 - next.end
+  const offset = savedOffset ?? now + 60000 - next.end
   return { blocks: blocks.map(block => ({ ...block, notificationAt: block.end + offset })), offset }
 }
 
