@@ -30,9 +30,13 @@ test('email transport requires enabled secure Kriit and sends no attendance or a
       expect(options.redirect).toBe('error')
       expect(options.headers.Authorization).toBe('Bearer secret')
       expect(JSON.parse(options.body)).toEqual({ origin: 'https://tahvel.edu.ee', schoolId: 9, journalId: 8, date: block.date, timeStart: block.timeStart, timeEnd: block.timeEnd, startLessonNr: 3, name: 'Test' })
-      return Response.json({ ok: true })
+      return Response.json({ status: 200, data: { ok: true } })
     }
     await sendLessonEmail(configured, 'https://tahvel.edu.ee', 9, { ...block, students: ['private'], email: 'other@example.com' })
+    global.fetch = async() => Response.json({ status: 200, data: { ok: true, duplicate: true } })
+    await sendLessonEmail(configured, 'https://tahvel.edu.ee', 9, block)
+    global.fetch = async() => Response.json({ status: 200, data: { ok: false } })
+    await expect(sendLessonEmail(configured, 'https://tahvel.edu.ee', 9, block)).rejects.toThrow()
     global.fetch = async() => new Response('', { status: 500 })
     await expect(sendLessonEmail(configured, 'https://tahvel.edu.ee', 9, block)).rejects.toThrow()
   } finally { Object.assign(global, original) }

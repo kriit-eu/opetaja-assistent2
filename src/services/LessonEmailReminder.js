@@ -34,5 +34,8 @@ redirect: 'error',
     body: JSON.stringify({ origin, schoolId, journalId, date, timeStart, timeEnd, startLessonNr, name }),
     signal: AbortSignal.timeout(20000)
   })
-  if (!response.ok || !(await response.json()).ok) throw new Error('Kriidi meiliteavituse saatmine ebaõnnestus.')
+  if (!response.ok) throw new Error('Kriidi meiliteavituse saatmine ebaõnnestus.')
+  // Kriit's stop() helper wraps endpoint data in { status, data }.
+  const result = await response.json()
+  if (result.status !== 200 || result.data?.ok !== true) throw new Error('Kriidi meiliteavituse saatmine ebaõnnestus.')
 }

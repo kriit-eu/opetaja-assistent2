@@ -17,7 +17,7 @@ test('email waits ten minutes, fails closed on expired session, skips recorded b
   global.fetch = async(url) => {
     url = String(url)
     if (url.includes('LessonTimes')) return Response.json({ 9: [{ number: 1, timeStart: '10:00', timeEnd: '11:00' }] })
-    if (url.includes('kriit.example')) { emails++; return Response.json({ ok: true }) }
+    if (url.includes('kriit.example')) { emails++; return Response.json({ status: 200, data: { ok: true } }) }
     if (expired) return new Response('', { status: 401 })
     if (url.includes('/user')) return Response.json({ teacher: 10, school: { id: 9 } })
     if (url.includes('journalEntriesByDate')) return Response.json(entries)
