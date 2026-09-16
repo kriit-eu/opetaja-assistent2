@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test'
-import { launchWithExtension } from './helpers/loadExtension.js'
+import { expect } from '@playwright/test'
+import { test, launchWithExtension } from './helpers/loadExtension.js'
 
 test('lesson notification timing validates and persists all four combinations through the real worker', async() => {
   const { context, extensionId } = await launchWithExtension()

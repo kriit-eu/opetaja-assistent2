@@ -33,4 +33,38 @@ Before closing #156, verify on Windows with a **test profile and test lesson**:
 5. Click it, confirm the correct journal/form, date, lesson count and attendance; do not save a synthetic lesson.
 6. Repeat with an expired Tahvel session and confirm sign-in resumes the intended form.
 
-Before closing #157, deploy the Kriit migration/endpoint in a test environment. Use a controlled teacher inbox to verify one actual email for a missing entry, none for a recorded entry, and a working link after sign-in. Automated tests do not prove OS toast delivery or SMTP delivery.
+## Automated integration verification (2026-09-16)
+
+`tests/e2e/lesson-flow.e2e.js` adds five browser integration tests. The full suite passed **90/90 without retries**, including actual SMTP delivery through the real Kriit reminder controller, Auth, Db and Mail classes to a disposable MailHog inbox backed by a fresh MariaDB migration.
+
+Verified:
+- One merged block, correct scheduling and all four timing options persisted through popup reloads.
+- A native Chrome alarm fires after the Tahvel tab closes; duplicate delivery is suppressed.
+- Notification-click handling requests the correct URL; the form gets type/capacity/date/periods/previous attendance, with topic/content empty and no automatic save.
+- A link survives expired authentication and loss of query parameters during sign-in, and an older email link works without saved notification state.
+- No email before ten minutes, for recorded/cancelled lessons or while authentication is unavailable.
+- Real email delivery, authenticated recipient, expected subject/date/time/link, and successful local completion tracking. This caught and fixed the client incorrectly expecting `ok` at the response root instead of Kriit's `{ status, data }` envelope.
+- Unauthenticated/student/invalid-token requests, early requests and invalid origins/subjects are rejected. Eight concurrent requests across multiple PHP workers create only one additional email; a caller-provided recipient is ignored.
+
+**Boundaries:** The five tests bundle the production lesson modules with test-only seams, use a synthetic Tahvel DOM/API contract and simulated clocks/authentication. OS notification display and click events are stubbed; the requested new-tab URL is navigated by Playwright because Chromium can navigate extension-created tabs before route interception attaches. The native Chrome alarm is real, but this is not a test with every Chrome window closed. It does not verify live Tahvel Angular components/ID-card authentication, Windows toast UI or production SMTP configuration. No real teacher accounts or recipients are used.
+
+The shared full-suite browser helper now has a worker-scoped fixture that closes the actual persistent browser (rather than its per-test cleanup wrapper), clears session/alarm state between tests, and mocks incidental worker Tahvel fetches. The full run completed without worker teardown timeouts, without weakening assertions or bypassing hooks.
+
+### Reproduce the mail integration
+
+From this repository, with the companion Kriit worktree at `../kriit-203-lesson-reminders`, its PHP dependencies at `../kriit/vendor` and the local `kriit/app` image built:
+
+```bash
+STACK=../kriit-203-lesson-reminders/tests/lesson-reminders/compose.yaml
+docker compose -p oa2-reminder-verification -f "$STACK" up -d --wait
+APP=$(docker compose -p oa2-reminder-verification -f "$STACK" port app 8080)
+MAIL=$(docker compose -p oa2-reminder-verification -f "$STACK" port mail 8025)
+LESSON_TEST_API="http://$APP/api" LESSON_TEST_MAIL="http://$MAIL" \
+  bun --bun x playwright test tests/e2e/lesson-flow.e2e.js --workers=1 --retries=0
+# Or run the full suite using the same environment variables.
+docker compose -p oa2-reminder-verification -f "$STACK" down
+```
+
+The email test requires both environment variables and otherwise reports a skip. It refuses non-loopback URLs, checks the disposable server identity before resetting its data, and never uses production config/database credentials. The stack's database is tmpfs and MailHog captures rather than forwards messages.
+
+Before release: deploy the backend migration/endpoint and extension through the usual process. Production SMTP and the Windows checklist above remain deployment/manual checks, not claims made by these tests.
