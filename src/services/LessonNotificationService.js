@@ -1,4 +1,5 @@
 import Logger from './Logger.js'
+import { LESSON_TIMING_KEY, readLessonTiming, validateLessonTiming, lessonNotificationAt } from './LessonNotificationTiming.js'
 import { cryptoService } from './CryptoService.js'
 import { buildLessonBlocks, tallinnDate, lessonTimestamp } from './LessonSchedule.js'
 
@@ -38,19 +39,20 @@ export async function lessonGet(origin, path, params = {}) {
 }
 
 /** Reconcile alarms with the latest successful timetable without replaying earlier lessons. */
-async function reconcile(state) {
+async function reconcile(state, timingChanged = false) {
+  const timing = await readLessonTiming()
   const now = Date.now()
   const alarms = await chrome.alarms.getAll()
   const existing = new Set(alarms.map(a => a.name))
   const planned = new Map((state.blocks || []).filter(b =>
-    b.date === tallinnDate(now) && (b.end > now || existing.has(PREFIX + b.key)) && !state.sent?.[b.key])
+    b.date === tallinnDate(now) && (lessonNotificationAt(b, timing) > now || (!timingChanged && existing.has(PREFIX + b.key))) && !state.sent?.[b.key])
     .map(b => [PREFIX + b.key, b]))
   for (const alarm of alarms) {
     if (alarm.name.startsWith(PREFIX) && !planned.has(alarm.name)) await chrome.alarms.clear(alarm.name)
   }
   for (const [name, block] of planned) {
     const alarm = await chrome.alarms.get(name)
-    const when = block.end
+    const when = lessonNotificationAt(block, timing)
     if (!alarm || alarm.scheduledTime !== when) await chrome.alarms.create(name, { when })
   }
   const tomorrow = new Date(`${tallinnDate(now)}T12:00:00Z`)
@@ -119,12 +121,13 @@ lang: 'ET'
 async function notify(name) {
   const state = await readState()
   const block = state.blocks?.find(b => PREFIX + b.key === name)
-  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || (block.end) > Date.now()) return
+  const timing = await readLessonTiming()
+  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || lessonNotificationAt(block, timing) > Date.now()) return
   if (await chrome.notifications.getPermissionLevel() !== 'granted') return
   await chrome.notifications.create(name, {
     type: 'basic',
 iconUrl: chrome.runtime.getURL('icon128.png'),
-    title: `Tund lõppes: ${block.name} · ${block.groups.map(g => g.code).join(', ')}`,
+    title: `${Date.now() >= block.end ? 'Tund lõppes' : 'Tunni sissekanne'}: ${block.name} · ${block.groups.map(g => g.code).join(', ')}`,
     message: `${block.timeStart}–${block.timeEnd}. Klõpsa päeviku sissekande lisamiseks.`,
 requireInteraction: true
   })
@@ -159,11 +162,22 @@ export function registerLessonNotifications() {
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     let origin
     try { origin = new URL(sender.url).origin } catch { /* Extension messages may have no page URL. */ }
+    if (message.action === 'saveLessonNotificationTiming' && sender.id === chrome.runtime.id && !sender.tab) {
+      serialize(async() => {
+        const timing = validateLessonTiming(message.timing)
+        await chrome.storage.local.set({ [LESSON_TIMING_KEY]: timing })
+        await reconcile(await readState(), true)
+        return { ok: true }
+      }).then(respond, error => respond({ error: error.message }))
+      return true
+    }
     if (message.action === 'lessonNotificationStatus' && sender.id === chrome.runtime.id && !sender.tab) {
       serialize(async() => {
         const state = await readState()
-        const future = (state.blocks || []).filter(b => (b.end) > Date.now() && !state.sent?.[b.key])
-        return { updatedAt: state.updatedAt, error: state.error, sourceDate: state.sourceDate, planned: future.length, nextAt: future[0]?.end }
+        const timing = await readLessonTiming()
+        const future = (state.blocks || []).map(b => ({ ...b, notificationAt: lessonNotificationAt(b, timing) }))
+          .filter(b => b.notificationAt > Date.now() && !state.sent?.[b.key]).sort((a, b) => a.notificationAt - b.notificationAt)
+        return { updatedAt: state.updatedAt, error: state.error, sourceDate: state.sourceDate, planned: future.length, nextAt: future[0]?.notificationAt }
       }).then(respond, () => respond({ error: 'Tunniplaani olekut ei saanud lugeda' }))
       return true
     }

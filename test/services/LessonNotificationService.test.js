@@ -46,6 +46,17 @@ test('refresh reconciles cancellations, preserves schedule on session failure, a
     handlers.alarm({ name: alarmName })
     await message('lessonNotificationStatus')
     expect(notifications).toBe(0)
+    expect(await message('saveLessonNotificationTiming', { timing: { reference: 'end', direction: 'after', minutes: -1 } })).toHaveProperty('error')
+    expect(stored.OA_lessonNotificationTiming).toBeUndefined()
+    expect(await message('saveLessonNotificationTiming', { timing: { reference: 'end', direction: 'after', minutes: 10 } })).toEqual({ ok: true })
+    expect(alarms.get(alarmName).scheduledTime).toBe(now + 660000)
+    await refresh()
+    expect(alarms.get(alarmName).scheduledTime).toBe(now + 660000)
+    expect((await message('lessonNotificationStatus')).nextAt).toBe(now + 660000)
+    await message('saveLessonNotificationTiming', { timing: { reference: 'start', direction: 'before', minutes: 0 } })
+    expect(alarms.has(alarmName)).toBe(false)
+    await message('saveLessonNotificationTiming', { timing: { reference: 'end', direction: 'after', minutes: 0 } })
+    expect(alarms.get(alarmName).scheduledTime).toBe(now + 60000)
     expired = true
     await refresh()
     expect(JSON.parse(stored.OA_lessonNotifications.ct).blocks).toHaveLength(1)
@@ -60,6 +71,8 @@ test('refresh reconciles cancellations, preserves schedule on session failure, a
     handlers.alarm({ name: 'oa2-lesson:' + state.blocks[0].key })
     await message('lessonNotificationStatus')
     expect(notifications).toBe(1)
+    await message('saveLessonNotificationTiming', { timing: { reference: 'end', direction: 'after', minutes: 10 } })
+    expect(alarms.has(alarmName)).toBe(false)
   } finally {
     Date.now = original.now
     global.chrome = original.chrome
