@@ -80,7 +80,7 @@ test('all timing combinations reschedule the block and survive reopening the pop
       await harness.popup.locator('#lesson-reference').selectOption(reference)
       await harness.popup.locator('#lesson-direction').selectOption(direction)
       await harness.popup.locator('#lesson-minutes').fill('10')
-      await harness.popup.getByRole('button', { name: 'Salvesta märguande aeg' }).click()
+      await harness.popup.locator('#lesson-notification-settings').getByRole('button', { name: 'Salvesta', exact: true }).click()
       await expect(harness.popup.locator('#lesson-notification-settings-status')).toContainText('Salvestatud')
       const expected = (reference === 'end' ? END : Date.parse('2026-09-14T06:10:00Z')) + (direction === 'before' ? -600000 : 600000)
       expect(await harness.worker.evaluate(() => lessonHarness.alarms().filter(a => a.name.startsWith('oa2-lesson:')))).toEqual([
