@@ -10,6 +10,7 @@ test('refresh reconciles cancellations, preserves schedule on session failure, a
   const handlers = {}
   const alarms = new Map()
   let stored = {}
+  const pending = {}
   let events = [{ id: 1, journalId: 8, date: tallinnDate(), timeStart: '23:00', timeEnd: '23:45', studentGroups: [] }]
   let expired = false
   let notifications = 0
@@ -22,7 +23,10 @@ test('refresh reconciles cancellations, preserves schedule on session failure, a
   }
   global.chrome = {
     runtime: { id: 'test', getURL: p => p, onInstalled: { addListener: () => {} }, onStartup: { addListener: fn => { handlers.start = fn } }, onMessage: { addListener: fn => { handlers.message = fn } } },
-    storage: { local: { get: async() => stored, set: async value => { stored = { ...stored, ...value } } } },
+    storage: {
+      local: { get: async() => stored, set: async value => { stored = { ...stored, ...value } } },
+      session: { get: async() => pending, set: async value => Object.assign(pending, value), remove: async key => { delete pending[key] } }
+    },
     alarms: {
       get: (name, cb) => cb ? cb(alarms.get(name)) : Promise.resolve(alarms.get(name)),
       getAll: async() => [...alarms.values()], clear: async name => alarms.delete(name),
@@ -38,6 +42,16 @@ test('refresh reconciles cancellations, preserves schedule on session failure, a
   }
   try {
     registerLessonNotifications()
+    const pageMessage = (action, fields = {}, origin = 'https://tahvel.edu.ee') => new Promise(resolve => handlers.message(
+      { action, ...fields }, { id: 'test', url: `${origin}/`, tab: { id: 42 } }, resolve))
+    await pageMessage('rememberLessonLink', { key: '8-2026-09-14-1' })
+    expired = true
+    expect(await pageMessage('pendingLessonLink')).toEqual({})
+    expired = false
+    expect(await pageMessage('pendingLessonLink')).toEqual({ key: '8-2026-09-14-1' })
+    expect(await pageMessage('pendingLessonLink', {}, 'https://test.tahvel.eenet.ee')).toEqual({})
+    await pageMessage('clearLessonLink')
+    expect(await pageMessage('pendingLessonLink')).toEqual({})
     await refresh()
     let state = JSON.parse(stored.OA_lessonNotifications.ct)
     expect(state.blocks).toHaveLength(1)

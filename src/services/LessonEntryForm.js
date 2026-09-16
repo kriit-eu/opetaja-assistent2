@@ -105,14 +105,25 @@ export function initializeLessonEntry() {
   let opening = false
   const trigger = async() => {
     const url = new URL(window.location.href)
-    const key = url.searchParams.get('oa2Lesson')
+    let key = url.searchParams.get('oa2Lesson')
+    if (key) {
+      await chrome.runtime.sendMessage({ action: 'rememberLessonLink', key })
+    } else {
+      const pending = await chrome.runtime.sendMessage({ action: 'pendingLessonLink' })
+      if (pending?.key) {
+        key = pending.key
+        url.searchParams.set('oa2Lesson', key)
+        url.hash = `#/journal/${key.split('-')[0]}/edit`
+        window.location.replace(url.href)
+        return
+      }
+    }
     // Consume the saved notification before refresh can replace scheduler state.
     if (!key && Date.now() - lastRefresh > 30000) {
       lastRefresh = Date.now()
       chrome.runtime.sendMessage({ action: 'refreshLessonNotifications' }).catch(() => {})
     }
-    if (!key || opening || !/^#\/journal\/\d+\/edit$/.test(url.hash)) return
-    opening = true
+    if (!key || !/^#\/journal\/\d+\/edit$/.test(url.hash)) return
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getLessonNotification', key })
       const block = response?.block
@@ -130,22 +141,27 @@ export function initializeLessonEntry() {
           current.searchParams.delete('oa2Lesson')
           window.history.replaceState(window.history.state, '', current)
         }
+        chrome.runtime.sendMessage({ action: 'clearLessonLink' }).catch(() => {})
         document.getElementById('oa2-lesson-open-error')?.remove()
       })
     } finally { opening = false }
   }
-  const run = () => trigger().catch(error => {
-    console.warn('ÕA2 tunni vorm:', error.message)
-    let notice = document.getElementById('oa2-lesson-open-error')
-    if (!notice) {
-      notice = document.createElement('div')
-      notice.id = 'oa2-lesson-open-error'
-      notice.setAttribute('role', 'alert')
-      notice.style.cssText = 'position:fixed;top:12px;right:12px;max-width:460px;padding:16px;background:#fff3cd;color:#332701;z-index:99999'
-      document.body.append(notice)
-    }
-    notice.textContent = `ÕA2 ei saanud sissekande vormi avada: ${error.message}`
-  })
+  const run = () => {
+    if (opening) return
+    opening = true
+    return trigger().catch(error => {
+      console.warn('ÕA2 tunni vorm:', error.message)
+      let notice = document.getElementById('oa2-lesson-open-error')
+      if (!notice) {
+        notice = document.createElement('div')
+        notice.id = 'oa2-lesson-open-error'
+        notice.setAttribute('role', 'alert')
+        notice.style.cssText = 'position:fixed;top:12px;right:12px;max-width:460px;padding:16px;background:#fff3cd;color:#332701;z-index:99999'
+        document.body.append(notice)
+      }
+      notice.textContent = `ÕA2 ei saanud sissekande vormi avada: ${error.message}`
+    }).finally(() => { opening = false })
+  }
   window.addEventListener('hashchange', () => { lastRefresh = 0; run() })
   window.addEventListener('focus', run)
   run()

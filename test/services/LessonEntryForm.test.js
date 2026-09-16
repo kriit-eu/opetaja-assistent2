@@ -12,7 +12,7 @@ test('notification entry reads saved data before refresh and explains a missing 
   try {
     initializeLessonEntry()
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(actions).toEqual(['getLessonNotification'])
+    expect(actions).toEqual(['rememberLessonLink', 'getLessonNotification'])
     expect(document.querySelector('[role="alert"]').textContent).toContain('ei saanud sissekande vormi avada')
     expect(new URL(window.location.href).searchParams.get('oa2Lesson')).toBe('saved')
   } finally { Object.assign(global, original); dom.window.close() }

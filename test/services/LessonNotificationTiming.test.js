@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test'
-import { DEFAULT_LESSON_TIMING, validateLessonTiming, lessonNotificationAt } from '../../src/services/LessonNotificationTiming.js'
+import { DEFAULT_LESSON_TIMING, validateLessonTiming, lessonNotificationAt, lessonNotificationDates } from '../../src/services/LessonNotificationTiming.js'
 
 const block = { start: 10000000, end: 13600000 }
 test('defaults to the real block end and supports all four timing combinations', () => {
@@ -11,6 +11,12 @@ test('defaults to the real block end and supports all four timing combinations',
       expect(lessonNotificationAt(block, { ...timing, minutes: 0 })).toBe(block[reference])
     }
   }
+})
+
+test('planning includes adjacent days for offsets across Tallinn midnight', () => {
+  const now = Date.parse('2026-09-14T20:55:00Z')
+  expect(lessonNotificationDates({ reference: 'start', direction: 'before', minutes: 10 }, now)).toEqual(['2026-09-14', '2026-09-15'])
+  expect(lessonNotificationDates({ reference: 'end', direction: 'after', minutes: 1440 }, now)).toEqual(['2026-09-14', '2026-09-13'])
 })
 
 test('rejects malformed, negative, fractional, blank and unsafe offsets', () => {

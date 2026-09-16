@@ -1,3 +1,5 @@
+import { tallinnDate, lessonTimestamp } from './LessonSchedule.js'
+
 /** Persisted timing preference; existing installs default to the lesson end. */
 export const LESSON_TIMING_KEY = 'OA_lessonNotificationTiming'
 export const DEFAULT_LESSON_TIMING = Object.freeze({ reference: 'end', direction: 'after', minutes: 0 })
@@ -14,6 +16,16 @@ export function validateLessonTiming(value) {
 /** Compute the notification time for the whole block, without changing its lesson date. */
 export function lessonNotificationAt(block, timing = DEFAULT_LESSON_TIMING) {
   return block[timing.reference] + (timing.direction === 'before' ? -1 : 1) * timing.minutes * 60000
+}
+
+/** Dates whose lessons can produce notifications between now and the next Tallinn midnight. */
+export function lessonNotificationDates(timing, now = Date.now()) {
+  const today = tallinnDate(now)
+  const next = new Date(`${today}T12:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  const midnight = lessonTimestamp(next.toISOString().slice(0, 10), '00:00')
+  const shift = (timing.direction === 'before' ? 1 : -1) * timing.minutes * 60000
+  return [...new Set([today, tallinnDate(now + shift), tallinnDate(midnight - 1 + shift)])]
 }
 
 /** Read a preference safely when upgrading an existing installation. */

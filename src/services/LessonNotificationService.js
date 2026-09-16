@@ -1,5 +1,7 @@
 import Logger from './Logger.js'
-import { LESSON_TIMING_KEY, readLessonTiming, validateLessonTiming, lessonNotificationAt } from './LessonNotificationTiming.js'
+import { resolveLessonLink } from './LessonNotificationLink.js'
+import { isLessonRecorded, lessonEmailSettings, sendLessonEmail } from './LessonEmailReminder.js'
+import { LESSON_TIMING_KEY, readLessonTiming, validateLessonTiming, lessonNotificationAt, lessonNotificationDates } from './LessonNotificationTiming.js'
 import { cryptoService } from './CryptoService.js'
 import { buildLessonBlocks, tallinnDate, lessonTimestamp } from './LessonSchedule.js'
 
@@ -7,6 +9,7 @@ const KEY = 'OA_lessonNotifications'
 const REFRESH = 'oa2-lesson-refresh'
 const MIDNIGHT = 'oa2-lesson-midnight'
 const PREFIX = 'oa2-lesson:'
+const EMAIL_PREFIX = 'oa2-lesson-email:'
 const ORIGINS = ['https://tahvel.edu.ee', 'https://test.tahvel.eenet.ee']
 let queue = Promise.resolve()
 
@@ -45,7 +48,7 @@ async function reconcile(state, timingChanged = false) {
   const alarms = await chrome.alarms.getAll()
   const existing = new Set(alarms.map(a => a.name))
   const planned = new Map((state.blocks || []).filter(b =>
-    b.date === tallinnDate(now) && (lessonNotificationAt(b, timing) > now || (!timingChanged && existing.has(PREFIX + b.key))) && !state.sent?.[b.key])
+    (lessonNotificationAt(b, timing) > now || (!timingChanged && existing.has(PREFIX + b.key))) && !state.sent?.[b.key])
     .map(b => [PREFIX + b.key, b]))
   for (const alarm of alarms) {
     if (alarm.name.startsWith(PREFIX) && !planned.has(alarm.name)) await chrome.alarms.clear(alarm.name)
@@ -55,12 +58,23 @@ async function reconcile(state, timingChanged = false) {
     const when = lessonNotificationAt(block, timing)
     if (!alarm || alarm.scheduledTime !== when) await chrome.alarms.create(name, { when })
   }
+  const emailEnabled = await lessonEmailSettings()
+  const emailBlocks = new Map((state.blocks || []).filter(b => emailEnabled && !state.emailDone?.[b.key] &&
+    b.end + 86400000 > now).map(b => [EMAIL_PREFIX + b.key, b]))
+  for (const alarm of alarms) {
+    if (alarm.name.startsWith(EMAIL_PREFIX) && !emailBlocks.has(alarm.name)) await chrome.alarms.clear(alarm.name)
+  }
+  for (const [name, block] of emailBlocks) {
+    const alarm = await chrome.alarms.get(name)
+    const due = block.end + 600000
+    if (!alarm || (due > now && alarm.scheduledTime !== due)) await chrome.alarms.create(name, { when: Math.max(now + 1000, due) })
+  }
   const tomorrow = new Date(`${tallinnDate(now)}T12:00:00Z`)
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
   await chrome.alarms.create(MIDNIGHT, { when: lessonTimestamp(tomorrow.toISOString().slice(0, 10), '00:00') })
 }
 
-/** Refresh today's timetable; an expired session retains only today's previous schedule. */
+/** Refresh timetable dates needed for today's notifications, retaining recent pending reminders. */
 async function refresh(origin) {
   const state = await readState()
   // Discard schedules persisted by the earlier clock-shift prototype.
@@ -85,33 +99,38 @@ async function refresh(origin) {
       return
     }
     const owner = `${origin}:${schoolId}:${teacherId}`
-    if (state.owner !== owner) { state.blocks = []; state.sent = {}; state.testClock = null }
+    if (state.owner !== owner) { state.blocks = []; state.sent = {}; state.emailDone = {}; state.testClock = null }
     // Record the identity before fetching the timetable, so a failed fetch after an
     // account switch cannot reuse another teacher's schedule.
     Object.assign(state, { origin, owner, schoolId, teacherId })
-    const nextDate = new Date(`${sourceDate}T12:00:00Z`)
-    nextDate.setUTCDate(nextDate.getUTCDate() + 1)
-    const data = await lessonGet(origin, `/timetableevents/timetableByTeacher/${schoolId}`, {
-      teachers: teacherId,
-from: new Date(lessonTimestamp(sourceDate, '00:00')).toISOString(),
-      thru: new Date(lessonTimestamp(nextDate.toISOString().slice(0, 10), '00:00') - 1).toISOString(),
-lang: 'ET'
-    })
-    if (!Array.isArray(data?.timetableEvents)) throw new Error('Tunniplaani vastus on vigane')
+    const timing = await readLessonTiming()
+    const dates = lessonNotificationDates(timing)
     const timesResponse = await fetch(chrome.runtime.getURL('src/features/singleJournal/lessonDiscrepancies/LessonTimes.json'))
     const times = (await timesResponse.json())[schoolId] || []
-    if (state.sourceDate !== sourceDate) {
-      state.sent = {}
-      await reconcile({ blocks: [] })
+    const blocks = []
+    for (const scheduledDate of dates) {
+      const nextDate = new Date(`${scheduledDate}T12:00:00Z`)
+      nextDate.setUTCDate(nextDate.getUTCDate() + 1)
+      const data = await lessonGet(origin, `/timetableevents/timetableByTeacher/${schoolId}`, {
+        teachers: teacherId,
+        from: new Date(lessonTimestamp(scheduledDate, '00:00')).toISOString(),
+        thru: new Date(lessonTimestamp(nextDate.toISOString().slice(0, 10), '00:00') - 1).toISOString(),
+        lang: 'ET'
+      })
+      if (!Array.isArray(data?.timetableEvents)) throw new Error('Tunniplaani vastus on vigane')
+      blocks.push(...buildLessonBlocks(data.timetableEvents, times, scheduledDate).map(block => ({ ...block, lessonTimes: times })))
     }
-    state.blocks = buildLessonBlocks(data.timetableEvents, times, date).map(block => ({ ...block, lessonTimes: times }))
+    const retained = (state.blocks || []).filter(b => !dates.includes(b.date) && b.end + 86400000 > Date.now())
+    state.blocks = [...retained, ...blocks]
+    const retainedKeys = new Set(state.blocks.map(b => b.key))
+    state.emailDone = Object.fromEntries(Object.entries(state.emailDone || {}).filter(([key]) => retainedKeys.has(key)))
     state.sourceDate = sourceDate
-    state.sent = Object.fromEntries(Object.entries(state.sent || {}).filter(([, sent]) => sent.date === date))
+    state.sent = Object.fromEntries(Object.entries(state.sent || {}).filter(([, sent]) => (sent.notifiedAt ?? sent.end) + 7 * 86400000 > Date.now()))
     state.updatedAt = Date.now()
     state.error = null
   } catch (error) {
     state.error = error.message
-    state.blocks = (state.blocks || []).filter(b => b.date === date)
+    state.blocks = (state.blocks || []).filter(b => b.end + 86400000 > Date.now())
   }
   await saveState(state)
   await reconcile(state)
@@ -122,7 +141,8 @@ async function notify(name) {
   const state = await readState()
   const block = state.blocks?.find(b => PREFIX + b.key === name)
   const timing = await readLessonTiming()
-  if (!block || state.sent?.[block.key] || block.date !== tallinnDate() || lessonNotificationAt(block, timing) > Date.now()) return
+  if (!block || state.sent?.[block.key] || lessonNotificationAt(block, timing) > Date.now() ||
+      lessonNotificationAt(block, timing) + 86400000 < Date.now()) return
   if (await chrome.notifications.getPermissionLevel() !== 'granted') return
   await chrome.notifications.create(name, {
     type: 'basic',
@@ -132,7 +152,26 @@ iconUrl: chrome.runtime.getURL('icon128.png'),
 requireInteraction: true
   })
   state.sent ||= {}
-  state.sent[block.key] = block
+  state.sent[block.key] = { ...block, notifiedAt: Date.now() }
+  await saveState(state)
+}
+
+/** Check fresh entries and current identity immediately before requesting a Kriit email. */
+async function emailReminder(name) {
+  const state = await readState()
+  const block = state.blocks?.find(b => EMAIL_PREFIX + b.key === name)
+  if (!block || state.emailDone?.[block.key] || Date.now() < block.end + 600000 || Date.now() > block.end + 86400000) return
+  const settings = await lessonEmailSettings()
+  if (!settings) return
+  const user = await lessonGet(state.origin, '/user')
+  if (`${state.origin}:${user.school?.id}:${user.teacherId ?? user.teacher}` !== state.owner) return
+  // Timetable changes can cancel or move a block between periodic refreshes.
+  const current = await resolveLessonLink(state.origin, block.key, lessonGet)
+  if (current.schoolId !== state.schoolId || current.end !== block.end || current.lessons !== block.lessons) return
+  const entries = await lessonGet(state.origin, `/journals/${block.journalId}/journalEntriesByDate`)
+  if (!isLessonRecorded(entries, current)) await sendLessonEmail(settings, state.origin, state.schoolId, current)
+  state.emailDone ||= {}
+  state.emailDone[block.key] = true
   await saveState(state)
 }
 
@@ -140,10 +179,12 @@ requireInteraction: true
 export function registerLessonNotifications() {
   const run = task => task.catch(error => Logger.warning('Tunni märguanne:', error.message))
   run(chrome.alarms.clear('oa2-lesson-notification-prototype'))
+  chrome.tabs?.onRemoved?.addListener(tabId => run(serialize(() => chrome.storage.session.remove(`OA_pendingLesson_${tabId}`))))
   chrome.alarms.get(REFRESH, alarm => { if (!alarm) chrome.alarms.create(REFRESH, { periodInMinutes: 15 }) })
   chrome.alarms.onAlarm.addListener(alarm => {
     if (alarm.name === REFRESH || alarm.name === MIDNIGHT) run(serialize(() => refresh()))
     else if (alarm.name.startsWith(PREFIX)) run(serialize(() => notify(alarm.name)))
+    else if (alarm.name.startsWith(EMAIL_PREFIX)) run(serialize(() => emailReminder(alarm.name)))
   })
   chrome.runtime.onStartup.addListener(() => run(serialize(() => refresh())))
   chrome.runtime.onInstalled.addListener(() => run(serialize(() => refresh())))
@@ -162,16 +203,18 @@ export function registerLessonNotifications() {
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     let origin
     try { origin = new URL(sender.url).origin } catch { /* Extension messages may have no page URL. */ }
-    if (message.action === 'saveLessonNotificationTiming' && sender.id === chrome.runtime.id && !sender.tab) {
+    const popupSender = sender.id === chrome.runtime.id && (!sender.tab || sender.url === chrome.runtime.getURL('popup.html'))
+    if (message.action === 'saveLessonNotificationTiming' && popupSender) {
       serialize(async() => {
         const timing = validateLessonTiming(message.timing)
         await chrome.storage.local.set({ [LESSON_TIMING_KEY]: timing })
         await reconcile(await readState(), true)
+        await refresh()
         return { ok: true }
       }).then(respond, error => respond({ error: error.message }))
       return true
     }
-    if (message.action === 'lessonNotificationStatus' && sender.id === chrome.runtime.id && !sender.tab) {
+    if (message.action === 'lessonNotificationStatus' && popupSender) {
       serialize(async() => {
         const state = await readState()
         const timing = await readLessonTiming()
@@ -185,11 +228,31 @@ export function registerLessonNotifications() {
       run(serialize(() => refresh(origin)))
       return false
     }
+    if (['rememberLessonLink', 'pendingLessonLink', 'clearLessonLink'].includes(message.action) && ORIGINS.includes(origin) && sender.tab?.id != null) {
+      serialize(async() => {
+        const storageKey = `OA_pendingLesson_${sender.tab.id}`
+        if (message.action === 'clearLessonLink') {
+          await chrome.storage.session.remove(storageKey)
+          return {}
+        }
+        if (message.action === 'rememberLessonLink') {
+          if (typeof message.key !== 'string' || !/^\d+-\d{4}-\d{2}-\d{2}-(\d+|\d{2}:\d{2})$/.test(message.key)) return {}
+          await chrome.storage.session.set({ [storageKey]: { key: message.key, origin } })
+          return {}
+        }
+        const pending = (await chrome.storage.session.get(storageKey))[storageKey]
+        if (pending?.origin !== origin) return {}
+        const user = await lessonGet(origin, '/user')
+        if (!Number.isInteger(user.teacherId ?? user.teacher)) return {}
+        return { key: pending.key }
+      }).then(respond, () => respond({}))
+      return true
+    }
     if (message.action === 'getLessonNotification' && ORIGINS.includes(origin)) {
       serialize(async() => {
         const state = await readState()
         const block = state.sent?.[message.key]
-        if (state.origin !== origin || !block || block.date !== tallinnDate()) throw new Error('Salvestatud teavituse andmed puuduvad või teavitus on aegunud.')
+        if (!block || state.origin !== origin || block.date !== tallinnDate()) return resolveLessonLink(origin, message.key, lessonGet)
         const user = await lessonGet(origin, '/user')
         if (`${origin}:${user.school?.id}:${user.teacherId ?? user.teacher}` !== state.owner) throw new Error('Logi Tahvlisse sisse teavituse saanud õpetaja kontoga.')
         return { ...block, schoolId: state.schoolId }
