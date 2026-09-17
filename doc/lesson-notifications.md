@@ -8,6 +8,12 @@
 - Clicking a notification opens a new entry, prefills the subject title, factual timetable content, type/capacity/date/periods and copies available previous-lesson attendance. The teacher adds the actual topic/work completed and reviews the draft. Nothing saves automatically.
 - Notification links are retained per tab in extension session storage across sign-in. Email links can reconstruct the lesson from the authenticated teacher's historical timetable without requiring a previously delivered Chrome notification.
 
+## Subject-change alerts (#161)
+
+A separate `oa2-subject:` alarm announces the next different subject at its start. It does not replace lesson-entry or email reminders and does not depend on their offset. Subject identity is the normalized timetable title (case/spacing ignored), not journal, group or room IDs. No alert is emitted for the first lesson of a day or between same-subject periods, even across breaks. Missing titles and overlapping conflicting subjects are treated as ambiguous and skipped. Identically named subjects cannot be distinguished without an authoritative subject identifier; timetable naming must be consistent.
+
+The worker refreshes the authenticated identity and timetable immediately before delivery. Cancelled/changed events, expired sessions and account changes suppress stale alerts. No catch-up alert is emitted more than five minutes after the subject starts or after it ends. Sent transitions are deduplicated per teacher/date/start time. Clicking opens the new subject's journal, not a prefilled entry for a lesson which has only just started.
+
 ## Entry prefill correction (#160)
 
 The subject title comes from authenticated `GET /journals/{id}` (`nameEt`/`name`), falling back to the saved timetable name. Only empty or generic type titles are replaced. Content is a clearly labelled timetable summary (subject, date, time and group), not a claim about what was taught. Nonempty content and teacher-entered titles are preserved. Any trusted user interaction during asynchronous loading stops subsequent automatic changes.
