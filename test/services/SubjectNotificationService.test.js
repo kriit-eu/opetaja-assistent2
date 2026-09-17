@@ -30,6 +30,7 @@ for (const scenario of ['normal', 'cancelled', 'same-subject', 'expired', 'accou
         onMessage: { addListener: fn => { handlers.message = fn } } },
       storage: { local: { get: async() => stored, set: async value => { stored = { ...stored, ...value } } } },
       tabs: { create: async options => { opened.push(options); return { id: 1, windowId: 2 } } },
+      windows: { get: async() => ({ state: 'normal' }), update: async() => {} },
       alarms: {
         get: (name, cb) => cb ? cb(alarms.get(name)) : Promise.resolve(alarms.get(name)),
         getAll: async() => [...alarms.values()], clear: async name => alarms.delete(name),

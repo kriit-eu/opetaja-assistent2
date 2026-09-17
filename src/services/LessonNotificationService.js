@@ -1,5 +1,6 @@
 import Logger from './Logger.js'
 import { subjectChanges } from './SubjectChanges.js'
+import { openNotificationTab } from './NotificationWindow.js'
 import { resolveLessonLink } from './LessonNotificationLink.js'
 import { isLessonRecorded, lessonEmailSettings, sendLessonEmail } from './LessonEmailReminder.js'
 import { LESSON_TIMING_KEY, readLessonTiming, validateLessonTiming, lessonNotificationAt, lessonNotificationDates } from './LessonNotificationTiming.js'
@@ -237,7 +238,7 @@ export function registerLessonNotifications() {
       // Use a query parameter before the hash: Tahvel tests its route's suffix
       // to decide whether the journal is editable.
       const query = subjectAlert ? '' : `?oa2Lesson=${encodeURIComponent(block.key)}`
-      await chrome.tabs.create({ url: `${state.origin}/${query}#/journal/${block.journalId}/edit`, active: true })
+      await openNotificationTab(`${state.origin}/${query}#/journal/${block.journalId}/edit`)
       await chrome.notifications.clear(id)
     }))
   })
