@@ -71,6 +71,14 @@ export async function loadFeatures() {
     Logger.error('Error loading TimetableDiscrepancyDetectionFeature:', error)
   }
 
+  // Load local journal column visibility preferences (always enabled)
+  try {
+    const JournalColumnVisibilityFeature = (await import('../features/journalList/JournalColumnVisibilityFeature.js')).default
+    allAvailableFeatures.journalList.push(new JournalColumnVisibilityFeature())
+  } catch (error) {
+    Logger.error('Error loading JournalColumnVisibilityFeature:', error)
+  }
+
   // Load lesson count warning feature (always enabled)
   try {
     const LessonCountWarningFeature = (await import('../features/journalList/lessonCountWarning/LessonCountWarningFeature.js')).default
