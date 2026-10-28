@@ -3293,6 +3293,38 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
+   * Preserve homework instructions while repairing links generated with a Tahvel ID.
+   * Only links to this assignment on the configured Kriit instance are changed.
+   * @param {string|null|undefined} homework Existing homework content
+   * @param {Object} batch Sync batch with separate Tahvel and Kriit assignment IDs
+   * @param {string} groupCode Group for a newly appended link
+   * @returns {string|null|undefined} Homework with the internal Kriit assignment link
+   */
+  updateKriitHomeworkLink(homework, batch, groupCode = '') {
+    if (!/^[1-9]\d*$/.test(String(batch.kriitAssignmentId))) return homework
+    const baseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '').replace(/\/api$/, '')
+    if (!baseUrl) return homework
+
+    const correctUrl = `${baseUrl}/assignments/${batch.kriitAssignmentId}`
+    const legacyUrl = `${baseUrl}/assignments/${batch.assignmentId}`
+    let found = false
+    const text = homework || ''
+    const updated = text.replace(/https?:\/\/[^\s<>"']+/g, token => {
+      // Leave punctuation, query parameters, HTML and surrounding text untouched.
+      for (const url of [correctUrl, legacyUrl]) {
+        if (token.startsWith(url) && /^(?:$|[?#.,;:!?)\]])/.test(token.slice(url.length))) {
+          found = true
+          return correctUrl + token.slice(url.length)
+        }
+      }
+      return token
+    })
+    if (found) return updated
+    const link = `${correctUrl}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
+    return `${text}${text ? '\n' : ''}Link ülesandele: ${link}`
+  }
+
+  /**
    * Normalize a Tahvel due date value to the datetime shape used by journal entry PUTs.
    * @param {string|null|undefined} dueDate Due date from Kriit or Tahvel entry data
    * @returns {string|null|undefined} Normalized due date
@@ -3503,6 +3535,7 @@ class JournalListSyncFeature extends BaseFeature {
               const syncItem = {
                 journalId: subject.subjectExternalId,
                 assignmentId: assignment.assignmentExternalId,
+                kriitAssignmentId: assignment.assignmentId,
                 studentPersonalCode: personalCode,
                 // grade: null => clear grade in Tahvel; otherwise a string value
                 grade: gradeStr
@@ -3536,6 +3569,7 @@ class JournalListSyncFeature extends BaseFeature {
                 assignmentLevelDifferences.push({
                   journalId: subject.subjectExternalId,
                   assignmentId: assignment.assignmentExternalId,
+                  kriitAssignmentId: assignment.assignmentId,
                   changes
                 })
                 Logger.debug(
@@ -3623,6 +3657,7 @@ class JournalListSyncFeature extends BaseFeature {
             assignmentMap.set(key, {
               journalId: item.journalId,
               assignmentId: item.assignmentId,
+              kriitAssignmentId: item.kriitAssignmentId,
               students: [],
               assignmentLevelOnly: false
             })
@@ -3637,6 +3672,7 @@ class JournalListSyncFeature extends BaseFeature {
             assignmentMap.set(key, {
               journalId: assignmentDiff.journalId,
               assignmentId: assignmentDiff.assignmentId,
+              kriitAssignmentId: assignmentDiff.kriitAssignmentId,
               students: [],
               assignmentLevelOnly: true // Mark as assignment-level only
             })
@@ -3843,23 +3879,10 @@ class JournalListSyncFeature extends BaseFeature {
               }
             }
 
-            // Add Kriit assignment link to homework field
-            if (batch.assignmentId) {
-              // Use the Kriit API base URL from the API service, trimming any trailing slash and removing '/api' if present
-              let kriitBaseUrl = (this.api.kriit.baseUrl || '').replace(/\/$/, '')
-              kriitBaseUrl = kriitBaseUrl.replace(/\/api$/, '')
-
-              // Try to get group name from the subject if available
-              const subject =
-                this.differences && Array.isArray(this.differences) ? this.differences.find(s => s.subjectExternalId === batch.journalId) : null
-              const groupCode = subject ? subject.groupName || '' : ''
-
-              const kriitAssignmentUrl = `${kriitBaseUrl}/assignments/${batch.assignmentId}${groupCode ? `?group=${encodeURIComponent(groupCode)}` : ''}`
-              const homeworkText = kriitAssignmentUrl ? `Link ülesandele: ${kriitAssignmentUrl}` : 'Link ülesandele: puudub'
-
-              updateData.homework = homeworkText
-              Logger.debug(`📋 Added assignment link to homework field: ${homeworkText}`)
-            }
+            // Tahvel IDs address Tahvel endpoints only; links need the internal Kriit ID.
+            const subject = this.differences.find(s => s.subjectExternalId === batch.journalId)
+            const homework = this.updateKriitHomeworkLink(entryData.homework, batch, subject?.groupName || '')
+            if (homework !== entryData.homework) updateData.homework = homework
 
             // Ensure teacher IDs and capacity types as in other flows
             if (Array.isArray(updateData.journalEntryTeachers)) {

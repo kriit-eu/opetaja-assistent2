@@ -61,7 +61,12 @@ function gradeDifference({ studentPersonalCode, currentGrade, grade, studentName
 }
 
 describe('JournalListSync — sync data-integrity risks (false data / duplicate entries)', () => {
+  let savedSetTimeout
+
   beforeEach(() => {
+    // Do not let the delayed post-sync refresh mutate a later test's singleton.
+    savedSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = mock(() => 1)
     restoreChromeMock()
     const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://tahvel.edu.ee' })
     global.window = dom.window
@@ -81,8 +86,75 @@ describe('JournalListSync — sync data-integrity risks (false data / duplicate 
   })
 
   afterEach(() => {
+    globalThis.setTimeout = savedSetTimeout
     restoreChromeMock()
     restoreGlobalDOM()
+  })
+
+  for (const mode of ['grade', 'metadata', 'combined']) {
+    for (const scenario of ['correct link', 'legacy link', 'instructions only', 'missing Kriit ID']) {
+      test(`syncWithKriit preserves homework and uses internal Kriit ID: ${mode}, ${scenario}`, async () => {
+        const base = 'https://kriit.example.com/assignments/'
+        const instructions = 'Loe peatükk 3.\nEsita lahendus koos selgitustega.'
+        const homework = scenario === 'instructions only'
+          ? instructions
+          : `${instructions}\nLink ülesandele: ${base}${scenario === 'legacy link' ? ASSIGNMENT_ID : 59}?group=IS24`
+        const { api, putCalls } = makeTahvelApi(async endpoint => {
+          if (endpoint.includes(`/journalEntry/${ASSIGNMENT_ID}`)) {
+            return {
+              id: ASSIGNMENT_ID,
+              version: 1,
+              nameEt: 'Old name',
+              entryType: 'SISSEKANNE_H',
+              homework,
+              journalEntryStudents: [{ id: 555, journalStudent: 10, grade: { code: 'KUTSEHINDAMINE_4' } }]
+            }
+          }
+          return null
+        })
+        journalListSync.api = api
+        journalListSync._cachedStudents = {
+          10: { personalCode: '39001010001', name: 'Test Student', isActive: true, isDeleted: false }
+        }
+        journalListSync.differences = gradeDifference({ studentPersonalCode: '39001010001', currentGrade: '4', grade: '5' })
+        const subject = journalListSync.differences[0]
+        subject.groupName = 'IS24'
+        const assignment = subject.assignments[0]
+        if (scenario !== 'missing Kriit ID') assignment.assignmentId = 59
+        if (mode !== 'grade') assignment.assignmentName = { Tahvel: 'Old name', kriit: 'New name' }
+        if (mode === 'metadata') assignment.results = []
+
+        await journalListSync.syncWithKriit()
+
+        expect(putCalls).toHaveLength(1)
+        expect(putCalls[0].url).toBe(`/journals/${JOURNAL_ID}/journalEntry/${ASSIGNMENT_ID}`)
+        expect(putCalls[0].body.homework).toBe(scenario === 'missing Kriit ID'
+          ? homework
+          : `${instructions}\nLink ülesandele: ${base}59?group=IS24`)
+        if (mode !== 'grade') expect(putCalls[0].body.nameEt).toBe('New name')
+        if (mode !== 'metadata') expect(putCalls[0].body.journalEntryStudents[0].grade.code).toBe('KUTSEHINDAMINE_5')
+      })
+    }
+  }
+
+  test('homework link repair preserves HTML, queries, punctuation and unrelated links', () => {
+    journalListSync.api = { kriit: { baseUrl: 'https://kriit.example.com/api/' } }
+    const oldUrl = `https://kriit.example.com/assignments/${ASSIGNMENT_ID}?group=IS24&view=full`
+    const unrelated = 'https://kriit.example.com/assignments/50010 https://other.example.com/assignments/5001'
+    const homework = `<p>Instructions <a href="${oldUrl}">Open task</a> (${oldUrl}).</p>\n${unrelated}`
+    const batch = { assignmentId: ASSIGNMENT_ID, kriitAssignmentId: 59 }
+    const updated = journalListSync.updateKriitHomeworkLink(homework, batch, 'IS24')
+    expect(updated).toBe(homework.replaceAll(oldUrl, oldUrl.replace(String(ASSIGNMENT_ID), '59')))
+    expect(journalListSync.updateKriitHomeworkLink(updated, batch, 'IS24')).toBe(updated)
+  })
+
+  test('homework without a link gets one only when the internal Kriit ID is available', () => {
+    journalListSync.api = { kriit: { baseUrl: 'https://kriit.example.com/api' } }
+    const batch = { assignmentId: ASSIGNMENT_ID, kriitAssignmentId: 59 }
+    expect(journalListSync.updateKriitHomeworkLink(null, batch, 'IS 24')).toBe('Link ülesandele: https://kriit.example.com/assignments/59?group=IS%2024')
+    for (const kriitAssignmentId of [undefined, null, '', 0, 'invalid']) {
+      expect(journalListSync.updateKriitHomeworkLink(null, { ...batch, kriitAssignmentId })).toBeNull()
+    }
   })
 
   test('syncWithKriit_preservesExistingEntryId_soNoDuplicateRowIsCreated', async () => {
