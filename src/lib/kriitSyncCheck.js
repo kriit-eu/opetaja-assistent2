@@ -312,6 +312,13 @@ export async function collectJournalData(api, journalList) {
         subjectExternalId: id,
         teachers,
         assignments,
+        lessonEntries: journalEntries.filter(entry => entry.entryType === 'SISSEKANNE_T').map(entry => ({
+          id: entry.id,
+          nameEt: entry.nameEt || 'Loeng',
+          entryType: entry.entryType,
+          entryDate: entry.entryDate,
+          content: entry.content || ''
+        })),
         firstLessonDate,
         firstLessonDateIsApproximate,
         nextLessonDate,
@@ -372,19 +379,22 @@ function getJournalInfo(api, journalId) {
  */
 async function getJournalEntries(api, journalId) {
   try {
-    const response = await api.tahvel.get(
-      `/journals/${journalId}/journalEntry`,
-      { size: 2000 },
-      { cache: true, cacheExpiration: ONE_DAY_MS }
-    )
-    if (response && response.content && Array.isArray(response.content)) {
-      return response.content
+    const entries = []
+    for (let page = 0; ; page++) {
+      const response = await api.tahvel.get(
+        `/journals/${journalId}/journalEntry`,
+        { size: 2000, page },
+        { cache: false }
+      )
+      if (Array.isArray(response)) return response
+      if (!Array.isArray(response?.content)) return null
+      entries.push(...response.content)
+      if (page + 1 >= (response.totalPages || 1)) return entries
+      if (response.content.length === 0) return null
     }
-    if (Array.isArray(response)) return response
-    return []
   } catch (error) {
     Logger.debug(`[kriitSyncCheck] Failed to fetch journal entries for ${journalId}:`, error.message)
-    return []
+    return null
   }
 }
 
