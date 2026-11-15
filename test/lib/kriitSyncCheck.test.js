@@ -372,6 +372,25 @@ describe('kriitSyncCheck', () => {
   })
 
   describe('collectJournalData', () => {
+    it('reads all lesson pages and skips an incomplete snapshot', async () => {
+      let failSecondPage = false
+      mockApi.tahvel.get = mock(async (endpoint, params, options) => {
+        if (endpoint === '/journals/42') return { nameEt: 'Test', studentGroups: ['G1'] }
+        if (endpoint.endsWith('/journalStudents') || endpoint.endsWith('/journalEntriesByDate')) return []
+        if (endpoint.endsWith('/journalEntry')) {
+          expect(options.cache).toBe(false)
+          if (params.page === 1 && failSecondPage) throw new Error('Network failed')
+          return { totalPages: 2, content: [{ id: params.page + 1, entryType: 'SISSEKANNE_T', nameEt: 'Lesson', entryDate: '2026-11-12', content: 'Loenguvideo: https://drive.google.com/file/d/recording_123456789/view' }] }
+        }
+        return {}
+      })
+      const complete = await collectJournalData(mockApi, [{ id: 42 }])
+      expect(complete[0].lessonEntries.map(entry => entry.id)).toEqual([1, 2])
+      expect(complete[0].assignments).toEqual([])
+      failSecondPage = true
+      expect(await collectJournalData(mockApi, [{ id: 42 }])).toEqual([])
+    })
+
     it('should collect data for journals with students and entries', async () => {
       mockApi.tahvel.get = mock(async (endpoint, params, options) => {
         if (endpoint === '/journals/42') {
