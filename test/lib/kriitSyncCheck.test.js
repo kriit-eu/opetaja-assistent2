@@ -384,7 +384,8 @@ describe('kriitSyncCheck', () => {
         if (endpoint === '/journals/42/journalEntry') {
           return {
             content: [
-              { id: 1, nameEt: 'HW1', entryType: 'SISSEKANNE_I', entryDate: '2025-01-15T00:00:00' }
+              { id: 1, nameEt: 'HW1', entryType: 'SISSEKANNE_I', entryDate: '2025-01-15T00:00:00' },
+              { id: 2, nameEt: 'Lesson', entryType: 'SISSEKANNE_T', entryDate: '2025-01-15', content: 'Loenguvideo: https://drive.google.com/file/d/recording_123456789/view' }
             ]
           }
         }
@@ -411,6 +412,7 @@ describe('kriitSyncCheck', () => {
       expect(result[0].subjectName).toBe('Test Journal')
       expect(result[0].subjectExternalId).toBe(42)
       expect(result[0].groupName).toBe('G1')
+      expect(result[0].lessonEntries).toEqual([{ id: 2, nameEt: 'Lesson', entryType: 'SISSEKANNE_T', entryDate: '2025-01-15', content: 'Loenguvideo: https://drive.google.com/file/d/recording_123456789/view' }])
       expect(result[0].assignments.length).toBe(1)
       expect(result[0].assignments[0].results.length).toBe(1)
     })
@@ -470,7 +472,8 @@ describe('kriitSyncCheck', () => {
         if (endpoint === '/journals/42/journalEntry') {
           return {
             content: [
-              { id: 1, nameEt: 'HW1', entryType: 'SISSEKANNE_I', entryDate: '2025-01-15T00:00:00' }
+              { id: 1, nameEt: 'HW1', entryType: 'SISSEKANNE_I', entryDate: '2025-01-15T00:00:00' },
+              { id: 2, nameEt: 'Lesson', entryType: 'SISSEKANNE_T', entryDate: '2025-01-15', content: 'Loenguvideo: https://drive.google.com/file/d/recording_123456789/view' }
             ]
           }
         }
