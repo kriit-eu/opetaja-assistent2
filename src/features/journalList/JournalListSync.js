@@ -1,3 +1,4 @@
+import { lessonAttendance, lessonEntries } from '../../lib/lessonAttendance.js'
 /**
  * Journal List Sync Feature
  *
@@ -1064,7 +1065,10 @@ class JournalListSyncFeature extends BaseFeature {
               })
               .filter(assignment => assignment.results.length > 0) // Only include assignments with students
 
+            const attendance = lessonAttendance(journalEntries, journalEntriesWithGrades || [], journalStudents,
+              groupName, journalInfo.studentGroups || [])
             groupJournalEntries.push({
+              ...(attendance && journalEntries.length > 0 && { lessonEntries: lessonEntries(journalEntries), lessonAttendance: attendance }),
               subjectName: journalInfo.nameEt || name,
               subjectExternalId: id,
               groupName,
@@ -2327,7 +2331,13 @@ class JournalListSyncFeature extends BaseFeature {
 
       if (response && response.content && Array.isArray(response.content)) {
         if (response.totalElements > 2000) {
-          Logger.warning(`Journal ${journalId} has ${response.totalElements} entries, only first 2000 fetched`)
+          const entries = [...response.content]
+          for (let page = 1; page < Math.ceil(response.totalElements / 2000); page++) {
+            const next = await this.api.tahvel.get(`/journals/${journalId}/journalEntry`, { size: 2000, page }, { cache: false })
+            if (!Array.isArray(next?.content) || !next.content.length) return null
+            entries.push(...next.content)
+          }
+          return entries
         }
         return response.content
       }
