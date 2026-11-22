@@ -1,3 +1,4 @@
+import { reportLessonAbsence } from './ConfirmedLessonAbsence.js'
 import Logger from './Logger.js'
 import { subjectChanges } from './SubjectChanges.js'
 import { openNotificationTab } from './NotificationWindow.js'
@@ -12,6 +13,7 @@ const REFRESH = 'oa2-lesson-refresh'
 const MIDNIGHT = 'oa2-lesson-midnight'
 const PREFIX = 'oa2-lesson:'
 const EMAIL_PREFIX = 'oa2-lesson-email:'
+const ATTENDANCE_PREFIX = 'oa2-confirm-attendance:'
 const SUBJECT_PREFIX = 'oa2-subject:'
 const ORIGINS = ['https://tahvel.edu.ee', 'https://test.tahvel.eenet.ee']
 let queue = Promise.resolve()
@@ -72,6 +74,14 @@ async function reconcile(state, timingChanged = false) {
     if (!alarm || alarm.scheduledTime !== change.start) await chrome.alarms.create(name, { when: change.start })
   }
   const emailEnabled = await lessonEmailSettings()
+  // Give Kriit time to check the public timetable before the delivery minute.
+  for (const block of state.blocks || []) {
+    const when = block.start - 4 * 60000
+    if (emailEnabled && state.origin === ORIGINS[0] && block.start - 60000 > now &&
+        !existing.has(ATTENDANCE_PREFIX + block.key)) {
+      await chrome.alarms.create(ATTENDANCE_PREFIX + block.key, { when: Math.max(now + 1000, when) })
+    }
+  }
   const emailBlocks = new Map((state.blocks || []).filter(b => emailEnabled && !state.emailDone?.[b.key] &&
     b.end + 86400000 > now).map(b => [EMAIL_PREFIX + b.key, b]))
   for (const alarm of alarms) {
@@ -214,6 +224,21 @@ async function emailReminder(name) {
   await saveState(state)
 }
 
+/** Recheck the teacher, school and lesson before reading any attendance. */
+async function confirmAttendance(name) {
+  const state = await readState()
+  const planned = state.blocks?.find(b => ATTENDANCE_PREFIX + b.key === name)
+  if (!planned || state.origin !== ORIGINS[0] || Date.now() < planned.start - 5 * 60000 ||
+      Date.now() >= planned.start - 60000) return
+  const settings = await lessonEmailSettings()
+  if (!settings) return
+  const get = (path, params) => lessonGet(state.origin, path, params)
+  const user = await get('/user')
+  if (state.owner !== `${state.origin}:${user.school?.id}:${user.teacherId ?? user.teacher}`) return
+  const block = await resolveLessonLink(state.origin, planned.key, lessonGet)
+  if (block.schoolId === state.schoolId && block.start === planned.start) await reportLessonAbsence(settings, get, block)
+}
+
 /** Install persistent alarm handlers; the 15-minute timer is not reset on worker wakes. */
 export function registerLessonNotifications() {
   const run = task => task.catch(error => Logger.warning('Tunni märguanne:', error.message))
@@ -223,6 +248,7 @@ export function registerLessonNotifications() {
   chrome.alarms.onAlarm.addListener(alarm => {
     if (alarm.name === REFRESH || alarm.name === MIDNIGHT) run(serialize(() => refresh()))
     else if (alarm.name.startsWith(PREFIX)) run(serialize(() => notify(alarm.name)))
+    else if (alarm.name.startsWith(ATTENDANCE_PREFIX)) run(serialize(() => confirmAttendance(alarm.name)))
     else if (alarm.name.startsWith(EMAIL_PREFIX)) run(serialize(() => emailReminder(alarm.name)))
     else if (alarm.name.startsWith(SUBJECT_PREFIX)) run(serialize(() => notifySubject(alarm.name)))
   })

@@ -43,6 +43,7 @@ globalThis.fetch = async(input, options = {}) => {
   if (state.emailUrl && url.href === state.emailUrl) return actualFetch(input, options)
   if (url.origin !== 'https://tahvel.edu.ee') throw new Error('Test blocked external network')
   if (!state.authenticated) return new Response('', { status: 401 })
+  if (state.attendanceResponses && Object.hasOwn(state.attendanceResponses, url.pathname)) return Response.json(state.attendanceResponses[url.pathname])
   if (url.pathname === '/hois_back/user') return Response.json({ teacher: 10, school: { id: 9 } })
   if (url.pathname.includes('/timetableByTeacher/')) return Response.json({ timetableEvents: state.cancelled ? [] : state.events })
   if (url.pathname === '/hois_back/journals/8/journalEntriesByDate') return Response.json(state.recorded ? [
