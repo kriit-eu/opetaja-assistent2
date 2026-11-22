@@ -1,3 +1,4 @@
+import { lessonAttendance, lessonEntries } from './lessonAttendance.js'
 import Logger from '../services/Logger.js'
 import { cacheService } from '../services/CacheService.js'
 import { fetchTeacherJournals } from './fetchTeacherJournals.js'
@@ -312,13 +313,7 @@ export async function collectJournalData(api, journalList) {
         subjectExternalId: id,
         teachers,
         assignments,
-        lessonEntries: journalEntries.filter(entry => entry.entryType === 'SISSEKANNE_T').map(entry => ({
-          id: entry.id,
-          nameEt: entry.nameEt || 'Loeng',
-          entryType: entry.entryType,
-          entryDate: entry.entryDate,
-          content: entry.content || ''
-        })),
+        lessonEntries: lessonEntries(journalEntries),
         firstLessonDate,
         firstLessonDateIsApproximate,
         nextLessonDate,
@@ -349,7 +344,8 @@ export async function collectJournalData(api, journalList) {
           })
           .filter(assignment => assignment.results.length > 0)
 
-        return { ...baseEntry, groupName, assignments: filteredAssignments }
+        const attendance = lessonAttendance(journalEntries, journalEntriesWithGrades || [], journalStudents, groupName, journalInfo.studentGroups || [])
+        return { ...baseEntry, groupName, assignments: filteredAssignments, ...(attendance && { lessonAttendance: attendance }) }
       })
     } catch (error) {
       Logger.debug(`[kriitSyncCheck] Failed to process journal ${id}:`, error.message)
