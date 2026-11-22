@@ -104,7 +104,7 @@ test.describe('Kriit sync write-back flows', () => {
           body: JSON.stringify({ id: SYNTHETIC_ENTRY_ID })
         })
       }
-      return route.continue()
+      return route.fallback()
     })
 
     await page.route(/\/hois_back\/journals\/404498\/journalEntriesByDate/, async route => {
@@ -120,6 +120,28 @@ test.describe('Kriit sync write-back flows', () => {
     await page.goto('https://tahvel.edu.ee/#/journals', { waitUntil: 'domcontentloaded' })
     const syncBtn = page.getByRole('button', { name: 'Sünkroniseeri kõik' })
     await expect(syncBtn).toBeAttached({ timeout: 20000 })
+    const writes = []
+    page.on('request', request => {
+      if (request.url().includes('/hois_back/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+        writes.push(request.url())
+      }
+    })
+    await page.evaluate(() => {
+      window.journalFormSubmissions = 0
+      document.addEventListener('submit', event => {
+        window.journalFormSubmissions++
+        event.preventDefault()
+      })
+    })
+    const refresh = page.getByRole('button', { name: 'Värskenda', exact: true })
+    const comparisonCount = () => kriit.requestLog.filter(request => request.path === '/api/subjects/getDifferences').length
+    const beforeRefresh = comparisonCount()
+    await refresh.evaluate(button => button.click())
+    await expect.poll(comparisonCount, { timeout: 20000 }).toBeGreaterThan(beforeRefresh)
+    await expect(syncBtn).toBeEnabled()
+    await syncBtn.evaluate(button => button.click())
+    expect(await page.evaluate(() => window.journalFormSubmissions)).toBe(0)
+    expect(writes).toEqual([])
     await syncBtn.click()
 
     // Wait for the round-trip POST back to Kriit. The chain has a built-in

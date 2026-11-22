@@ -510,6 +510,7 @@ export class JournalSyncBannerService {
     domService.createAndInsertElement(
       'button',
       {
+        type: 'button',
         classList: ['btn-primary'],
         onclick:
           onOpenSettings ||
@@ -586,6 +587,7 @@ export class JournalSyncBannerService {
       domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['btn-secondary'],
           onclick: onRefresh
         },
@@ -599,6 +601,7 @@ export class JournalSyncBannerService {
       domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['btn-secondary'],
           onclick: onClose
         },
@@ -665,6 +668,7 @@ export class JournalSyncBannerService {
       syncBtn = domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['btn-primary']
         },
         'Sünkroniseeri kõik',
@@ -680,7 +684,8 @@ export class JournalSyncBannerService {
       )
 
       // Click handler wraps the provided onSync to manage UI state
-      syncBtn.addEventListener('click', async() => {
+      syncBtn.addEventListener('click', async event => {
+        if (!event.isTrusted) return
         try {
           // Disable both action buttons
           const buttons = actions.querySelectorAll('button')
@@ -712,6 +717,7 @@ export class JournalSyncBannerService {
       refreshBtn = domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['btn-secondary']
         },
         'Värskenda',
@@ -969,6 +975,7 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
+              type: 'button',
               classList: ['btn-secondary'],
               onclick: options.onRetry
             },
@@ -985,6 +992,7 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
+              type: 'button',
               classList: ['btn-primary'],
               onclick: options.onSettings
             },
@@ -995,6 +1003,7 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
+              type: 'button',
               classList: ['btn-secondary'],
               onclick: () => {
                 alert('Klõpsake laienduse ikoonil brauseri tööriistaribal ja sisestage Kriit API võti.')
@@ -1014,6 +1023,7 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
+            type: 'button',
             classList: ['btn-secondary'],
             onclick: options.onRefresh
           },
@@ -1034,6 +1044,7 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
+              type: 'button',
               classList: ['btn-secondary'],
               onclick: options.onRetry
             },
@@ -1047,6 +1058,7 @@ export class JournalSyncBannerService {
           domService.createAndInsertElement(
             'button',
             {
+              type: 'button',
               classList: ['btn-secondary'],
               onclick: options.onClearCache
             },
@@ -1077,6 +1089,7 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
+            type: 'button',
             classList: ['btn-secondary'],
             onclick: options.onRetry
           },
@@ -1093,6 +1106,7 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
+            type: 'button',
             classList: ['btn-secondary'],
             onclick: options.onRetry
           },
@@ -1106,6 +1120,7 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
+            type: 'button',
             classList: ['btn-secondary'],
             onclick: () => window.location.reload()
           },
@@ -1119,6 +1134,7 @@ export class JournalSyncBannerService {
         domService.createAndInsertElement(
           'button',
           {
+            type: 'button',
             classList: ['btn-secondary'],
             onclick: options.onClearCache
           },
