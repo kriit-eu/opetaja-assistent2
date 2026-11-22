@@ -11,6 +11,10 @@ the feature does not recalculate totals or change exported data.
 Numeric body and footer cells are yellow unless they are empty or contain exactly
 `0`. Table headers, dates, group names, and subject names are not highlighted.
 
+Hover over a yellow week cell to see a floating hint with the year on the end date. For example,
+31 May through 6 June in the 2026/2027 plan shows `31.05–06.06.2027`.
+Year totals show the school year and retain any percentage from Tahvel.
+
 Preferences use `OA_workloadFilters` in extension storage. When this key is absent,
 the feature imports valid preferences from the former Tampermonkey script's
 `henno-koormus-filters-v1` localStorage key. Clearing the filters saves empty

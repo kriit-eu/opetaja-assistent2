@@ -23,6 +23,37 @@ function highlightNumber(value) {
   return parts.length <= 2 && parts.every(part => /^\d+$/.test(part))
 }
 
+/** Read the year and the ordered week dates from the displayed workload plan.
+ * @param {HTMLTableElement} table Workload table.
+ * @returns {{schoolYear: string, weeks: string[]}|null} Dates for this plan.
+ */
+function workloadDates(table) {
+  const page = table.closest('dg-vocational-teacher-lesson-plan-search')
+  const heading = page?.querySelector('.accordion-header .label-wrapper')?.textContent
+  const years = heading?.trim().match(/^(\d{4})\s*\/\s*(\d{4})\b/)
+  const headers = table.tHead?.rows[table.tHead.rows.length - 1]?.cells
+  if (!years || Number(years[2]) !== Number(years[1]) + 1 || !headers) return null
+
+  let year = Number(years[1])
+  let previousMonth = 0
+  const weeks = []
+  for (const header of headers) {
+    const dates = header.textContent.trim().match(/^(\d{2})\.(\d{2})(?:\s*[-–]\s*(\d{2})\.(\d{2}))?$/)
+    if (!dates || header.colSpan !== 1) return null
+    if (!weeks.length && Number(dates[2]) < 7) year++
+    const format = (day, month) => {
+      if (Number(month) < previousMonth) year++
+      previousMonth = Number(month)
+      return `${day}.${month}.${year}`
+    }
+    const start = format(dates[1], dates[2])
+    const end = dates[3] ? format(dates[3], dates[4]) : start
+    if (year > Number(years[2])) return null
+    weeks.push(start === end ? start : `${dates[1]}.${dates[2]}–${end}`)
+  }
+  return { schoolYear: `Õppeaasta ${years[1]}/${years[2]}`, weeks }
+}
+
 /** Filter planned workloads without changing the source data. */
 export default class WorkloadFiltersFeature extends BaseFeature {
   constructor() {
@@ -86,6 +117,13 @@ function mountFilters(filters, persist) {
   const prefix = 'oa2-workload'
   const normalize = value => value.trim().toLocaleLowerCase('et')
   const text = element => element?.textContent.trim() || ''
+  const hints = new Map()
+  let pointer
+  const tooltip = document.createElement('div')
+  tooltip.id = `${prefix}-tooltip`
+  tooltip.setAttribute('role', 'tooltip')
+  tooltip.hidden = true
+  document.body.append(tooltip)
   let panel
   let table
   let refreshTimer
@@ -95,6 +133,13 @@ function mountFilters(filters, persist) {
   let count
   const style = document.createElement('style')
   style.textContent = `
+    #${prefix}-tooltip { position: fixed; z-index: 2147483647; pointer-events: none;
+      box-sizing: border-box; max-width: calc(100vw - 16px); white-space: pre-line;
+      background: #263540; color: white; border-radius: 5px; padding: 6px 10px;
+      font: 500 14px/1.4 system-ui, sans-serif; box-shadow: 0 2px 8px #0004; }
+    #${prefix}-tooltip::after { content: ''; position: absolute; width: 8px; height: 8px;
+      left: var(--arrow); bottom: -4px; background: inherit; transform: rotate(45deg); }
+    #${prefix}-tooltip.below::after { top: -4px; bottom: auto; }
     .${prefix}-hidden { display: none !important; }
     table.tahvel-table .${prefix}-number { background: #fff59d !important; color: #171717 !important; }
     #${prefix} { margin: 12px 0; padding: 14px 16px; border: 1px solid #bbc9d2;
@@ -179,6 +224,7 @@ function mountFilters(filters, persist) {
   function refresh() {
     if (stopped) return
     observer.disconnect()
+    restoreTitles()
     try {
       table = [...document.querySelectorAll('table.tahvel-table')].find(item => item.querySelector('.journal-items'))
       if (!table) {
@@ -226,9 +272,22 @@ function mountFilters(filters, persist) {
         }
         item.header.classList.toggle(`${prefix}-hidden`, !showHeader)
       }
-      for (const cell of table.querySelectorAll('tbody td, tbody th, tfoot td, tfoot th')) {
-        const value = text(cell).replace(/\s/g, '')
-        cell.classList.toggle(`${prefix}-number`, highlightNumber(value))
+      const dates = workloadDates(table)
+      for (const row of table.querySelectorAll('tbody tr, tfoot tr')) {
+        // Each week has one trailing cell. The first label can span several rows.
+        const firstWeek = dates ? row.cells.length - dates.weeks.length : -1
+        for (const cell of row.cells) {
+          const numeric = highlightNumber(text(cell).replace(/\s/g, ''))
+          cell.classList.toggle(`${prefix}-number`, numeric)
+          if (!numeric || firstWeek < 0 || cell.colSpan !== 1) continue
+          const week = cell.cellIndex - firstWeek
+          const date = week < 0 ? dates.schoolYear : dates.weeks[week]
+          if (!date) continue
+          const original = cell.getAttribute('title')
+          const combined = original ? `${original}\n${date}` : date
+          hints.set(cell, { original, combined })
+          if (original !== null) cell.removeAttribute('title')
+        }
       }
       const filtered = Boolean(groupQuery || subjectQuery)
       table.tFoot?.classList.toggle(`${prefix}-hidden`, filtered)
@@ -245,19 +304,72 @@ function mountFilters(filters, persist) {
         sections.map(item => item.subject)
       )
     } finally {
+      updateTooltip()
       if (!stopped) observer.observe(document.body, { childList: true, subtree: true, characterData: true })
     }
   }
 
+  /** Return the original Tahvel titles before a refresh or page change. */
+  function restoreTitles() {
+    for (const [cell, { original }] of hints) {
+      if (original !== null && !cell.hasAttribute('title')) cell.title = original
+    }
+    hints.clear()
+  }
+
+  /** Show the hint for the cell under the mouse after a scroll or table update. */
+  function updateTooltip() {
+    const cell = pointer && document.elementFromPoint(pointer.x, pointer.y)?.closest('td, th')
+    const hint = hints.get(cell)
+    tooltip.hidden = !hint
+    if (!hint) return
+    if (tooltip.textContent !== hint.combined) tooltip.textContent = hint.combined
+
+    const anchor = cell.getBoundingClientRect()
+    const box = tooltip.getBoundingClientRect()
+    const gap = 8
+    const center = (anchor.left + anchor.right) / 2
+    const left = Math.max(gap, Math.min(center - box.width / 2, window.innerWidth - box.width - gap))
+    const below = anchor.top - box.height < gap * 2
+    const top = below ? anchor.bottom + gap : anchor.top - box.height - gap
+    tooltip.classList.toggle('below', below)
+    tooltip.style.left = `${left}px`
+    tooltip.style.top = `${Math.max(gap, Math.min(top, window.innerHeight - box.height - gap))}px`
+    tooltip.style.setProperty('--arrow', `${Math.max(6, Math.min(center - left - 4, box.width - 14))}px`)
+  }
+
+  /** Track the mouse position so a scroll can reveal the next cell. */
+  function movePointer(event) {
+    pointer = { x: event.clientX, y: event.clientY }
+    updateTooltip()
+  }
+
+  /** Hide the hint when the mouse leaves the document. */
+  function leaveDocument(event) {
+    if (event.relatedTarget) return
+    pointer = null
+    tooltip.hidden = true
+  }
+
   /** Combine nearby DOM changes into one update. */
-  function schedule() {
+  function schedule(records) {
+    if (records.every(record => tooltip.contains(record.target))) return
     clearTimeout(refreshTimer)
     refreshTimer = setTimeout(refresh, 50)
   }
+  const listeners = new window.AbortController()
+  const options = { capture: true, signal: listeners.signal }
+  document.addEventListener('mousemove', movePointer, options)
+  document.addEventListener('mouseout', leaveDocument, options)
+  window.addEventListener('scroll', updateTooltip, options)
+  window.addEventListener('resize', updateTooltip, options)
   const observer = new MutationObserver(schedule)
   refresh()
   return () => {
     stopped = true
+    listeners.abort()
+    tooltip.remove()
+    restoreTitles()
     clearTimeout(refreshTimer)
     observer.disconnect()
     panel?.remove()

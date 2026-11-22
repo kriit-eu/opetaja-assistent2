@@ -77,6 +77,38 @@ describe('WorkloadFiltersFeature', () => {
     expect(document.querySelector('thead th').classList.contains('oa2-workload-number')).toBe(false)
   })
 
+  it('shows the date of each week and keeps totals aligned across row spans', async () => {
+    document.querySelector('main').innerHTML = `<dg-vocational-teacher-lesson-plan-search>
+      <button class="accordion-header"><span class="label-wrapper">2026/2027 Õpetaja</span></button>
+      <div><div><table class="tahvel-table"><thead><tr><th>28.12 - 03.01</th><th>31.05 - 06.06</th></tr></thead>
+      <tbody><tr><th rowspan="2" class="journal-items">TAK25</th><th title="100%">58</th><td>2</td><td>8</td></tr>
+      <tr><th>124</th><td>0</td><td></td></tr></tbody>
+      <tfoot><tr><th>Kokku</th><th>182</th><th>2</th><th>8</th></tr></tfoot></table></div></div>
+      </dg-vocational-teacher-lesson-plan-search>`
+    await feature.onActivate()
+    const tooltip = document.querySelector('[role="tooltip"]')
+    const hover = cell => {
+      document.elementFromPoint = () => cell
+      cell.dispatchEvent(new dom.window.MouseEvent('mousemove', { bubbles: true }))
+      return tooltip.hidden ? '' : tooltip.textContent
+    }
+    const [first, next] = document.querySelector('tbody').rows
+    expect([...first.cells].map(hover)).toEqual(['', '100%\nÕppeaasta 2026/2027', '28.12–03.01.2027', '31.05–06.06.2027'])
+    expect([...next.cells].map(hover)).toEqual(['Õppeaasta 2026/2027', '', ''])
+    expect(hover(document.querySelector('tfoot tr').lastElementChild)).toBe('31.05–06.06.2027')
+    expect(first.cells[1].hasAttribute('title')).toBe(false)
+    document.querySelector('.label-wrapper').textContent = '2027/2028 Õpetaja'
+    first.lastElementChild.textContent = '0'
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(hover(first.lastElementChild)).toBe('')
+    expect(hover(first.cells[2])).toBe('28.12–03.01.2028')
+    document.dispatchEvent(new dom.window.MouseEvent('mouseout'))
+    expect(tooltip.hidden).toBe(true)
+    feature.onDeactivate()
+    expect(tooltip.isConnected).toBe(false)
+    expect(first.cells[1].title).toBe('100%')
+  })
+
   it('restores saved values after a fresh instance and persists clearing both filters', async () => {
     await feature.onActivate()
     setFilter(0, 'TAK26')
