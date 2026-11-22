@@ -49,6 +49,7 @@ describe('FeaturesRegistry.loadFeatures', () => {
     expect(names).toContain('FinalGradeWarningFeature')
     expect(names).toContain('LessonDiscrepanciesFeature')
     expect(names).toContain('TimetableDiscrepancyDetectionFeature')
+    expect(names).toContain('WorkloadFiltersFeature')
   })
 
   it('treats undefined Kriit setting as disabled', async () => {

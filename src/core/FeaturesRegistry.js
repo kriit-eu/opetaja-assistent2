@@ -23,7 +23,8 @@ export async function loadFeatures() {
   const allAvailableFeatures = {
     header: [],
     journalList: [],
-    singleJournal: []
+    singleJournal: [],
+    lessonPlans: []
   }
 
   // Only import and instantiate features that should be loaded
@@ -60,6 +61,12 @@ export async function loadFeatures() {
   }
 
   // Load non-Kriit features here (they should always be loaded)
+  try {
+    const WorkloadFiltersFeature = (await import('../features/lessonPlans/WorkloadFiltersFeature.js')).default
+    allAvailableFeatures.lessonPlans.push(new WorkloadFiltersFeature())
+  } catch (error) {
+    Logger.error('Error loading WorkloadFiltersFeature:', error)
+  }
 
   // Load timetable discrepancy detection feature with button (always enabled)
   try {
@@ -181,7 +188,8 @@ export async function loadFeatures() {
   const featureGroups = {
     header: [...allAvailableFeatures.header],
     journalList: [...allAvailableFeatures.journalList],
-    singleJournal: [...allAvailableFeatures.singleJournal]
+    singleJournal: [...allAvailableFeatures.singleJournal],
+    lessonPlans: [...allAvailableFeatures.lessonPlans]
   }
 
   // Flatten all features into a single array
