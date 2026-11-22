@@ -231,3 +231,40 @@ test('missing lesson sends one real SMTP email through Kriit; retry is deduplica
   const allMessages = (await (await request.get(`${mailbox}/api/v2/messages`)).json()).items
   expect(allMessages.every(message => message.To.length === 1 && message.To[0].Mailbox === 'teacher' && message.To[0].Domain === 'example.test')).toBe(true)
 })
+
+test('the pre-lesson alarm sends the last confirmed group period to Kriit', async({ request }) => {
+  test.setTimeout(60000)
+  const api = process.env.CONFIRMED_LESSON_TEST_API
+  test.skip(!api, 'Requires the isolated Kriit attendance fixture')
+  expect(new URL(api).hostname).toBe('127.0.0.1')
+  await harness.worker.evaluate(async api => {
+    const state = lessonHarness.state
+    const group = { id: 12, code: 'A' }
+    const today = { id: 202, journalId: 81, date: '2026-09-14', timeStart: '10:54', timeEnd: '11:39', studentGroups: [group] }
+    const previous = { ...today, id: 201, journalId: 80, date: '2026-09-11', timeStart: '09:10', timeEnd: '09:55' }
+    state.events = [today]
+    state.emailUrl = new URL('attendance', api).href
+    state.attendanceResponses = {
+      '/hois_back/timetableevents/timetableSearch/9': { number: 0, totalElements: 2, content: [previous, today] },
+      '/hois_back/lessontimes': { last: true, content: [{ startTime: '09:10', endTime: '09:55', lessonNr: 2, validFrom: '2026-09-01', dayFri: true }] },
+      '/hois_back/journals/80/journalEntriesByDate': [{ id: 6, entryType: 'SISSEKANNE_T', entryDate: previous.date, startLessonNr: 2, lessons: 1 }],
+      '/hois_back/journals/80/journalEntry/6': { id: 6, entryType: 'SISSEKANNE_T', entryDate: previous.date, startLessonNr: 2, lessons: 1, journalEntryStudents: [{ journalStudent: 1, absence: 'PUUDUMINE_P' }] },
+      '/hois_back/journals/80/journalStudents': [{ id: 1, studentId: 101, studentGroup: 'A' }]
+    }
+    await chrome.storage.local.set({ OA_kriitEnabled: true, OA_kriitApiToken: 'teacher-test-token', OA_kriitApiBaseUrl: api.split('/lessonreminders/')[0] })
+  }, api)
+  await harness.open()
+  await harness.idle()
+  const alarm = 'oa2-confirm-attendance:81-2026-09-14-10:54'
+  const when = Date.parse('2026-09-14T07:50:00Z')
+  await expect.poll(() => harness.worker.evaluate(name => lessonHarness.alarms().find(a => a.name === name)?.scheduledTime, alarm)).toBe(when)
+  await harness.fire(alarm, when)
+  const posts = await harness.worker.evaluate(() => lessonHarness.state.requests.filter(r => r.method === 'POST'))
+  expect(posts).toHaveLength(1)
+  const evidence = JSON.parse(posts[0].body)
+  expect(evidence).toMatchObject({ absent: [101], previousEventId: 201, eventId: 202 })
+  const endpoint = new URL('attendance', api).href
+  const post = (token, data) => request.post(endpoint, { data, headers: { Authorization: 'Bearer ' + token } })
+  expect((await post('student-test-token', evidence)).status()).toBe(403)
+  expect((await post('teacher-test-token', { ...evidence, journalId: 82 })).status()).toBe(422)
+})
