@@ -44,18 +44,19 @@ function workloadDates(table) {
   let previousMonth = 0
   const weeks = []
   for (const header of headers) {
-    const dates = header.textContent.trim().match(/^(\d{2})\.(\d{2})(?:\s*[-–]\s*(\d{2})\.(\d{2}))?$/)
-    if (!dates || header.colSpan !== 1) return null
-    if (!weeks.length && Number(dates[2]) < 7) year++
+    const parts = header.textContent.split(/[-–]/).map(part => part.trim())
+    if (header.colSpan !== 1 || parts.length > 2 || !parts.every(part => /^\d{2}\.\d{2}$/.test(part))) return null
+    const [startDay, startMonth] = parts[0].split('.')
+    if (!weeks.length && Number(startMonth) < 7) year++
     const format = (day, month) => {
       if (Number(month) < previousMonth) year++
       previousMonth = Number(month)
       return `${day}.${month}.${year}`
     }
-    const start = format(dates[1], dates[2])
-    const end = dates[3] ? format(dates[3], dates[4]) : start
+    const start = format(startDay, startMonth)
+    const end = parts[1] ? format(...parts[1].split('.')) : start
     if (year > Number(years[2])) return null
-    weeks.push(start === end ? start : `${dates[1]}.${dates[2]}–${end}`)
+    weeks.push(start === end ? start : `${parts[0]}–${end}`)
   }
   return { schoolYear: `Õppeaasta ${years[1]}/${years[2]}`, weeks }
 }
