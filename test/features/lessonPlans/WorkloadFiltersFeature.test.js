@@ -68,6 +68,45 @@ describe('WorkloadFiltersFeature', () => {
     expect(status()).toContain('0 / 3')
   })
 
+  it('keeps the group cell with the selected type and restores the original table', async () => {
+    const first = document.querySelector('tbody').rows[1]
+    const cell = first.cells[0]
+    cell.rowSpan = 4
+    for (const type of ['P', 'I']) {
+      const row = first.parentElement.insertRow(first.sectionRowIndex + 1)
+      row.insertCell().textContent = type
+      row.insertCell().textContent = '17'
+    }
+    await feature.onActivate()
+    const select = () => document.querySelector('#oa2-workload select')
+    const choose = type => {
+      select().value = type
+      select().dispatchEvent(new dom.window.Event('change'))
+    }
+    setFilter(0, 'TAK25')
+    setFilter(1, 'Program')
+    for (const type of ['A', 'I', 'P']) {
+      choose(type)
+      const rows = document.querySelectorAll('tbody tr:not(.oa2-workload-hidden)')
+      expect(rows.length).toBe(2)
+      expect(rows[1].cells[0]).toBe(cell)
+      expect(rows[1].cells[1].textContent).toBe(type)
+      expect(cell.rowSpan).toBe(1)
+      expect(status()).toContain('1 / 3')
+    }
+    feature.onDeactivate()
+    expect(first.cells[0]).toBe(cell)
+    expect(cell.rowSpan).toBe(4)
+    await feature.onActivate()
+    expect(select().value).toBe('P')
+    expect(cell.parentElement.cells[1].textContent).toBe('P')
+    document.querySelector('#oa2-workload button').click()
+    expect(select().value).toBe('')
+    expect(first.cells[0]).toBe(cell)
+    expect(cell.rowSpan).toBe(4)
+    expect(document.querySelectorAll('.oa2-workload-hidden').length).toBe(0)
+  })
+
   it('highlights numeric body and footer cells except blank cells and literal zero', async () => {
     await feature.onActivate()
     for (const cell of document.querySelectorAll('tbody td,tbody th,tfoot td,tfoot th')) {
@@ -119,7 +158,7 @@ describe('WorkloadFiltersFeature', () => {
     expect(inputs().map(input => input.value)).toEqual(['TAK26', 'Märgendi'])
     expect(status()).toContain('1 / 3')
     document.querySelector('#oa2-workload button').click()
-    expect(stored[KEY]).toEqual({ group: '', subject: '' })
+    expect(stored[KEY]).toEqual({ group: '', subject: '', type: '' })
     expect(status()).toContain('3 / 3')
     expect(document.querySelector('tfoot').classList.contains('oa2-workload-hidden')).toBe(false)
   })

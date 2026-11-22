@@ -2,6 +2,12 @@ import { BaseFeature } from '../../core/BaseFeature.js'
 import Logger from '../../services/Logger.js'
 
 const STORAGE_KEY = 'OA_workloadFilters'
+const LESSON_TYPES = new Map([
+  ['', 'Kõik õppeliigid'],
+  ['A', 'A – auditoorne õpe'],
+  ['I', 'I – iseseisev õpe'],
+  ['P', 'P – praktiline töö']
+])
 const LEGACY_KEY = 'henno-koormus-filters-v1'
 
 /** Check stored filter values before using them in the controls.
@@ -90,8 +96,8 @@ export default class WorkloadFiltersFeature extends BaseFeature {
     this.cleanup = mountFilters(filters, values => this.saveFilters(values))
   }
 
-  /** Save the two filter values in extension storage.
-   * @param {{group: string, subject: string}} filters Current filters.
+  /** Save the filter values in extension storage.
+   * @param {{group: string, subject: string, type?: string}} filters Current filters.
    */
   saveFilters(filters) {
     chrome.storage.local.set({ [STORAGE_KEY]: filters }, () => {
@@ -109,7 +115,7 @@ export default class WorkloadFiltersFeature extends BaseFeature {
 }
 
 /** Mount the controls and return their cleanup function.
- * @param {{group: string, subject: string}} filters Initial filters.
+ * @param {{group: string, subject: string, type?: string}} filters Initial filters.
  * @param {Function} persist Save changed filters.
  * @returns {Function} Remove controls, styles, and observers.
  */
@@ -129,6 +135,8 @@ function mountFilters(filters, persist) {
   let refreshTimer
   let stopped = false
   let groupInput
+  const sharedCells = []
+  let typeInput
   let subjectInput
   let count
   const style = document.createElement('style')
@@ -145,7 +153,7 @@ function mountFilters(filters, persist) {
     #${prefix} { margin: 12px 0; padding: 14px 16px; border: 1px solid #bbc9d2;
       border-radius: 6px; background: #f4f8fa; display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
     #${prefix} label { display: flex; flex-direction: column; gap: 5px; font-weight: 600; }
-    #${prefix} input { padding: 8px 10px; border: 1px solid #788995; border-radius: 4px;
+    #${prefix} input, #${prefix} select { padding: 8px 10px; border: 1px solid #788995; border-radius: 4px;
       background: white; color: #171717; font: inherit; width: 240px; max-width: 65vw; }
     #${prefix} button { padding: 9px 14px; cursor: pointer; }
     #${prefix} .status { flex-basis: 100%; font-size: 14px; }
@@ -175,6 +183,19 @@ function mountFilters(filters, persist) {
     }
     groupInput = addInput('Grupp', 'groups', 'Kõik grupid')
     subjectInput = addInput('Aine', 'subjects', 'Kõik ained')
+    const label = document.createElement('label')
+    label.textContent = 'Õppeliik'
+    typeInput = document.createElement('select')
+    for (const [value, title] of LESSON_TYPES) {
+      const option = document.createElement('option')
+      option.value = value
+      option.textContent = title
+      typeInput.append(option)
+    }
+    typeInput.value = LESSON_TYPES.has(filters.type) ? filters.type : ''
+    typeInput.addEventListener('change', saveFilters)
+    label.append(typeInput)
+    panel.append(label)
     groupInput.value = filters.group
     subjectInput.value = filters.subject
     const clear = document.createElement('button')
@@ -183,6 +204,7 @@ function mountFilters(filters, persist) {
     clear.addEventListener('click', () => {
       groupInput.value = ''
       subjectInput.value = ''
+      typeInput.value = ''
       saveFilters()
     })
     count = document.createElement('div')
@@ -192,9 +214,9 @@ function mountFilters(filters, persist) {
     target.parentElement.before(panel)
   }
 
-  /** Save the current values and apply both filters. */
+  /** Save the current values and apply the filters. */
   function saveFilters() {
-    filters = { group: groupInput.value, subject: subjectInput.value }
+    filters = { group: groupInput.value, subject: subjectInput.value, type: typeInput.value }
     try {
       persist(filters)
     } catch (error) {
@@ -220,10 +242,20 @@ function mountFilters(filters, persist) {
     )
   }
 
-  /** Apply filters to complete row blocks after table changes. */
+  /** Return each shared group cell to its source row before reading the table. */
+  function restoreSharedCells() {
+    for (const { cell, source, span } of sharedCells) {
+      if (cell.parentElement !== source) source.prepend(cell)
+      cell.rowSpan = span
+    }
+    sharedCells.length = 0
+  }
+
+  /** Apply the filters after the table changes. */
   function refresh() {
     if (stopped) return
     observer.disconnect()
+    restoreSharedCells()
     restoreTitles()
     try {
       table = [...document.querySelectorAll('table.tahvel-table')].find(item => item.querySelector('.journal-items'))
@@ -253,7 +285,7 @@ function mountFilters(filters, persist) {
           const groupCell = row.querySelector('.journal-items')
           if (groupCell) {
             const groups = [...groupCell.querySelectorAll('.journal-column')].map(column => text(column.querySelector('.items'))).join(', ')
-            block = { groups, rows: [] }
+            block = { groups, cell: groupCell.closest('th, td'), rows: [] }
             section.blocks.push(block)
           }
           if (block) block.rows.push(row)
@@ -265,10 +297,22 @@ function mountFilters(filters, persist) {
         let showHeader = false
         for (const entry of item.blocks) {
           total++
-          const show = normalize(item.subject).includes(subjectQuery) && normalize(entry.groups).includes(groupQuery)
+          const matchesText = normalize(item.subject).includes(subjectQuery) && normalize(entry.groups).includes(groupQuery)
+          const selected = entry.rows.filter(row => {
+            const label = row.cells[row === entry.rows[0] ? 1 : 0]
+            return matchesText && (!typeInput.value || text(label) === typeInput.value)
+          })
+          const show = selected.length > 0
+          if (show && typeInput.value) {
+            const cell = entry.cell
+            const source = cell.parentElement
+            sharedCells.push({ cell, source, span: cell.rowSpan })
+            if (source !== selected[0]) selected[0].prepend(cell)
+            cell.rowSpan = selected.length
+          }
           if (show) visible++
           showHeader ||= show
-          entry.rows.forEach(row => row.classList.toggle(`${prefix}-hidden`, !show))
+          entry.rows.forEach(row => row.classList.toggle(`${prefix}-hidden`, !selected.includes(row)))
         }
         item.header.classList.toggle(`${prefix}-hidden`, !showHeader)
       }
@@ -289,7 +333,7 @@ function mountFilters(filters, persist) {
           if (original !== null) cell.removeAttribute('title')
         }
       }
-      const filtered = Boolean(groupQuery || subjectQuery)
+      const filtered = Boolean(groupQuery || subjectQuery || typeInput.value)
       table.tFoot?.classList.toggle(`${prefix}-hidden`, filtered)
       const message =
         `Näitan ${visible} / ${total} aine ja grupi kirjet. ` +
@@ -367,6 +411,7 @@ function mountFilters(filters, persist) {
   refresh()
   return () => {
     stopped = true
+    restoreSharedCells()
     listeners.abort()
     tooltip.remove()
     restoreTitles()
