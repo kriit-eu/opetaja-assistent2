@@ -465,7 +465,7 @@ class JournalListSyncFeature extends BaseFeature {
    * @returns {string|null} Selected study year text (e.g., "2025/2026") or null if not found
    */
   getSelectedStudyYear() {
-    const studyYearSelector = document.querySelector('.selected-option.ng-tns-c929221873-0')
+    const studyYearSelector = document.querySelector('[formcontrolname="studyYear"] .selected-option')
     if (studyYearSelector) {
       const yearText = studyYearSelector.textContent.trim()
       Logger.debug('Selected study year from dropdown:', yearText)
@@ -505,7 +505,7 @@ class JournalListSyncFeature extends BaseFeature {
     Logger.debug('Initial study year:', this.lastStudyYear)
 
     // Find submit button
-    const submitButton = document.querySelector('button[type="submit"]')
+    const submitButton = document.querySelector('.tahvel-form-buttons button[type="submit"]')
     if (!submitButton) {
       Logger.debug('Submit button not found for study year monitoring')
       return
@@ -1352,28 +1352,22 @@ class JournalListSyncFeature extends BaseFeature {
     journalSyncBannerService.showMissingApiKeyBanner()
   }
 
+  /** Fetch fresh data for the comparison without submitting the journal form. */
+  async refreshComparison() {
+    try {
+      await this.clearCache()
+    } catch (err) {
+      Logger.warning('Failed to clear the comparison cache:', err.message)
+    }
+    await this.proceedWithKriitApiCall()
+  }
+
   /**
    * Show green banner when all grades are in sync
    */
   showAllInSyncBanner() {
     journalSyncBannerService.showAllInSyncBanner(
-      async() => {
-        // When refresh button is clicked, trigger Tahvel search and wait for table update
-        Logger.debug('Värskenda button clicked - triggering Tahvel search for current study year')
-        try {
-          const submitButton = document.querySelector('button[type="submit"]')
-          if (submitButton) {
-            submitButton.click()
-            await this.waitForTableUpdate()
-          } else {
-            Logger.warning('Submit button not found, refreshing without triggering search')
-          }
-          await this.clearCache()
-        } catch (err) {
-          Logger.warning('Failed to trigger search or clear cache:', err.message)
-        }
-        await this.fetchJournalData()
-      },
+      () => this.refreshComparison(),
       () => bannerService.removeBanner()
     )
   }
@@ -1438,23 +1432,7 @@ class JournalListSyncFeature extends BaseFeature {
         }
         if (this.error && !this.error.includes('Kõik hinded on juba sünkroonis')) return
       },
-      async() => {
-        // Trigger Tahvel search and wait for table update before refreshing
-        Logger.debug('Refresh button clicked - triggering Tahvel search for current study year')
-        try {
-          const submitButton = document.querySelector('button[type="submit"]')
-          if (submitButton) {
-            submitButton.click()
-            await this.waitForTableUpdate()
-          } else {
-            Logger.warning('Submit button not found, refreshing without triggering search')
-          }
-          await this.clearCache()
-        } catch (err) {
-          Logger.warning('Failed to trigger search or clear cache:', err.message)
-        }
-        await this.fetchJournalData()
-      },
+      () => this.refreshComparison(),
       container => {
         const assignmentNameDiffs = this.extractAssignmentNameDifferences()
         const gradeDiffs = Array.isArray(this.differences) ? this.differences : []

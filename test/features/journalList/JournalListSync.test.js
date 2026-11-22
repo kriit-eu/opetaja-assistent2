@@ -1918,7 +1918,7 @@ describe('JournalListSync - Algorithm Tests', () => {
 
   describe('getSelectedStudyYear', () => {
     test('should return year text from dropdown', () => {
-      document.body.innerHTML = '<div class="selected-option ng-tns-c929221873-0">2024/2025</div>'
+      document.body.innerHTML = '<div formcontrolname="studyYear"><span class="selected-option">2024/2025</span></div>'
 
       const result = journalListSync.getSelectedStudyYear()
 
@@ -1934,7 +1934,7 @@ describe('JournalListSync - Algorithm Tests', () => {
     })
 
     test('should trim whitespace from year text', () => {
-      document.body.innerHTML = '<div class="selected-option ng-tns-c929221873-0">  2024/2025  </div>'
+      document.body.innerHTML = '<div formcontrolname="studyYear"><span class="selected-option">  2024/2025  </span></div>'
 
       const result = journalListSync.getSelectedStudyYear()
 
@@ -2333,7 +2333,8 @@ describe('JournalListSync - Algorithm Tests', () => {
   describe('setupStudyYearMonitoring', () => {
     test('captures initial study year and skips listener setup when submit button is missing', () => {
       const yearOption = document.createElement('div')
-      yearOption.className = 'selected-option ng-tns-c929221873-0'
+      yearOption.className = 'selected-option'
+      document.body.setAttribute('formcontrolname', 'studyYear')
       yearOption.textContent = '2024/2025'
       document.body.appendChild(yearOption)
 
@@ -5357,7 +5358,8 @@ describe("JournalListSync - Sync flow and lifecycle", () => {
 
     test('returns text content when element exists', () => {
       const el = document.createElement('div')
-      el.className = 'selected-option ng-tns-c929221873-0'
+      el.className = 'selected-option'
+      document.body.setAttribute('formcontrolname', 'studyYear')
       el.textContent = '2025/2026'
       document.body.appendChild(el)
       expect(journalListSync.getSelectedStudyYear()).toBe('2025/2026')

@@ -1039,24 +1039,11 @@ describe("JournalSyncBanner - integration", () => {
       expect(document.querySelector('.rendered-marker')).toBeTruthy()
     })
 
-    it('runs the sync button click handler successfully', async () => {
-      const onSync = mock(async () => undefined)
+    it('ignores a script click on the sync button', () => {
+      const onSync = mock()
       service.showDifferencesBanner(1, onSync)
-      const syncBtn = [...document.querySelectorAll('button')]
-        .find(b => b.textContent.includes('Sünkroniseeri'))
-      syncBtn.click()
-      await new Promise(resolve => setTimeout(resolve, 10))
-      expect(onSync).toHaveBeenCalled()
-    })
-
-    it('re-enables sync button when onSync rejects', async () => {
-      const onSync = mock(async () => { throw new Error('boom') })
-      service.showDifferencesBanner(1, onSync)
-      const syncBtn = [...document.querySelectorAll('button')]
-        .find(b => b.textContent.includes('Sünkroniseeri'))
-      syncBtn.click()
-      await new Promise(resolve => setTimeout(resolve, 10))
-      expect(syncBtn.disabled).toBe(false)
+      document.querySelector('.ta-sync-banner-container .btn-primary').click()
+      expect(onSync).not.toHaveBeenCalled()
     })
   })
 

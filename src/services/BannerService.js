@@ -377,6 +377,7 @@ export class BannerService {
       domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['ta-banner-button'],
           onclick: options.onRefresh,
           style: 'margin-right: 10px; background-color: #28a745; border-color: #28a745; color: white;'
@@ -391,6 +392,7 @@ export class BannerService {
       domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['ta-banner-button'],
           onclick: options.onClose,
           style: 'background-color: transparent; border-color: #28a745; color: #28a745;'
@@ -460,6 +462,7 @@ export class BannerService {
       domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['ta-banner-button', 'ta-banner-error-button'],
           onclick: options.onRetry,
           style: 'margin-right: 10px;'
@@ -474,6 +477,7 @@ export class BannerService {
       domService.createAndInsertElement(
         'button',
         {
+          type: 'button',
           classList: ['ta-banner-button'],
           onclick: options.onRefresh
         },
