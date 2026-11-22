@@ -15,6 +15,7 @@ import Logger from '../../services/Logger.js'
 import { styleService } from '../../services/StyleService.js'
 import { cacheService } from '../../services/CacheService.js'
 import { ApiService } from '../../services/ApiService.js'
+import { compareKriitGrades } from '../../lib/compareKriitGrades.js'
 import { buildDiffSummary } from '../../lib/kriitSyncCheck.js'
 import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
 import { bannerService } from '../../services/BannerService.js'
@@ -437,6 +438,7 @@ class JournalListSyncFeature extends BaseFeature {
             })
           }
 
+          this.showComparisonButton()
           this.fetchJournalData()
         } else {
           // This case should not happen anymore with the fixed observer
@@ -634,7 +636,32 @@ class JournalListSyncFeature extends BaseFeature {
   /**
    * Called when the feature is deactivated
    */
+  showComparisonButton() {
+    const container = document.querySelector('.tahvel-form-buttons')
+    if (window.location.origin !== 'https://tahvel.edu.ee' || !container || document.getElementById('oa2-compare-kriit-grades')) return
+    const button = document.createElement('button')
+    button.id = 'oa2-compare-kriit-grades'
+    button.type = 'button'
+    button.className = 'md-button'
+    button.textContent = 'Võrdle Kriiti hindeid'
+    button.onclick = async() => {
+      button.disabled = true
+      try {
+        await compareKriitGrades(this.api.kriit, (n, total) => {
+          button.textContent = `Võrdlen päevikuid (${n}/${total})`
+        })
+        button.textContent = 'Võrdlus valmis. Võrdle uuesti'
+      } catch {
+        button.textContent = 'Võrdlus katkes. Proovi uuesti'
+      } finally {
+        button.disabled = false
+      }
+    }
+    container.append(button)
+  }
+
   onDeactivate() {
+    document.getElementById('oa2-compare-kriit-grades')?.remove()
     this.isActive = false
     // Call parent method to clean up observers
     super.onDeactivate()

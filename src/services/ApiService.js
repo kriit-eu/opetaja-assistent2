@@ -78,6 +78,8 @@ class ApiService {
     return [
       '/subjects/getDifferences',
       '/grades/markSynchronized',
+      '/grades/comparisonTargets',
+      '/grades/saveComparisons',
       '/assignments/setAssignmentExternalId',
       '/outcomes/sync'
     ].some(suffix => url.includes(suffix))
