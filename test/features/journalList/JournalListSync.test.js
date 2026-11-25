@@ -5097,7 +5097,7 @@ describe("JournalListSync - Sync flow and lifecycle", () => {
       expect(callArgs[0]).toBe('/subjects/getDifferences')
       // Inactive students should be in payload (when fetched)
       expect(callArgs[1].journals).toBeDefined()
-      expect(Array.isArray(callArgs[1].inactiveStudents)).toBe(true)
+      expect(Array.isArray(callArgs[1].enrollmentStatuses)).toBe(true)
     })
   })
 
@@ -5375,86 +5375,6 @@ describe("JournalListSync - Sync flow and lifecycle", () => {
     test('returns null when input is empty string', async () => {
       const result = await journalListSync.getStudyYearIdFromText('')
       expect(result).toBe(null)
-    })
-  })
-
-  describe('fetchInactiveStudents', () => {
-    test('returns empty map when API response is empty', async () => {
-      journalListSync.api = {
-        tahvel: {
-          baseUrl: 'https://tahvel.edu.ee/hois_back',
-          get: mock(async () => ({ content: [] }))
-        },
-        kriit: { authToken: 'tkn', enabled: true }
-      }
-      const result = await journalListSync.fetchInactiveStudents()
-      expect(result).toEqual({ byPersonalCode: {}, byStudentId: {} })
-    })
-
-    test('returns map indexed by personal code and student ID', async () => {
-      journalListSync.api = {
-        tahvel: {
-          baseUrl: 'https://tahvel.edu.ee/hois_back',
-          get: mock(async () => ({
-            content: [
-              { id: 100, idcode: '50001010001', fullname: 'A B', status: 'OPPURSTAATUS_K' },
-              { id: 200, idcode: '50001010002', firstname: 'C', lastname: 'D', status: 'OPPURSTAATUS_L' }
-            ],
-            totalElements: 2
-          }))
-        },
-        kriit: { authToken: 'tkn', enabled: true }
-      }
-      const result = await journalListSync.fetchInactiveStudents()
-      expect(Object.keys(result.byPersonalCode)).toContain('50001010001')
-      expect(result.byPersonalCode['50001010001'].isDeleted).toBe(true)
-      expect(result.byPersonalCode['50001010002'].isGraduated).toBe(true)
-      expect(result.byStudentId[100]).toBeDefined()
-    })
-
-    test('skips students missing idcode', async () => {
-      journalListSync.api = {
-        tahvel: {
-          baseUrl: 'https://tahvel.edu.ee/hois_back',
-          get: mock(async () => ({
-            content: [
-              { id: 100, idcode: null, status: 'OPPURSTAATUS_K' },  // no idcode
-              { id: 101, idcode: '50001010001', status: 'OPPURSTAATUS_L', fullname: 'B' }
-            ]
-          }))
-        }
-      }
-      const result = await journalListSync.fetchInactiveStudents()
-      expect(Object.keys(result.byPersonalCode).length).toBe(1)
-    })
-
-    test('returns empty map on API error', async () => {
-      journalListSync.api = {
-        tahvel: {
-          baseUrl: 'https://tahvel.edu.ee/hois_back',
-          get: mock(async () => { throw new Error('Network down') })
-        }
-      }
-      const result = await journalListSync.fetchInactiveStudents()
-      expect(result).toEqual({ byPersonalCode: {}, byStudentId: {} })
-    })
-  })
-
-  describe('getInactiveStudentsCache', () => {
-    test('returns valid structure when fetchInactiveStudents returns data', async () => {
-      journalListSync.api = {
-        tahvel: {
-          baseUrl: 'https://tahvel.edu.ee/hois_back',
-          get: mock(async () => ({
-            content: [{ id: 1, idcode: '50001010001', status: 'OPPURSTAATUS_K', fullname: 'X' }]
-          }))
-        }
-      }
-      const result = await journalListSync.getInactiveStudentsCache()
-      expect(result).toBeDefined()
-      expect(typeof result).toBe('object')
-      expect(result.byPersonalCode).toBeDefined()
-      expect(result.byStudentId).toBeDefined()
     })
   })
 

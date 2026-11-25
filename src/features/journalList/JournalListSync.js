@@ -1,3 +1,4 @@
+import { enrollmentFlags, getEnrollmentStatuses } from '../../lib/enrollmentStatuses.js'
 import { lessonAttendance, lessonEntries } from '../../lib/lessonAttendance.js'
 /**
  * Journal List Sync Feature
@@ -1168,16 +1169,10 @@ class JournalListSyncFeature extends BaseFeature {
         try {
           const studentDetails = await this.getStudentDetails(journalStudent.studentId)
           if (studentDetails && studentDetails.person && studentDetails.person.idcode) {
-            const isActive = studentDetails.status === 'OPPURSTAATUS_O'
-            const isDeleted = studentDetails.status === 'OPPURSTAATUS_K'
-            const isGraduated = studentDetails.status === 'OPPURSTAATUS_L'
-
             const cachedStudent = {
               personalCode: studentDetails.person.idcode,
               name: journalStudent.fullname || `${journalStudent.firstname} ${journalStudent.lastname}`,
-              isActive: isActive,
-              isDeleted: isDeleted,
-              isGraduated: isGraduated
+              ...enrollmentFlags(studentDetails.status)
             }
 
             // Store the mapping for later lookups
@@ -1218,9 +1213,7 @@ class JournalListSyncFeature extends BaseFeature {
           const details = await this.getStudentDetails(journalStudent.studentId)
           if (!details || !details.status) return null
           return {
-            isActive: details.status === 'OPPURSTAATUS_O',
-            isDeleted: details.status === 'OPPURSTAATUS_K',
-            isGraduated: details.status === 'OPPURSTAATUS_L'
+            ...enrollmentFlags(details.status)
           }
         }
 
@@ -1616,37 +1609,11 @@ class JournalListSyncFeature extends BaseFeature {
         return
       }
 
-      // Fetch inactive students to send to Kriit
-      Logger.debug('🔍 Fetching inactive students for Kriit')
-      let inactiveStudentsArray = []
+      let enrollmentStatuses = []
       try {
-        const inactiveStudentsCache = await this.getInactiveStudentsCache()
-
-        Logger.debug(`📦 Cache structure: ${JSON.stringify({
-          hasCache: !!inactiveStudentsCache,
-          hasByPersonalCode: !!(inactiveStudentsCache && inactiveStudentsCache.byPersonalCode),
-          personalCodeCount: inactiveStudentsCache && inactiveStudentsCache.byPersonalCode
-            ? Object.keys(inactiveStudentsCache.byPersonalCode).length
-            : 0
-        })}`)
-
-        // Convert the cache to an array format suitable for Kriit
-        if (inactiveStudentsCache && inactiveStudentsCache.byPersonalCode) {
-          for (const personalCode in inactiveStudentsCache.byPersonalCode) {
-            const student = inactiveStudentsCache.byPersonalCode[personalCode]
-            inactiveStudentsArray.push({
-              personalCode: student.personalCode,
-              name: student.name,
-              status: student.status
-            })
-          }
-        }
-
-        Logger.debug(`✅ Including ${inactiveStudentsArray.length} inactive students in payload for Kriit`)
+        enrollmentStatuses = await getEnrollmentStatuses(this.api, journalData)
       } catch (error) {
-        Logger.warning(`❌ Failed to fetch inactive students: ${error.message}`)
-        Logger.error(error)
-        inactiveStudentsArray = []
+        Logger.warning('Could not read Tahvel enrolment statuses:', error.message)
       }
 
       // Store Tahvel data for banner to access current lesson values
@@ -1657,11 +1624,11 @@ class JournalListSyncFeature extends BaseFeature {
         // Prepare payload with both journals and inactive students
         const payload = {
           journals: journalData,
-          inactiveStudents: inactiveStudentsArray
+          enrollmentStatuses
         }
 
         // Log the request data
-        Logger.debug('Sending request to Kriit API:', JSON.stringify(payload))
+        Logger.debug('Sending journals and enrolment statuses to Kriit')
 
         // Compute a stable hash of the payload and skip calling Kriit if unchanged since last successful call
         const payloadHash = await computePayloadHash(payload)
@@ -2688,142 +2655,6 @@ class JournalListSyncFeature extends BaseFeature {
   }
 
   /**
-   * Fetch students with inactive statuses (academic leave, graduated, exmatriculated)
-   * This is useful for finding students who have been removed from journals
-   * @returns {Promise<Object>} Map of personal codes to student data
-   */
-  async fetchInactiveStudents() {
-    try {
-      Logger.debug('📡 Fetching inactive students from Tahvel API')
-
-      // Build maps indexed by both personal code and student ID for quick lookup
-      const inactiveStudentsMap = {
-        byPersonalCode: {},
-        byStudentId: {}
-      }
-
-      // The API limits page size to 2000, so we need to paginate through all results
-      let page = 0
-      let hasMorePages = true
-
-      // Fetch all pages until we reach the end
-      while (hasMorePages) {
-        Logger.debug(`📄 Fetching page ${page} of inactive students`)
-
-        // Fetch students with OPPURSTAATUS_A (academic leave), OPPURSTAATUS_L (graduated), OPPURSTAATUS_K (exmatriculated)
-        const response = await this.api.tahvel.get(
-          '/students',
-          {
-            lang: 'ET',
-            page: page,
-            showMyStudentGroups: false,
-            size: 2000, // Maximum page size allowed by API
-            sort: 'person.lastname,person.firstname,asc',
-            status: ['OPPURSTAATUS_K', 'OPPURSTAATUS_L', 'OPPURSTAATUS_A']
-          },
-          {
-            cacheExpiration: 24 * 60 * 60 * 1000 // Cache for 24 hours
-          }
-        )
-
-        if (!response || !response.content || !Array.isArray(response.content)) {
-          Logger.warning('⚠️ Invalid response from inactive students API')
-          Logger.debug(`Response structure: ${JSON.stringify(Object.keys(response || {}))}`)
-          break
-        }
-
-        // Log total info on first page
-        if (page === 0 && response.totalElements) {
-          Logger.debug(`📊 Total inactive students reported by API: ${response.totalElements}`)
-        }
-
-        const studentsInPage = response.content.length
-        Logger.debug(`📋 Processing ${studentsInPage} students from page ${page}`)
-
-        // If we got no students, we've reached the end
-        if (studentsInPage === 0) {
-          hasMorePages = false
-          break
-        }
-
-        // Process students from this page
-        for (const student of response.content) {
-          if (student.idcode) {
-            const isActive = student.status === 'OPPURSTAATUS_O'
-            const isDeleted = student.status === 'OPPURSTAATUS_K'
-            const isGraduated = student.status === 'OPPURSTAATUS_L'
-
-            const studentData = {
-              personalCode: student.idcode,
-              name: student.fullname || `${student.firstname} ${student.lastname}`,
-              isActive: isActive,
-              isDeleted: isDeleted,
-              isGraduated: isGraduated,
-              studentId: student.id,
-              status: student.status
-            }
-
-            // Index by personal code
-            inactiveStudentsMap.byPersonalCode[student.idcode] = studentData
-
-            // Index by student ID
-            if (student.id) {
-              inactiveStudentsMap.byStudentId[student.id] = studentData
-            }
-          } else {
-            Logger.debug(`⚠️ Skipping student without idcode: ${JSON.stringify(student)}`)
-          }
-        }
-
-        // If this page had fewer students than requested, we've reached the end
-        if (studentsInPage < 2000) {
-          hasMorePages = false
-        } else {
-          page++
-        }
-      }
-
-      const fetchedCount = Object.keys(inactiveStudentsMap.byPersonalCode).length
-      Logger.debug(`✅ Fetched ${fetchedCount} inactive students from ${page + 1} page(s) (indexed by personal code and student ID)`)
-
-      return inactiveStudentsMap
-    } catch (error) {
-      Logger.error(`❌ Error fetching inactive students: ${error.message}`)
-      return { byPersonalCode: {}, byStudentId: {} }
-    }
-  }
-
-  /**
-   * Get or fetch the inactive students cache
-   * Uses CacheService to cache the inactive students data for 24 hours
-   * @returns {Promise<Object>} Object with byPersonalCode and byStudentId maps
-   */
-  async getInactiveStudentsCache() {
-    const cacheKey = 'inactive_students_all'
-
-    // Memory-only: keyed by personal code, contains names — must not persist.
-    const result = await cacheService.getOrFetch(
-      cacheKey,
-      () => this.fetchInactiveStudents(),
-      24 * 60 * 60 * 1000, // 24 hours (memory cache lifetime)
-      true,
-      false
-    )
-
-    // Ensure we always return a valid structure
-    if (!result || typeof result !== 'object') {
-      return { byPersonalCode: {}, byStudentId: {} }
-    }
-
-    // Handle old format (before this update) or error cases
-    if (!result.byPersonalCode && !result.byStudentId) {
-      return { byPersonalCode: {}, byStudentId: {} }
-    }
-
-    return result
-  }
-
-  /**
    * Create a mapping of student IDs to personal codes and names
    * @param {Array} journalStudents - Journal students
    * @param {Object} studentDetailsMap - Map of student IDs to their details including personal codes
@@ -3053,8 +2884,8 @@ class JournalListSyncFeature extends BaseFeature {
 
           // Get student name, active status, and deleted status from our maps
           let studentName = 'Unknown Student'
-          let studentIsActive = true // Default to active if we can't determine status
-          let studentIsDeleted = false
+          let studentIsActive
+          let studentIsDeleted
 
           // Get student details from our maps
           if (personalCode && studentMap.personalCodeToName[personalCode]) {
@@ -3072,8 +2903,8 @@ class JournalListSyncFeature extends BaseFeature {
           }
 
           // Check if we have student details in our cache
-          let studentIsGraduated = false
-          if (studentId && studentDetailsMap[studentId]) {
+          let studentIsGraduated
+          if (typeof studentDetailsMap[studentId]?.isActive === 'boolean') {
             // Use the isActive, isDeleted, and isGraduated flags from the student details
             studentIsActive = studentDetailsMap[studentId].isActive
             studentIsDeleted = studentDetailsMap[studentId].isDeleted || false
@@ -4444,8 +4275,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
               studentDetailsMap[student.id] = {
                 personalCode: studentDetails.person.idcode,
                 name: student.fullname || student.studentName,
-                isActive: studentDetails.status === 'OPPURSTAATUS_O', // O means actively studying
-                isGraduated: studentDetails.status === 'OPPURSTAATUS_L' // L means graduated
+                ...enrollmentFlags(studentDetails.status)
               }
             }
           }
@@ -4487,7 +4317,7 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
                   studentPersonalCode: studentDetails.personalCode,
                   studentName: studentDetails.name,
                   studentIsActive: studentDetails.isActive,
-                  studentIsGraduated: studentDetails.isGraduated || false
+                  studentIsGraduated: studentDetails.isGraduated
                 })
               }
             })

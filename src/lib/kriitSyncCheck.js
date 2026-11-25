@@ -1,3 +1,4 @@
+import { enrollmentFlags, getEnrollmentStatuses } from './enrollmentStatuses.js'
 import { lessonAttendance, lessonEntries } from './lessonAttendance.js'
 import Logger from '../services/Logger.js'
 import { cacheService } from '../services/CacheService.js'
@@ -10,7 +11,6 @@ const ONE_HOUR_MS = 60 * 60 * 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const ONE_WEEK_MS = 7 * ONE_DAY_MS
 const THIRTY_DAYS_MS = 30 * ONE_DAY_MS
-const SAFETY_MAX_PAGES = 50
 
 // Module-level caches shared across calls
 const globalTeacherCache = {}
@@ -59,29 +59,17 @@ async function _runKriitSyncCheckImpl(api) {
     return null
   }
 
-  // Fetch inactive students
-  let inactiveStudentsArray = []
+  let enrollmentStatuses = []
   try {
-    const inactiveStudentsCache = await getInactiveStudentsCache(api)
-    if (inactiveStudentsCache && inactiveStudentsCache.byPersonalCode) {
-      for (const personalCode of Object.keys(inactiveStudentsCache.byPersonalCode)) {
-        const student = inactiveStudentsCache.byPersonalCode[personalCode]
-        inactiveStudentsArray.push({
-          personalCode: student.personalCode,
-          name: student.name,
-          status: student.status
-        })
-      }
-    }
+    enrollmentStatuses = await getEnrollmentStatuses(api, journalData)
   } catch (error) {
-    Logger.debug('[kriitSyncCheck] Failed to fetch inactive students:', error.message)
-    inactiveStudentsArray = []
+    Logger.warning('Could not read Tahvel enrolment statuses:', error.message)
   }
 
   // Build payload
   const payload = {
     journals: journalData,
-    inactiveStudents: inactiveStudentsArray
+    enrollmentStatuses
   }
 
   // Call Kriit
@@ -470,9 +458,7 @@ async function processStudentData(api, journalStudents) {
           data: {
             personalCode: details.person.idcode,
             name: journalStudent.fullname || `${journalStudent.firstname} ${journalStudent.lastname}`,
-            isActive: details.status === 'OPPURSTAATUS_O',
-            isDeleted: details.status === 'OPPURSTAATUS_K',
-            isGraduated: details.status === 'OPPURSTAATUS_L'
+            ...enrollmentFlags(details.status)
           }
         }
       }
@@ -595,11 +581,11 @@ export function extractAssignmentsFromEntries(journalEntries, studentMap, journa
         if (!personalCode) return
 
         const studentName = studentMap.personalCodeToName[personalCode] || journalStudent.studentName || 'Unknown Student'
-        let studentIsActive = true
-        let studentIsDeleted = false
-        let studentIsGraduated = false
+        let studentIsActive
+        let studentIsDeleted
+        let studentIsGraduated
 
-        if (studentId && studentDetailsMap[studentId]) {
+        if (typeof studentDetailsMap[studentId]?.isActive === 'boolean') {
           studentIsActive = studentDetailsMap[studentId].isActive
           studentIsDeleted = studentDetailsMap[studentId].isDeleted || false
           studentIsGraduated = studentDetailsMap[studentId].isGraduated || false
@@ -848,96 +834,6 @@ export async function getTeacherPersonalCodeCached(api, teacher) {
 
   pendingTeacherRequests.set(cacheKey, fetchPromise)
   return await fetchPromise
-}
-
-// --- Inactive students ---
-
-/**
- * Fetch students with inactive statuses from Tahvel.
- * @param {Object} api
- * @returns {Promise<Object>} { byPersonalCode, byStudentId }
- */
-async function fetchInactiveStudents(api) {
-  const inactiveStudentsMap = { byPersonalCode: {}, byStudentId: {} }
-
-  let page = 0
-  let hasMorePages = true
-
-  while (hasMorePages && page < SAFETY_MAX_PAGES) {
-    const response = await api.tahvel.get(
-      '/students',
-      {
-        lang: 'ET',
-        page,
-        showMyStudentGroups: false,
-        size: 2000,
-        sort: 'person.lastname,person.firstname,asc',
-        status: ['OPPURSTAATUS_K', 'OPPURSTAATUS_L', 'OPPURSTAATUS_A']
-      },
-      { cacheExpiration: ONE_DAY_MS }
-    )
-
-    if (!response || !response.content || !Array.isArray(response.content)) break
-
-    if (response.content.length === 0) {
-      hasMorePages = false
-      break
-    }
-
-    for (const student of response.content) {
-      if (student.idcode) {
-        const studentData = {
-          personalCode: student.idcode,
-          name: student.fullname || `${student.firstname} ${student.lastname}`,
-          isActive: student.status === 'OPPURSTAATUS_O',
-          isDeleted: student.status === 'OPPURSTAATUS_K',
-          isGraduated: student.status === 'OPPURSTAATUS_L',
-          studentId: student.id,
-          status: student.status
-        }
-        inactiveStudentsMap.byPersonalCode[student.idcode] = studentData
-        if (student.id) {
-          inactiveStudentsMap.byStudentId[student.id] = studentData
-        }
-      }
-    }
-
-    if (response.content.length < 2000) {
-      hasMorePages = false
-    } else {
-      page++
-    }
-  }
-
-  return inactiveStudentsMap
-}
-
-/**
- * Get or fetch the inactive students cache.
- * @param {Object} api
- * @returns {Promise<Object>} { byPersonalCode, byStudentId }
- */
-async function getInactiveStudentsCache(api) {
-  const cacheKey = 'inactive_students_all'
-
-  // Memory-only: this map is keyed by student personal codes and contains
-  // names, so it must not persist to the on-disk Cache API. Re-fetched on
-  // each new page load.
-  const result = await cacheService.getOrFetch(
-    cacheKey,
-    () => fetchInactiveStudents(api),
-    ONE_DAY_MS,
-    true,
-    false
-  )
-
-  if (!result || typeof result !== 'object') {
-    return { byPersonalCode: {}, byStudentId: {} }
-  }
-  if (!result.byPersonalCode && !result.byStudentId) {
-    return { byPersonalCode: {}, byStudentId: {} }
-  }
-  return result
 }
 
 /**

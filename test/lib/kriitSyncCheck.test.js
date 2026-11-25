@@ -733,9 +733,9 @@ describe('kriitSyncCheck', () => {
 
       await runKriitSyncCheck(mockApi)
       expect(kriitPayloadReceived).toBeTruthy()
-      expect(Array.isArray(kriitPayloadReceived.inactiveStudents)).toBe(true)
-      expect(kriitPayloadReceived.inactiveStudents.length).toBeGreaterThan(0)
-      const first = kriitPayloadReceived.inactiveStudents[0]
+      expect(Array.isArray(kriitPayloadReceived.enrollmentStatuses)).toBe(true)
+      expect(kriitPayloadReceived.enrollmentStatuses.length).toBeGreaterThan(0)
+      const first = kriitPayloadReceived.enrollmentStatuses[0]
       expect(first.personalCode).toBe('50001010001')
       expect(first.name).toBe('Jane Doe')
     })
