@@ -44,6 +44,7 @@ export async function zoomikRead(request, get = lessonGet) {
   }
   if (!id(journalId)) throw new Error('Vigane päeviku tunnus')
   if (operation === 'journal') return get(origin, `/journals/${journalId}`)
+  if (operation === 'lessonInfo') return get(origin, `/journals/${journalId}/journalEntry/lessonInfo`)
   if (operation === 'entries') return get(origin, `/journals/${journalId}/journalEntriesByDate`, { allStudents: true })
   if (operation === 'students') return get(origin, `/journals/${journalId}/journalStudents`, { allStudents: true })
   if (operation === 'entry' && id(entryId)) return get(origin, `/journals/${journalId}/journalEntry/${entryId}`)

@@ -2,6 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import { zoomikRead } from '../../src/services/ZoomikRead.js'
 
 describe('Zoomik Tahvel reads', () => {
+  test('reads lesson defaults only for a validated journal', async() => {
+    const calls = []
+    await zoomikRead({ operation: 'lessonInfo', journalId: 42 }, async(...args) => { calls.push(args); return {} })
+    expect(calls).toEqual([['https://tahvel.edu.ee', '/journals/42/journalEntry/lessonInfo']])
+    await expect(zoomikRead({ operation: 'lessonInfo', journalId: '../user' })).rejects.toThrow()
+  })
   test('requests lesson times with full timestamps and reports denied access', async() => {
     const get = async(_origin, path, params) => {
       expect(path).toBe('/lessontimes')
