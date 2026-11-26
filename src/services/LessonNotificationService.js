@@ -40,7 +40,8 @@ export async function lessonGet(origin, path, params = {}) {
   const url = new URL(`${origin}/hois_back${path}`)
   Object.entries(params).forEach(([key, value]) => { if (value != null) url.searchParams.set(key, String(value)) })
   const response = await fetch(url, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(20000) })
-  if (!response.ok || !response.headers.get('content-type')?.includes('json')) throw new Error('Tahvli sessioon pole kättesaadav')
+  if (!response.ok) throw new Error(`Tahvli päring nurjus (${response.status})`)
+  if (!response.headers.get('content-type')?.includes('json')) throw new Error('Tahvli sessioon pole kättesaadav')
   return response.json()
 }
 

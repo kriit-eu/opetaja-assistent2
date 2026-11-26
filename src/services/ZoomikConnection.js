@@ -23,7 +23,11 @@ export async function connectZoomik() {
       if (current.readyState === WebSocket.OPEN) current.send(JSON.stringify({ type: 'result', error: error.message }))
     }
   }
-  current.onclose = () => { if (socket === current) socket = null }
+  current.onclose = () => {
+    if (socket !== current) return
+    socket = null
+    setTimeout(() => { void connectZoomik().catch(() => {}) }, 3000)
+  }
   current.onerror = () => current.close()
 }
 

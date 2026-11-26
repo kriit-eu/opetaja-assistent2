@@ -17,10 +17,13 @@ export async function zoomikRead(request, get = lessonGet) {
     const end = Date.parse(`${thru}T00:00:00Z`)
     if (!Number.isFinite(start) || !Number.isFinite(end) || end - start > 31 * 86400000 ||
         new Date(start).toISOString().slice(0, 10) !== from || new Date(end).toISOString().slice(0, 10) !== thru) throw new Error('Vigane ajavahemik')
+    const nextDay = new Date(end + 86400000).toISOString().slice(0, 10)
+    const fromTime = new Date(lessonTimestamp(from, '00:00')).toISOString()
+    const thruTime = new Date(lessonTimestamp(nextDay, '00:00') - 1).toISOString()
     if (operation === 'lessonTimes') {
       const rows = []
       for (let page = 0; page < 10; page++) {
-        const result = await get(origin, '/lessontimes', { from, thru, size: 100, page })
+        const result = await get(origin, '/lessontimes', { from: fromTime, thru: thruTime, size: 100, page })
         if (!Array.isArray(result?.content)) throw new Error('Tunniaegade vastus on vigane')
         rows.push(...result.content)
         if (result.last === true || (Number.isInteger(result.totalPages) && page + 1 >= result.totalPages)) return rows
@@ -32,12 +35,11 @@ export async function zoomikRead(request, get = lessonGet) {
     const schoolId = user?.school?.id
     const teacherId = user?.teacherId ?? user?.teacher
     if (!id(schoolId) || !id(teacherId)) throw new Error('Logi Tahvlisse sisse õpetajana')
-    const nextDay = new Date(end + 86400000).toISOString().slice(0, 10)
     return get(origin, `/timetableevents/timetableByTeacher/${schoolId}`, {
       teachers: teacherId,
-from: new Date(lessonTimestamp(from, '00:00')).toISOString(),
-      thru: new Date(lessonTimestamp(nextDay, '00:00') - 1).toISOString(),
-lang: 'ET'
+      from: fromTime,
+      thru: thruTime,
+      lang: 'ET'
     })
   }
   if (!id(journalId)) throw new Error('Vigane päeviku tunnus')
