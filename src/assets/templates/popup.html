@@ -305,6 +305,15 @@
       <h1>Õpetaja Assistent 2</h1>
     </div>
     <div id="error-log" class="error-log"></div>
+    <section class="settings-group">
+      <h2>Zoomiku ühendus</h2>
+      <label><input type="checkbox" id="zoomik-enabled" /> Luba Zoomikul Tahvli andmeid lugeda</label>
+      <p><label>Zoomiku port <input id="zoomik-port" type="number" min="1" max="65535" value="8000" /></label></p>
+      <p><label>Ühenduse võti <input id="zoomik-token" type="password" autocomplete="off" /></label></p>
+      <button class="btn" id="zoomik-save" type="button">Salvesta ühendus</button>
+      <p id="zoomik-status" role="status"></p>
+    </section>
+
 
     <div class="settings-group">
       <div class="section-header">
