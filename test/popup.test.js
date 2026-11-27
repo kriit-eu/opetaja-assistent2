@@ -3,6 +3,21 @@ import { restoreChromeMock } from './setup.js'
 
 const popup = await import('../src/popup.js')
 
+describe('Zoomik connection settings', () => {
+  it('stores the connection only after local access is granted', async () => {
+    const set = mock(async () => {})
+    const request = mock(async () => false)
+    const api = { permissions: { request }, storage: { local: { set } } }
+    const config = { enabled: true, token: 'a'.repeat(64), port: 18083 }
+    await expect(popup.saveZoomikBridge(config, api)).rejects.toThrow('luba')
+    expect(set).not.toHaveBeenCalled()
+    request.mockImplementation(async () => true)
+    await popup.saveZoomikBridge(config, api)
+    expect(request).toHaveBeenCalledWith({ origins: ['http://127.0.0.1/*'] })
+    expect(set).toHaveBeenCalledWith({ OA_zoomikBridge: config })
+  })
+})
+
 const POPUP_ELEMENTS = [
   ['input', 'debug-mode', { type: 'checkbox' }],
   ['button', 'clear-cache'],

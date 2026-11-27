@@ -16,6 +16,17 @@ const API_KEY_SHOW_LABEL = 'Näita'
 const API_KEY_HIDE_LABEL = 'Peida'
 const STATUS_CLEAR_DELAY_MS = 2000
 
+/** Save the opt-in connection only after Chrome grants local host access. */
+export async function saveZoomikBridge(config, api = chrome) {
+  if (config.enabled && (!/^[a-f0-9]{64}$/.test(config.token) || !Number.isInteger(config.port) || config.port < 1 || config.port > 65535)) {
+    throw new Error('Kontrolli ühenduse võtit ja porti.')
+  }
+  if (config.enabled && !await api.permissions.request({ origins: ['http://127.0.0.1/*'] })) {
+    throw new Error('Zoomikuga ühendamiseks on vaja kohaliku arvuti luba.')
+  }
+  await api.storage.local.set({ OA_zoomikBridge: config })
+}
+
 /**
  * Check if a URL belongs to a Tahvel instance
  * @param {string} url - The URL to check
@@ -56,16 +67,12 @@ function initPopup() {
     document.getElementById('zoomik-save').addEventListener('click', async() => {
       const token = zoomikToken.value.trim()
       const port = Number(zoomikPort.value)
-      if (zoomikEnabled.checked && (!/^[a-f0-9]{64}$/.test(token) || !Number.isInteger(port) || port < 1 || port > 65535)) {
-        zoomikStatus.textContent = 'Kontrolli ühenduse võtit ja porti.'
-        return
+      try {
+        await saveZoomikBridge({ enabled: zoomikEnabled.checked, token, port })
+        zoomikStatus.textContent = 'Seaded salvestatud.'
+      } catch (error) {
+        zoomikStatus.textContent = error.message || 'Seadeid ei saanud salvestada.'
       }
-      if (zoomikEnabled.checked && !await chrome.permissions.request({ origins: ['http://127.0.0.1/*'] })) {
-        zoomikStatus.textContent = 'Zoomikuga ühendamiseks on vaja kohaliku arvuti luba.'
-        return
-      }
-      await chrome.storage.local.set({ OA_zoomikBridge: { enabled: zoomikEnabled.checked, token, port } })
-      zoomikStatus.textContent = 'Seaded salvestatud.'
     })
   }
   if (document.getElementById('lesson-notification-schedule-status')) chrome.runtime.sendMessage({ action: 'lessonNotificationStatus' }).then(result => {
