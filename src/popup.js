@@ -60,6 +60,10 @@ function initPopup() {
         zoomikStatus.textContent = 'Kontrolli ühenduse võtit ja porti.'
         return
       }
+      if (zoomikEnabled.checked && !await chrome.permissions.request({ origins: ['http://127.0.0.1/*'] })) {
+        zoomikStatus.textContent = 'Zoomikuga ühendamiseks on vaja kohaliku arvuti luba.'
+        return
+      }
       await chrome.storage.local.set({ OA_zoomikBridge: { enabled: zoomikEnabled.checked, token, port } })
       zoomikStatus.textContent = 'Seaded salvestatud.'
     })
