@@ -1,3 +1,4 @@
+import { registerZoomikConnection } from './services/ZoomikConnection.js'
 /**
  * Background script
  */
@@ -228,4 +229,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 })
 
+registerZoomikConnection()
 registerLessonNotifications()

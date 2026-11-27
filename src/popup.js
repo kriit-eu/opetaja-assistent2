@@ -16,6 +16,17 @@ const API_KEY_SHOW_LABEL = 'Näita'
 const API_KEY_HIDE_LABEL = 'Peida'
 const STATUS_CLEAR_DELAY_MS = 2000
 
+/** Save the opt-in connection only after Chrome grants local host access. */
+export async function saveZoomikBridge(config, api = chrome) {
+  if (config.enabled && (!/^[a-f0-9]{64}$/.test(config.token) || !Number.isInteger(config.port) || config.port < 1 || config.port > 65535)) {
+    throw new Error('Kontrolli ühenduse võtit ja porti.')
+  }
+  if (config.enabled && !await api.permissions.request({ origins: ['http://127.0.0.1/*'] })) {
+    throw new Error('Zoomikuga ühendamiseks on vaja kohaliku arvuti luba.')
+  }
+  await api.storage.local.set({ OA_zoomikBridge: config })
+}
+
 /**
  * Check if a URL belongs to a Tahvel instance
  * @param {string} url - The URL to check
@@ -42,6 +53,28 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function initPopup() {
   void initializeLessonNotificationSettings()
+  const zoomikEnabled = document.getElementById('zoomik-enabled')
+  const zoomikPort = document.getElementById('zoomik-port')
+  const zoomikToken = document.getElementById('zoomik-token')
+  const zoomikStatus = document.getElementById('zoomik-status')
+  if (zoomikEnabled && zoomikPort && zoomikToken && zoomikStatus) {
+    chrome.storage.local.get('OA_zoomikBridge').then(result => {
+      const config = result.OA_zoomikBridge || {}
+      zoomikEnabled.checked = !!config.enabled
+      zoomikPort.value = config.port || 8000
+      zoomikToken.value = config.token || ''
+    })
+    document.getElementById('zoomik-save').addEventListener('click', async() => {
+      const token = zoomikToken.value.trim()
+      const port = Number(zoomikPort.value)
+      try {
+        await saveZoomikBridge({ enabled: zoomikEnabled.checked, token, port })
+        zoomikStatus.textContent = 'Seaded salvestatud.'
+      } catch (error) {
+        zoomikStatus.textContent = error.message || 'Seadeid ei saanud salvestada.'
+      }
+    })
+  }
   if (document.getElementById('lesson-notification-schedule-status')) chrome.runtime.sendMessage({ action: 'lessonNotificationStatus' }).then(result => {
     const status = document.getElementById('lesson-notification-schedule-status')
     if (!status) return
