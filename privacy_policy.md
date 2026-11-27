@@ -1,6 +1,6 @@
 # Privaatsuspoliitika
 
-Viimati uuendatud: 2026-04-25
+Viimati uuendatud: 2026-11-27
 
 Käesolev privaatsuspoliitika kirjeldab, kuidas brauserilaiendus **Õpetaja Assistent 2** (edaspidi "laiendus") töötleb õpetajate, õpilaste ja kooli andmeid. Laiendus on vabavaraline tööriist, mis jookseb täielikult kasutaja brauseris ning täiendab Tahveli (tahvel.edu.ee) kasutusliidest.
 
@@ -10,7 +10,7 @@ Laiendust arendab ja haldab `kriit-eu` meeskond. Lähtekood on avalik aadressil 
 
 ## Mis andmeid laiendus töötleb
 
-Laiendus töötleb **ainult andmeid, mis on Tahveli kaudu juba õpetajale kättesaadavad**. Laiendus ei kogu midagi kasutaja taustal — kogu töötlus käivitub Tahveli kasutamise ajal.
+Laiendus töötleb **ainult andmeid, mis on Tahveli kaudu juba õpetajale kättesaadavad**. Sisselülitatud tunniteavitused ja Zoomiku ühendus võivad kasutada neid andmeid ka siis, kui Tahvli vahekaart ei ole avatud.
 
 Töödeldavad andmeliigid:
 
@@ -22,12 +22,13 @@ Töödeldavad andmeliigid:
 
 ## Kus andmeid hoitakse
 
-Andmed liiguvad kahe asukoha vahel:
+Andmeid võidakse kasutada järgmistes asukohtades:
 
 1. **Kasutaja brauseri vahemälu** (kohalik). Laiendus salvestab Tahvelist toodud vastused vahemällu, et lehed laeksid kiiremini. Õpilaste ja õpetajate nimed ning isikukoodid hoitakse ainult brauseri mälus ega kirjutata kettale. Ülejäänud kettale jõudvad andmed on AES-256-GCM krüpteeritud.
 2. **Kriidi server** (võrgupäring). Kui kasutaja on Kriidi sünkroniseerimise sisse lülitanud, saadab laiendus eelmainitud andmed kasutaja konfigureeritud Kriidi serverisse (vaikimisi `https://kriit.vikk.ee/api`). Laiendus lubab ainult HTTPS-ühendusi (erandiks `localhost` arendamise jaoks). **Kriidi-serveri andmekaitse on vastava Kriidi paigalduse omaniku vastutus.**
+3. **Zoomik samas arvutis**. Kui kasutaja lülitab Zoomiku ühenduse sisse, saab Zoomik küsida selle õpetaja Tahvli tunniplaani, päevikute, sissekannete ja õppijate andmeid. Ühendus kasutab kohalikku `127.0.0.1` aadressi ja ühenduse võtit. Laiendus ei saada Zoomikule Tahvli salasõna ega sessiooniküpsiseid. Zoomiku edasine andmetöötlus sõltub kasutaja Zoomiku seadistusest.
 
-Laiendus **ei saada andmeid ühelegi muule kolmandale osapoolele** — ei reklaamipartneritele, analüütikateenustele ega Google'i pilve. Laienduse seaded ja API võtmed hoitakse `chrome.storage.local`-is, mis erinevalt `chrome.storage.sync`-ist ei sünkroniseeru Google'i serveritesse.
+Laiendus ei saada andmeid reklaamipartneritele. Vea-aruannete kohta vaata allpool Sentry jaotist. Laienduse seaded ja ühenduste võtmed hoitakse `chrome.storage.local`-is, mis erinevalt `chrome.storage.sync`-ist ei sünkroniseeru Google'i serveritesse.
 
 ## Säilitamise tähtaeg
 
