@@ -17,7 +17,7 @@ import { styleService } from '../../services/StyleService.js'
 import { cacheService } from '../../services/CacheService.js'
 import { ApiService } from '../../services/ApiService.js'
 import { compareKriitGrades } from '../../lib/compareKriitGrades.js'
-import { buildDiffSummary } from '../../lib/kriitSyncCheck.js'
+import { buildDiffSummary, normalizeNewAssignments } from '../../lib/kriitSyncCheck.js'
 import { setupKriitMessageListener } from '../../services/MessageListenerService.js'
 import { bannerService } from '../../services/BannerService.js'
 import { formatFinalGradeUpdateSummary, recalculateFinalGradesForTouchedJournals } from './FinalGradeRecalculation.js'
@@ -1735,18 +1735,25 @@ class JournalListSyncFeature extends BaseFeature {
           Logger.debug('Failed to populate subjectsCache:', err)
         }
 
-        // Normalize newAssignments (can be under response.data.newAssignments or response.newAssignments)
-        const respNewAssignments = (response && response.data && response.data.newAssignments) || (response && response.newAssignments) || {}
-        if (respNewAssignments && Object.keys(respNewAssignments).length > 0) {
-          window.journalListSync.newAssignments = respNewAssignments
-          Logger.debug('Stored newAssignments in runtime cache for banner:', JSON.stringify(Object.keys(respNewAssignments)))
-        } else if (window.journalListSync.newAssignments && Object.keys(window.journalListSync.newAssignments).length === 0) {
-          // Leave existing cache alone if already populated; if completely empty, ensure it's an object
-          window.journalListSync.newAssignments = window.journalListSync.newAssignments || {}
-        }
+        window.journalListSync.newAssignments = normalizeNewAssignments(response)
 
         // Always update global differences after setting this.differences
         window.journalListSync.differences = this.differences
+
+        // The payload hash is just a checksum (no PII) — safe to persist so we
+        // can detect "same payload" across reloads. The differences and new
+        // assignments are aggregated student-level diffs (high PII) and stay
+        // in memory only. A counts-only summary is persisted so the header
+        // sync button can render its "pending syncs" state on page load.
+        try {
+          const newAssignmentsForCache = window.journalListSync.newAssignments || {}
+          await cacheService.set('journalList_lastPayloadHash', payloadHash)
+          await cacheService.set('journalList_lastDifferences', this.differences, 0, false)
+          await cacheService.set('journalList_lastNewAssignments', newAssignmentsForCache, 0, false)
+          await cacheService.set('journalList_diffSummary', buildDiffSummary(this.differences, newAssignmentsForCache), 0, true)
+        } catch (err) {
+          Logger.warning('Failed to update journal list cache:', err.message)
+        }
 
         // If there are no differences and there are new assignments, show banner for new assignments
         if (
@@ -1771,20 +1778,6 @@ class JournalListSyncFeature extends BaseFeature {
           return
         }
 
-        // The payload hash is just a checksum (no PII) — safe to persist so we
-        // can detect "same payload" across reloads. The differences and new
-        // assignments are aggregated student-level diffs (high PII) and stay
-        // in memory only. A counts-only summary is persisted so the header
-        // sync button can render its "pending syncs" state on page load.
-        try {
-          const newAssignmentsForCache = window.journalListSync.newAssignments || {}
-          await cacheService.set('journalList_lastPayloadHash', payloadHash)
-          await cacheService.set('journalList_lastDifferences', this.differences, 0, false)
-          await cacheService.set('journalList_lastNewAssignments', newAssignmentsForCache, 0, false)
-          await cacheService.set('journalList_diffSummary', buildDiffSummary(this.differences, newAssignmentsForCache), 0, true)
-        } catch (err) {
-          Logger.warning('Failed to update journal list cache:', err.message)
-        }
       } catch (error) {
         Logger.error('Error calling Kriit API:', error)
 
@@ -3108,7 +3101,7 @@ class JournalListSyncFeature extends BaseFeature {
           assignmentExternalId: assignmentId,
           assignmentName: assignmentName,
           assignmentInstructions: entry.content || '',
-          assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null, // Use homeworkDuedate if available, fall back to entryDate
+          assignmentDueAt: entry.homeworkDuedate?.split('T')[0] || null,
           assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
           // If Tahvel entry contains lessons, include it for Kriit to consume; coerce to Number or null
           lessons: typeof entry.lessons !== 'undefined' && entry.lessons !== null ? Number(entry.lessons) : null,
@@ -3907,13 +3900,27 @@ class JournalListSyncFeature extends BaseFeature {
             const finalEntryType = updateData.entryType || entryData.entryType
             if (finalEntryType === 'SISSEKANNE_I') {
               updateData.journalEntryCapacityTypes = ['MAHT_i']
-              if (!updateData.homeworkDuedate && updateData.entryDate) {
-                updateData.homeworkDuedate = this.normalizeTahvelDueDate(updateData.entryDate)
-              }
             } else if (finalEntryType === 'SISSEKANNE_H') {
               updateData.journalEntryCapacityTypes = ['MAHT_h']
             } else if (finalEntryType === 'SISSEKANNE_P') {
               updateData.journalEntryCapacityTypes = ['MAHT_p']
+            }
+
+            if (['SISSEKANNE_I', 'SISSEKANNE_H'].includes(finalEntryType) && !updateData.homeworkDuedate) {
+              const assignment = subject?.assignments?.find(item => item.assignmentExternalId === batch.assignmentId)
+              const due = assignment?.assignmentDueAt
+              const kriitDue = typeof due === 'string' ? due : due?.kriit
+              if (kriitDue) updateData.homeworkDuedate = this.normalizeTahvelDueDate(kriitDue)
+              else if (batch.entryType) {
+                const name = updateData.nameEt || batch.assignmentId
+                const date = window.prompt(`Sisesta ülesande „${name}“ tähtaeg kujul AAAA-KK-PP.`)?.trim()
+                if (!date) throw new Error(`Ülesande „${name}“ tähtaeg jäi sisestamata.`)
+                const parsed = new Date(date)
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+                  throw new Error(`Ülesande „${name}“ tähtaeg peab olema kehtiv kuupäev kujul AAAA-KK-PP.`)
+                }
+                updateData.homeworkDuedate = this.normalizeTahvelDueDate(date)
+              }
             }
 
             // Filter out students with OPPURSTAATUS_K or OPPURSTAATUS_L using mapping similar to syncAssignmentNameDifferences
@@ -4492,18 +4499,8 @@ export async function getTahvelSubjectsWithAssignmentsAndGrades(journalIds = [])
               }
             })
 
-            // Extract date from entryDate
-            let dueDate = null
-            let entryDate = null
-            if (entry.entryDate) {
-              const date = new Date(entry.entryDate)
-              entryDate = date.toISOString().split('T')[0]
-
-              // Use date + 2 days as due date if not specified
-              const dueDateObj = new Date(date)
-              dueDateObj.setDate(dueDateObj.getDate() + 2)
-              dueDate = dueDateObj.toISOString().split('T')[0]
-            }
+            const entryDate = entry.entryDate?.split('T')[0] || null
+            const dueDate = entry.homeworkDuedate?.split('T')[0] || null
 
             // Include assignments even if no students have grades yet (but only if we have students)
             if (results.length > 0) {

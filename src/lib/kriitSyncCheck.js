@@ -624,7 +624,7 @@ export function extractAssignmentsFromEntries(journalEntries, studentMap, journa
         assignmentExternalId: assignmentId,
         assignmentName,
         assignmentInstructions: entry.content || '',
-        assignmentDueAt: entry.homeworkDuedate ? entry.homeworkDuedate.split('T')[0] : entry.entryDate ? entry.entryDate.split('T')[0] : null,
+        assignmentDueAt: entry.homeworkDuedate?.split('T')[0] || null,
         assignmentEntryDate: entry.entryDate ? entry.entryDate.split('T')[0] : null,
         lessons: typeof entry.lessons !== 'undefined' && entry.lessons !== null ? Number(entry.lessons) : null,
         entryType: entry.entryType || null,

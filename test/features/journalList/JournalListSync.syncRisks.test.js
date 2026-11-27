@@ -554,6 +554,7 @@ describe('JournalListSync — sync data-integrity risks (false data / duplicate 
           version: 1,
           id: ASSIGNMENT_ID,
           entryType: 'SISSEKANNE_H',
+          homeworkDuedate: '2026-10-29T12:00:00Z',
           nameEt: 'X',
           journalEntryTeachers: [1],
           journalEntryStudents: []

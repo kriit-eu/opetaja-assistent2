@@ -1673,7 +1673,7 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(result[0].assignmentName).toBe('Graded')
     })
 
-    test('should fallback to entryDate when no homeworkDuedate', () => {
+    test('keeps the due date empty when Tahvel has no homework due date', () => {
       const entries = [
         {
           id: 1,
@@ -1686,7 +1686,7 @@ describe('JournalListSync - Algorithm Tests', () => {
 
       const result = journalListSync.extractAssignmentsFromEntries(entries, studentMap, [])
 
-      expect(result[0].assignmentDueAt).toBe('2024-01-01')
+      expect(result[0].assignmentDueAt).toBeNull()
     })
 
     test('should use getAssignmentNameFromEntry when nameEt missing', () => {
@@ -2521,7 +2521,7 @@ describe('JournalListSync - Algorithm Tests', () => {
         entryType: 'SISSEKANNE_H',
         nameEt: 'Lõpphinne',
         entryDate: '2023-06-20T00:00:00Z',
-        homeworkDuedate: null,
+        homeworkDuedate: '2023-06-20T00:00:00Z',
         lessons: null,
         journalEntryTeachers: [18737],
         journalEntryCapacityTypes: ['MAHT_h'],
@@ -2565,7 +2565,14 @@ describe('JournalListSync - Algorithm Tests', () => {
       expect(journalListSync.error).not.toContain('50001010001')
     })
 
-    test('should sync assignment hours and entry type in one Tahvel update', async () => {
+    test.each([
+      ['SISSEKANNE_I', 'SISSEKANNE_H', null, '2023-06-27T23:59:59.000Z', '2023-06-27'],
+      ['SISSEKANNE_H', 'SISSEKANNE_I', '2023-06-23', '2023-06-23T23:59:59.000Z', null],
+      ['SISSEKANNE_H', 'SISSEKANNE_I', null, null, null],
+      ['SISSEKANNE_H', 'SISSEKANNE_I', null, null, '2023-02-31']
+    ])('sends hours, entry type %s and the due date together', async (targetType, originalType, dueDate, expectedDue, enteredDate) => {
+      const originalPrompt = window.prompt
+      window.prompt = mock(() => enteredDate)
       const originalSetTimeout = global.setTimeout
       const originalBannerSuccess = bannerService.showSuccessBanner
       const setTimeoutMock = mock(() => {})
@@ -2579,7 +2586,7 @@ describe('JournalListSync - Algorithm Tests', () => {
         const get = mock(async () => ({
           version: 5,
           id: 2636372,
-          entryType: 'SISSEKANNE_H',
+          entryType: originalType,
           nameEt: 'Lõpphinne',
           entryDate: '2023-06-20T00:00:00Z',
           homeworkDuedate: null,
@@ -2606,7 +2613,8 @@ describe('JournalListSync - Algorithm Tests', () => {
                 assignmentExternalId: 2636372,
                 assignmentName: 'Lõpphinne',
                 assignmentHours: 10,
-                entryType: { kriit: 'SISSEKANNE_I', Tahvel: 'SISSEKANNE_H' },
+                assignmentDueAt: dueDate,
+                entryType: { kriit: targetType, Tahvel: originalType },
                 results: []
               }
             ]
@@ -2614,6 +2622,13 @@ describe('JournalListSync - Algorithm Tests', () => {
         ]
 
         const result = await journalListSync.syncWithKriit()
+        expect(window.prompt).toHaveBeenCalledTimes(dueDate ? 0 : 1)
+        if (!expectedDue) {
+          expect(put).not.toHaveBeenCalled()
+          expect(result.failedSyncs).toHaveLength(1)
+          expect(result.failedSyncs[0].error).toContain('tähtaeg')
+          return
+        }
         const payload = put.mock.calls[0][1]
 
         expect(result.failedSyncs).toHaveLength(0)
@@ -2622,14 +2637,15 @@ describe('JournalListSync - Algorithm Tests', () => {
         expect(get.mock.calls[0][1]).toEqual({})
         expect(put).toHaveBeenCalledTimes(1)
         expect(payload.lessons).toBe(10)
-        expect(payload.entryType).toBe('SISSEKANNE_I')
-        expect(payload.homeworkDuedate).toBe('2023-06-20T00:00:00Z')
+        expect(payload.entryType).toBe(targetType)
+        expect(payload.homeworkDuedate).toBe(expectedDue)
         expect(payload.journalEntryStudents).toEqual([])
         const bannerMessages = bannerSuccessMock.mock.calls.map(args => args[0]).join(' ')
         expect(bannerMessages).toContain('1 ülesande tundide arvu')
         expect(bannerMessages).toContain('1 sissekande tüüpi')
         expect(setTimeoutMock).toHaveBeenCalledTimes(1)
       } finally {
+        window.prompt = originalPrompt
         global.setTimeout = originalSetTimeout
         bannerService.showSuccessBanner = originalBannerSuccess
       }
@@ -4404,6 +4420,9 @@ describe("JournalListSync - Sync flow and lifecycle", () => {
       }
       await journalListSync.proceedWithKriitApiCall([{ subjectExternalId: 5, subjectName: 'S', assignments: [] }])
       expect(window.journalListSync.newAssignments['5']).toBeDefined()
+      apiKriitResponse.data.newAssignments = {}
+      await journalListSync.proceedWithKriitApiCall([{ subjectExternalId: 5, subjectName: 'S', assignments: [] }])
+      expect(window.journalListSync.newAssignments).toEqual({})
     })
 
     test('shows all-synced message when no differences and no new assignments', async () => {

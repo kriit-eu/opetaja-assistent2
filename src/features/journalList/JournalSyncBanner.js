@@ -35,6 +35,8 @@ class DifferenceRenderer {
         }
         this.createBadge(badges, diff.assignmentName, 'badge-assignment')
 
+        if (diff.entryTypeName) this.createBadge(badges, diff.entryTypeName, 'badge-entrytype')
+
         const values = domService.createAndInsertElement('div', { classList: ['values'] }, '', row)
         if (diff.studentName) {
           this.createTextElement('span', { classList: ['student-name'] }, `${diff.studentName}:`, values)
@@ -276,7 +278,8 @@ class DifferenceRenderer {
         SISSEKANNE_I: 'Iseseisev töö',
         SISSEKANNE_P: 'Praktiline töö',
         SISSEKANNE_H: 'Hindeline töö',
-        SISSEKANNE_L: 'Tund',
+        SISSEKANNE_T: 'Auditoorne tund',
+        SISSEKANNE_L: 'Lõpptulemus',
         SISSEKANNE_O: 'Õpitulemused'
       }
       return entryTypeMap[code] || code
@@ -354,6 +357,7 @@ class DifferenceRenderer {
           addDiff(subjectName || '', {
             type: 'new',
             typeName: 'Uus ülesanne',
+            entryTypeName: a.assignmentEntryType ? getEntryTypeName(a.assignmentEntryType) : null,
             assignmentName: assignmentName,
             studentName: '',
             entryDate: entryFormatted,

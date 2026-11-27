@@ -284,7 +284,7 @@ describe('DifferenceRenderer', () => {
         }
       ]
       const result = differenceRenderer.collectAndGroupDifferences([], [], [], [], [], entryTypeDiffs, {})
-      expect(result.Science[0].oldValue).toBe('Tund')
+      expect(result.Science[0].oldValue).toBe('Lõpptulemus')
       expect(result.Science[0].newValue).toBe('Praktiline töö')
     })
 
@@ -344,7 +344,7 @@ describe('DifferenceRenderer', () => {
 
     test('should handle new assignments', () => {
       const newAssignments = {
-        sub1: [{ assignmentName: 'New Task', assignmentEntryDate: '2024-01-01', assignmentDueAt: '2024-01-15' }]
+        sub1: [{ assignmentName: 'New Task', assignmentEntryType: 'SISSEKANNE_I', assignmentEntryDate: '2024-01-01', assignmentDueAt: '2024-01-15' }]
       }
       global.window.journalListSync = {
         differences: [{ subjectExternalId: 'sub1', subjectName: 'Math' }]
@@ -352,6 +352,7 @@ describe('DifferenceRenderer', () => {
       const result = differenceRenderer.collectAndGroupDifferences([], [], [], [], [], [], newAssignments)
       expect(result.Math[0].type).toBe('new')
       expect(result.Math[0].assignmentName).toBe('New Task')
+      expect(result.Math[0].entryTypeName).toBe('Iseseisev töö')
       expect(result.Math[0].entryDate).toBe('01.01.2024')
       expect(result.Math[0].dueDate).toBe('15.01.2024')
     })
